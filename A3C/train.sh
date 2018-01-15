@@ -14,4 +14,4 @@ if [ ! -d "performance" ]; then
   mkdir performance
 fi
 cd ..
-python3 ../A3C/benes/train.py
+python3 ./A3C/benes/train.py

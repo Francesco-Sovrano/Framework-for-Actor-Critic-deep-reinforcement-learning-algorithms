@@ -16,14 +16,14 @@ def build(option_type):
 	tf.app.flags.DEFINE_string("reward_generator", "StairSeeker_24_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
 	
 	tf.app.flags.DEFINE_string("env_type", "rogue", "environment type")
-	tf.app.flags.DEFINE_string("env_path", "/home/students/francesco.sovrano/Documents/ML/Rogue/rogue5.4.4-ant-r1.1.4/rogue", "the path where to find the game")
+	tf.app.flags.DEFINE_string("env_path", "./Rogue/rogue5.4.4-ant-r1.1.4/rogue", "the path where to find the game")
 	tf.app.flags.DEFINE_string("checkpoint_dir", "./checkpoint", "checkpoint directory")
 	tf.app.flags.DEFINE_string("event_dir", "./events", "events directory")
 	tf.app.flags.DEFINE_string("log_dir", "./log", "events directory")
 	tf.app.flags.DEFINE_boolean("show_best_screenshots", True, "whether to save the best matches")
 	tf.app.flags.DEFINE_boolean("show_all_screenshots", False, "whether to save all the matches")
 
-	tf.app.flags.DEFINE_string("rogueinabox_path", "/home/students/francesco.sovrano/Documents/ML/Rogue", "where to find the package") # to remove!
+	tf.app.flags.DEFINE_string("rogueinabox_path", "./Rogue", "where to find the package") # to remove!
 
 	# For training
 	if option_type == 'training':
