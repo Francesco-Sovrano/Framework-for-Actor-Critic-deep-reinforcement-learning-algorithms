@@ -1,0 +1,36 @@
+Wed Jul 12 13:46:24 EDT 2017
+
+  - no major bugs known
+
+  - need to look at the change to mdport.c which threw 
+error on compile:
+
+=====
+ mdport.c:273:15: error: dereferencing pointer to incomplete type ‘TERMINAL {aka struct term}’
+    if (cur_term->type.Strings == NULL)
+                ^~
+ Makefile:130: recipe for target 'mdport.o' failed
+=====
+
+  a temporary fix was suggested by Sven Joachim on the
+curses bug mailing list:
+
+> Fix the application, it's a deliberate change in the 20170318
+> patchlevel:
+>
+> ,----
+>| 20170318
+>|  + change TERMINAL structure in term.h to make it opaque.  Some
+>|    applications misuse its members, e.g., directly modifying it
+>|    rather than using def_prog_mode().
+> `----
+>
+>> this is rather ancient code (i haven't seen an
+>> error like this ever since i started compiling it).
+>
+> If you don't have time or skills to change the code, a workaround is to
+> #define NCURSES_INTERNALS to regain access to the TERMINAL structure.
+
+  which worked, but when i or someone else gets back
+to this code it would be nice to change it so that the
+define isn't needed.
