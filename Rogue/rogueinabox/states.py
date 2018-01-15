@@ -1,4 +1,4 @@
-#Copyright (C) 2017 Andrea Asperti, Carlo De Pieri, Gianmaria Pedrini
+#Copyright (C) 2017 Andrea Asperti, Carlo De Pieri, Gianmaria Pedrini, Francesco Sovrano
 #
 #This file is part of Rogueinabox.
 #
@@ -58,13 +58,12 @@ class SingleLayer_StateGenerator(StateGenerator):
 	def compute_state(self, info):
 		state = self.empty_state()
 		if info.has_statusbar():
-			env = info.pixel["environment"]
-			state = self.set_layer(state, 0, info.get_player_pos(), 2) # rogue (player)
-			state = self.set_layer(state, 0, env["%"], 4) # stairs
-			state = self.set_layer(state, 0, env["|"], 8) # walls
-			state = self.set_layer(state, 0, env["-"], 8) # walls
-			state = self.set_layer(state, 0, env["+"], 16) # doors
-			state = self.set_layer(state, 0, env["#"], 16) # tunnel
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("@"), 2) # rogue (player)
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 		return { "environment" : state, "layer" : 0 }
 		
 class TripleLayer_StateGenerator(StateGenerator):
@@ -75,24 +74,23 @@ class TripleLayer_StateGenerator(StateGenerator):
 		environment = self.empty_state()
 		layer = 2
 		if info.has_statusbar():
-			env = info.pixel["environment"]
 			#layer 1
-			environment = self.set_layer(environment, 0, env["#"], 1) # tunnel
+			environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("#"), 1) # tunnel
 			#layer 2
-			environment = self.set_layer(environment, 1, env["%"], 1) # stairs
+			environment = self.set_layer(environment, 1, info.get_list_of_positions_by_tile("%"), 1) # stairs
 			#layer 3
-			environment = self.set_layer(environment, 2, env["."], 1) # floor
-			environment = self.set_layer(environment, 2, env["+"], 1) # doors
+			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("."), 1) # floor
+			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("+"), 1) # doors
 			
 			pixel = info.get_tile_below_player()
 			if pixel == '#': # tunnel
-				environment = self.set_layer(environment, 0, info.get_player_pos(), 2)
+				environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("@"), 2)
 				layer = 0
 			elif pixel == "%": # stairs
-				environment = self.set_layer(environment, 1, info.get_player_pos(), 2)
+				environment = self.set_layer(environment, 1, info.get_list_of_positions_by_tile("@"), 2)
 				layer = 1
 			else: # floor
-				environment = self.set_layer(environment, 2, info.get_player_pos(), 2)
+				environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("@"), 2)
 		return { "environment" : environment, "layer" : layer }
 		
 class TripleLayer_1_StateGenerator(TripleLayer_StateGenerator):
@@ -100,35 +98,35 @@ class TripleLayer_1_StateGenerator(TripleLayer_StateGenerator):
 		state = self.empty_state()
 		layer = 2
 		if info.has_statusbar():
-			env = info.pixel["environment"]
+			
 			#layer 1
-			state = self.set_layer(state, 0, env["%"], 4) # stairs
-			state = self.set_layer(state, 0, env["|"], 8) # walls
-			state = self.set_layer(state, 0, env["-"], 8) # walls
-			state = self.set_layer(state, 0, env["+"], 16) # doors
-			state = self.set_layer(state, 0, env["#"], 16) # tunnel
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			#layer 2
-			state = self.set_layer(state, 1, env["%"], 4) # stairs
-			state = self.set_layer(state, 1, env["|"], 8) # walls
-			state = self.set_layer(state, 1, env["-"], 8) # walls
-			state = self.set_layer(state, 1, env["+"], 16) # doors
-			state = self.set_layer(state, 1, env["#"], 16) # tunnel
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			#layer 3
-			state = self.set_layer(state, 2, env["%"], 4) # stairs
-			state = self.set_layer(state, 2, env["|"], 8) # walls
-			state = self.set_layer(state, 2, env["-"], 8) # walls
-			state = self.set_layer(state, 2, env["+"], 16) # doors
-			state = self.set_layer(state, 2, env["#"], 16) # tunnel
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			
 			pixel = info.get_tile_below_player()
 			if pixel == '#': # tunnel
-				state = self.set_layer(state, 0, info.get_player_pos(), 2) # rogue (player), set it for last otherwise it may be overwritten by other positions!
+				state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("@"), 2) # rogue (player), set it for last otherwise it may be overwritten by other positions!
 				layer = 0
 			elif pixel == "%": # stairs
-				state = self.set_layer(state, 1, info.get_player_pos(), 2) # rogue (player), set it for last otherwise it may be overwritten by other positions!
+				state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("@"), 2) # rogue (player), set it for last otherwise it may be overwritten by other positions!
 				layer = 1
 			else: # floor
-				state = self.set_layer(state, 2, info.get_player_pos(), 2) # rogue (player), set it for last otherwise it may be overwritten by other positions!
+				state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("@"), 2) # rogue (player), set it for last otherwise it may be overwritten by other positions!
 		return { "environment" : state, "layer" : layer }
 		
 class TripleLayer_2_StateGenerator(TripleLayer_StateGenerator):
@@ -136,26 +134,26 @@ class TripleLayer_2_StateGenerator(TripleLayer_StateGenerator):
 		environment = self.empty_state()
 		layer = 2
 		if info.has_statusbar():
-			env = info.pixel["environment"]
+			
 			#layer 1
-			environment = self.set_layer(environment, 0, env["#"], 1) # tunnel
-			environment = self.set_layer(environment, 0, env["+"], 1) # doors
+			environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("#"), 1) # tunnel
+			environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("+"), 1) # doors
 			#layer 2
-			environment = self.set_layer(environment, 1, env["%"], 1) # stairs
+			environment = self.set_layer(environment, 1, info.get_list_of_positions_by_tile("%"), 1) # stairs
 			#layer 3
-			environment = self.set_layer(environment, 2, env["-"], 1) # walls
-			environment = self.set_layer(environment, 2, env["|"], 1) # walls
-			environment = self.set_layer(environment, 2, env["%"], 2) # stairs
+			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("-"), 1) # walls
+			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("|"), 1) # walls
+			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("%"), 2) # stairs
 			
 			pixel = info.get_tile_below_player()
 			if pixel == '#': # tunnel
-				environment = self.set_layer(environment, 0, info.get_player_pos(), 8)
+				environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("@"), 8)
 				layer = 0
 			elif pixel == "%": # stairs
-				environment = self.set_layer(environment, 1, info.get_player_pos(), 8)
+				environment = self.set_layer(environment, 1, info.get_list_of_positions_by_tile("@"), 8)
 				layer = 1
 			else: # floor
-				environment = self.set_layer(environment, 2, info.get_player_pos(), 8)
+				environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("@"), 8)
 		return { "environment" : environment, "layer" : layer }
 				
 class CroppedView_StateGenerator(StateGenerator):
@@ -186,18 +184,18 @@ class CroppedView_StateGenerator(StateGenerator):
 	def compute_state(self, info):
 		environment = self.empty_state()
 		layer = 2
-		self.player_position = info.get_player_pos()[0]
+		self.player_position = info.get_list_of_positions_by_tile("@")[0]
 		if info.has_statusbar() and self.player_position != None:
-			env = info.pixel["environment"]
+			
 			#layer 1
-			environment = self.set_layer(environment, 0, env["#"], 1) # tunnel
-			environment = self.set_layer(environment, 0, env["+"], 1) # doors
+			environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("#"), 1) # tunnel
+			environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("+"), 1) # doors
 			#layer 2
-			environment = self.set_layer(environment, 1, env["%"], 1) # stairs
+			environment = self.set_layer(environment, 1, info.get_list_of_positions_by_tile("%"), 1) # stairs
 			#layer 3
-			environment = self.set_layer(environment, 2, env["-"], 1) # walls
-			environment = self.set_layer(environment, 2, env["|"], 1) # walls
-			environment = self.set_layer(environment, 2, env["%"], 2) # stairs
+			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("-"), 1) # walls
+			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("|"), 1) # walls
+			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("%"), 2) # stairs
 			
 			pixel = info.get_tile_below_player()
 			if pixel == '#': # tunnel
@@ -226,27 +224,27 @@ class CroppedView_2_StateGenerator(CroppedView_StateGenerator):
 	def compute_state(self, info):
 		state = self.empty_state()
 		layer = 2
-		self.player_position = info.get_player_pos()[0]
+		self.player_position = info.get_list_of_positions_by_tile("@")[0]
 		if info.has_statusbar() and self.player_position != None:
-			env = info.pixel["environment"]
+			
 			#layer 1
-			state = self.set_layer(state, 0, env["%"], 4) # stairs
-			state = self.set_layer(state, 0, env["|"], 8) # walls
-			state = self.set_layer(state, 0, env["-"], 8) # walls
-			state = self.set_layer(state, 0, env["+"], 16) # doors
-			state = self.set_layer(state, 0, env["#"], 16) # tunnel
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			#layer 2
-			state = self.set_layer(state, 1, env["%"], 4) # stairs
-			state = self.set_layer(state, 1, env["|"], 8) # walls
-			state = self.set_layer(state, 1, env["-"], 8) # walls
-			state = self.set_layer(state, 1, env["+"], 16) # doors
-			state = self.set_layer(state, 1, env["#"], 16) # tunnel
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			#layer 3
-			state = self.set_layer(state, 2, env["%"], 4) # stairs
-			state = self.set_layer(state, 2, env["|"], 8) # walls
-			state = self.set_layer(state, 2, env["-"], 8) # walls
-			state = self.set_layer(state, 2, env["+"], 16) # doors
-			state = self.set_layer(state, 2, env["#"], 16) # tunnel
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			
 			pixel = info.get_tile_below_player()
 			if pixel == '#': # tunnel
@@ -259,27 +257,27 @@ class CroppedView_3_StateGenerator(CroppedView_StateGenerator):
 	def compute_state(self, info):
 		state = self.empty_state()
 		layer = 2
-		self.player_position = info.get_player_pos()[0]
+		self.player_position = info.get_list_of_positions_by_tile("@")[0]
 		if info.has_statusbar() and self.player_position != None:
-			env = info.pixel["environment"]
+			
 			#layer 1
-			state = self.set_layer(state, 0, env["%"], 4) # stairs
-			state = self.set_layer(state, 0, env["|"], 8) # walls
-			state = self.set_layer(state, 0, env["-"], 8) # walls
-			state = self.set_layer(state, 0, env["+"], 16) # doors
-			state = self.set_layer(state, 0, env["#"], 16) # tunnel
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			#layer 2
-			state = self.set_layer(state, 1, env["%"], 4) # stairs
-			state = self.set_layer(state, 1, env["|"], 8) # walls
-			state = self.set_layer(state, 1, env["-"], 8) # walls
-			state = self.set_layer(state, 1, env["+"], 16) # doors
-			state = self.set_layer(state, 1, env["#"], 16) # tunnel
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			#layer 3
-			state = self.set_layer(state, 2, env["%"], 4) # stairs
-			state = self.set_layer(state, 2, env["|"], 8) # walls
-			state = self.set_layer(state, 2, env["-"], 8) # walls
-			state = self.set_layer(state, 2, env["+"], 16) # doors
-			state = self.set_layer(state, 2, env["#"], 16) # tunnel
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			
 			pixel = info.get_tile_below_player()
 			if pixel == '#': # tunnel
@@ -294,45 +292,45 @@ class CroppedView_4_StateGenerator(CroppedView_StateGenerator):
 		
 	def compute_state(self, info):
 		state = self.empty_state()
-		self.player_position = info.get_player_pos()[0]
+		self.player_position = info.get_list_of_positions_by_tile("@")[0]
 		if info.has_statusbar() and self.player_position != None:
-			env = info.pixel["environment"]
+			
 			#layer 1
-			state = self.set_layer(state, 0, env["%"], 4) # stairs
-			state = self.set_layer(state, 0, env["|"], 8) # walls
-			state = self.set_layer(state, 0, env["-"], 8) # walls
-			state = self.set_layer(state, 0, env["+"], 16) # doors
-			state = self.set_layer(state, 0, env["#"], 16) # tunnel
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			#layer 2
-			state = self.set_layer(state, 1, env["%"], 4) # stairs
-			state = self.set_layer(state, 1, env["|"], 8) # walls
-			state = self.set_layer(state, 1, env["-"], 8) # walls
-			state = self.set_layer(state, 1, env["+"], 16) # doors
-			state = self.set_layer(state, 1, env["#"], 16) # tunnel
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			#layer 3
-			state = self.set_layer(state, 2, env["%"], 4) # stairs
-			state = self.set_layer(state, 2, env["|"], 8) # walls
-			state = self.set_layer(state, 2, env["-"], 8) # walls
-			state = self.set_layer(state, 2, env["+"], 16) # doors
-			state = self.set_layer(state, 2, env["#"], 16) # tunnel
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			#layer 4
-			state = self.set_layer(state, 3, env["%"], 4) # stairs
-			state = self.set_layer(state, 3, env["|"], 8) # walls
-			state = self.set_layer(state, 3, env["-"], 8) # walls
-			state = self.set_layer(state, 3, env["+"], 16) # doors
-			state = self.set_layer(state, 3, env["#"], 16) # tunnel
+			state = self.set_layer(state, 3, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 3, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 3, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 3, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 3, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			#layer 5
-			state = self.set_layer(state, 4, env["%"], 4) # stairs
-			state = self.set_layer(state, 4, env["|"], 8) # walls
-			state = self.set_layer(state, 4, env["-"], 8) # walls
-			state = self.set_layer(state, 4, env["+"], 16) # doors
-			state = self.set_layer(state, 4, env["#"], 16) # tunnel
+			state = self.set_layer(state, 4, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 4, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 4, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 4, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 4, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			#layer 6
-			state = self.set_layer(state, 5, env["%"], 4) # stairs
-			state = self.set_layer(state, 5, env["|"], 8) # walls
-			state = self.set_layer(state, 5, env["-"], 8) # walls
-			state = self.set_layer(state, 5, env["+"], 16) # doors
-			state = self.set_layer(state, 5, env["#"], 16) # tunnel
+			state = self.set_layer(state, 5, info.get_list_of_positions_by_tile("%"), 4) # stairs
+			state = self.set_layer(state, 5, info.get_list_of_positions_by_tile("|"), 8) # walls
+			state = self.set_layer(state, 5, info.get_list_of_positions_by_tile("-"), 8) # walls
+			state = self.set_layer(state, 5, info.get_list_of_positions_by_tile("+"), 16) # doors
+			state = self.set_layer(state, 5, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			
 			pixel = info.get_tile_below_player()
 			if pixel == '#': # tunnel
@@ -342,7 +340,7 @@ class CroppedView_4_StateGenerator(CroppedView_StateGenerator):
 			if pixel == "%": # stairs
 				return { "environment" : state, "layer" : 2 }
 				
-			if len(env["%"]) > 0:
+			if len(info.get_list_of_positions_by_tile("%")) > 0:
 				return { "environment" : state, "layer" : 3 }
 
 			x, y = self.player_position
@@ -351,7 +349,7 @@ class CroppedView_4_StateGenerator(CroppedView_StateGenerator):
 				for j in range (-1,2):
 					b = y + j
 					if i != 0 or j != 0:
-						pixel = info.get_tile_at((a, b))
+						pixel = info.get_environment_tile_at((a, b))
 						if pixel == "|" or pixel == "-":
 							return { "environment" : state, "layer" : 4 }
 		return { "environment" : state, "layer" : 5 }
