@@ -433,7 +433,7 @@ Copyright (C) 2012 Free Software Foundation, Inc.
 This config.status script is free software; the Free Software Foundation
 gives unlimited permission to copy, distribute and modify it."
 
-ac_pwd='/home/orto/Desktop/MachineLearning/Rogue/rogue5.4.4-ant-r1.1.4'
+ac_pwd='/home/students/francesco.sovrano/Documents/ML/Rogue/rogue5.4.4-ant-r1.1.4'
 srcdir='.'
 test -n "$AWK" || AWK=awk
 # The default lists apply if the user does not specify any file.

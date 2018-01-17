@@ -30,7 +30,7 @@ class RewardGenerator(ABC):
 
 	def compute_reward(self, old_info, new_info):
 		if old_info.has_statusbar() and new_info.has_statusbar():
-			return self.normalize_value( self.get_value(old_info, new_info) )
+			return self.transform_value( self.get_value(old_info, new_info) )
 		return 0
 		
 	@staticmethod
@@ -41,8 +41,7 @@ class RewardGenerator(ABC):
 	def get_value (self, old_info, new_info):
 		return 0
 		
-	@abstractmethod	
-	def normalize_value (self, reward):
+	def transform_value (self, reward):
 		return reward
 		
 	def manhattan_distance(self, a, b):
@@ -108,21 +107,37 @@ class StairSeeker_15_RewardGenerator(RewardGenerator):
 		return 0
 		
 class StairSeeker_23_RewardGenerator(RewardGenerator):
-	def normalize_value (self, reward):
-		return self.remap( reward, 500, 1 ) # from [-500,500] to [-1,1]
+	def transform_value (self, reward):
+		return np.clip(reward, -1, 1)
 		
 	def get_value (self, old_info, new_info):
 		if new_info.statusbar["dungeon_level"] > old_info.statusbar["dungeon_level"]:
 			self.goal_achieved = True
-			return 250
+			return 10000
 		elif new_info.get_tile_count("+") > old_info.get_tile_count("+"): # doors
-			return 10
+			return 100
 		elif self.player_standing_still(old_info, new_info): #standing reward
-			return -1
+			return -0.01
 		return 0
 				
 class StairSeeker_24_RewardGenerator(RewardGenerator):
-	def normalize_value (self, reward):
+	def transform_value (self, reward):
+		return np.clip(reward, -1, 1)
+		
+	def get_value (self, old_info, new_info):
+		if new_info.statusbar["dungeon_level"] > old_info.statusbar["dungeon_level"]:
+			self.goal_achieved = True
+			return 10000
+		elif new_info.get_tile_count("+") > old_info.get_tile_count("+"): # doors
+			return 100
+		elif new_info.get_tile_count("#") > old_info.get_tile_count("#"): # passages
+			return 1
+		elif self.player_standing_still(old_info, new_info): #standing reward
+			return -0.05
+		return 0
+		
+class Normalised_StairSeeker_01_RewardGenerator(RewardGenerator):
+	def transform_value (self, reward):
 		return self.remap( reward, 500, 1 ) # from [-500,500] to [-1,1]
 		
 	def get_value (self, old_info, new_info):
@@ -137,8 +152,22 @@ class StairSeeker_24_RewardGenerator(RewardGenerator):
 			return -1
 		return 0
 		
-class StairSeeker_28_RewardGenerator(RewardGenerator):
-	def normalize_value (self, reward):
+class Normalised_StairSeeker_02_RewardGenerator(RewardGenerator):
+	def transform_value (self, reward):
+		return self.remap( reward, 500, 1 ) # from [-500,500] to [-1,1]
+		
+	def get_value (self, old_info, new_info):
+		if new_info.statusbar["dungeon_level"] > old_info.statusbar["dungeon_level"]:
+			self.goal_achieved = True
+			return 250
+		elif new_info.get_tile_count("+") > old_info.get_tile_count("+"): # doors
+			return 10
+		elif self.player_standing_still(old_info, new_info): #standing reward
+			return -1
+		return 0
+		
+class Normalised_StairSeeker_03_RewardGenerator(RewardGenerator):
+	def transform_value (self, reward):
 		return self.remap( reward, 2500, 1 ) # from [-2500,2500] to [-1,1]
 		
 	def get_value (self, old_info, new_info):
