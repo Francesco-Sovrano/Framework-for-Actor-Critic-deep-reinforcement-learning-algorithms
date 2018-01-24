@@ -22,27 +22,20 @@ class RogueEnvironment(environment.Environment):
 		
 	def get_state_shape(self):
 		return self.game.state_generator._shape
+		
+	def get_layers_count(self):
+		return self.game.state_generator._situations
 	
 	def __init__(self, thread_index):
 		environment.Environment.__init__(self)
 		self.thread_index = thread_index
-		# logger
-		if flags.show_all_screenshots == True:
-			self.logger = logging.getLogger('rogue_' + str(thread_index))
-			hdlr = logging.FileHandler(flags.log_dir + '/screenshots/env_' + str(thread_index) + '.log')
-			# formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-			# hdlr.setFormatter(formatter)
-			self.logger.addHandler(hdlr) 
-			self.logger.setLevel(logging.DEBUG)
 		self.real_actions = RogueBox.get_actions()
 		self.game = RogueBox(flags.env_path, flags.state_generator, flags.reward_generator, flags.steps_per_episode)
 
 	def reset(self):
-		if flags.show_best_screenshots == True:
+		if flags.show_best_screenshots or flags.show_all_screenshots:
 			self.screenshots = list()
 			self.screeninfo = list()
-		elif flags.show_all_screenshots == True:
-			self.logger.info( str(datetime.datetime.now()) )
 		self.last_action, status = self.game.reset()
 		self.last_reward, self.last_state, _ = status
 		

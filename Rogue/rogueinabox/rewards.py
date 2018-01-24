@@ -1,4 +1,4 @@
-#Copyright (C) 2017 Andrea Asperti, Carlo De Pieri, Gianmaria Pedrini
+#Copyright (C) 2017 Andrea Asperti, Carlo De Pieri, Gianmaria Pedrini, Francesco Sovrano
 #
 #This file is part of Rogueinabox.
 #
@@ -24,28 +24,34 @@ from abc import ABC, abstractmethod
 class RewardGenerator(ABC):
 	def __init__(self):
 		self.reset()
-		
+		self.set_default_reward()
+	
 	def reset(self):
 		self.goal_achieved = False
+		
+	def set_default_reward(self):
+		self.default_reward = 0
 
-	def compute_reward(self, old_info, new_info):
+	def compute_reward(self, frame_history):
+		new_info = frame_history[-1]
+		old_info = frame_history[-2]
 		if old_info.has_statusbar() and new_info.has_statusbar():
 			return self.transform_value( self.get_value(old_info, new_info) )
-		return 0
-		
-	@staticmethod
-	def player_standing_still(old_info, new_info):
-		return old_info.get_player_pos() == new_info.get_player_pos()
+		return self.default_reward
 	
-	@abstractmethod	
 	def get_value (self, old_info, new_info):
 		return 0
 		
 	def transform_value (self, reward):
 		return reward
 		
-	def manhattan_distance(self, a, b):
+	@staticmethod
+	def manhattan_distance(a, b):
 		return abs(a[0] - b[0]) + abs(a[1] - b[1])
+		
+	@staticmethod
+	def player_standing_still(old_info, new_info):
+		return old_info.get_player_pos() == new_info.get_player_pos()
 		
 	@staticmethod
 	def remap( x, oMax, nMax ):
@@ -77,50 +83,37 @@ class RewardGenerator(ABC):
 
 		return result
 		
-	def clip_reward(self, reward):
-		# clip reward to 1 or -1
-		if reward > 0:
-			reward = 1
+class E_D_W_RewardGenerator(RewardGenerator):
+	def set_default_reward(self):
+		self.default_reward = -1
+		
+	def get_value (self, old_info, new_info):
+		"""return the reward for the last action
+		+100 for descending the stairs
+		+5 for exploring the map
+		-0.1 living reward
+		"""
+		if new_info.statusbar["dungeon_level"] > old_info.statusbar["dungeon_level"]:
+			self.goal_achieved = True
+			return 100
+		elif new_info.get_known_tiles_count() > old_info.get_known_tiles_count():
+			return 5
 		else:
-			reward = -1
-		return reward
+			return -0.1
 		
-class StairSeeker_13_RewardGenerator(RewardGenerator):
+class E_D_Ps_W_RewardGenerator(E_D_W_RewardGenerator):
 	def get_value (self, old_info, new_info):
-		# compute reward
-		if new_info.statusbar["dungeon_level"] > old_info.statusbar["dungeon_level"]:
-			self.goal_achieved = True
-			return 10000
-		elif new_info.get_tile_count("+") > old_info.get_tile_count("+"): # doors
-			return 1
-		elif new_info.get_tile_count("#") > old_info.get_tile_count("#"): # passages
-			return 1
-		return 0
-		
-class StairSeeker_15_RewardGenerator(RewardGenerator):
-	def get_value (self, old_info, new_info):
-		if new_info.statusbar["dungeon_level"] > old_info.statusbar["dungeon_level"]:
-			self.goal_achieved = True
-			return 10000
-		elif new_info.get_tile_count("+") > old_info.get_tile_count("+"): # doors
-			return 100
-		return 0
-		
-class StairSeeker_23_RewardGenerator(RewardGenerator):
-	def transform_value (self, reward):
-		return np.clip(reward, -1, 1)
-		
-	def get_value (self, old_info, new_info):
-		if new_info.statusbar["dungeon_level"] > old_info.statusbar["dungeon_level"]:
-			self.goal_achieved = True
-			return 10000
-		elif new_info.get_tile_count("+") > old_info.get_tile_count("+"): # doors
-			return 100
-		elif self.player_standing_still(old_info, new_info): #standing reward
-			return -0.01
-		return 0
-				
-class StairSeeker_24_RewardGenerator(RewardGenerator):
+		"""return the reward the last action
+		+100 for descending the stairs
+		+5 for exploring the map
+		-1 for standing still
+		-0.1 living reward
+		"""
+		if self.player_standing_still(old_info, new_info):
+			return -1
+		return super().get_value(old_info, new_info)
+						
+class Clipped_RewardGenerator(RewardGenerator):
 	def transform_value (self, reward):
 		return np.clip(reward, -1, 1)
 		
@@ -136,7 +129,7 @@ class StairSeeker_24_RewardGenerator(RewardGenerator):
 			return -0.05
 		return 0
 		
-class Normalised_StairSeeker_01_RewardGenerator(RewardGenerator):
+class Normalised_RewardGenerator(RewardGenerator):
 	def transform_value (self, reward):
 		return self.remap( reward, 500, 1 ) # from [-500,500] to [-1,1]
 		
@@ -152,32 +145,21 @@ class Normalised_StairSeeker_01_RewardGenerator(RewardGenerator):
 			return -1
 		return 0
 		
-class Normalised_StairSeeker_02_RewardGenerator(RewardGenerator):
-	def transform_value (self, reward):
-		return self.remap( reward, 500, 1 ) # from [-500,500] to [-1,1]
-		
+class StairSeeker_RewardGenerator(RewardGenerator):
+
 	def get_value (self, old_info, new_info):
 		if new_info.statusbar["dungeon_level"] > old_info.statusbar["dungeon_level"]:
 			self.goal_achieved = True
-			return 250
-		elif new_info.get_tile_count("+") > old_info.get_tile_count("+"): # doors
 			return 10
+		elif new_info.get_tile_count("+") > old_info.get_tile_count("+"): # doors
+			return 1
 		elif self.player_standing_still(old_info, new_info): #standing reward
-			return -1
+			return -0.01
 		return 0
 		
-class Normalised_StairSeeker_03_RewardGenerator(RewardGenerator):
-	def transform_value (self, reward):
-		return self.remap( reward, 2500, 1 ) # from [-2500,2500] to [-1,1]
-		
+class ImprovedStairSeeker_RewardGenerator(StairSeeker_RewardGenerator):
+
 	def get_value (self, old_info, new_info):
-		reward = 0
-		if new_info.statusbar["dungeon_level"] > old_info.statusbar["dungeon_level"]:
-			self.goal_achieved = True
-			return 250
-		elif new_info.get_tile_count("+") > old_info.get_tile_count("+"): # doors
-			return 10
-		elif new_info.get_tile_count("#") > old_info.get_tile_count("#"): # passages
-			return 5
-		elif self.player_standing_still(old_info, new_info): #standing reward
-			return -5
+		if old_info.get_tile_below_player() == '+' and new_info.get_tile_count("#") > old_info.get_tile_count("#"): # has started to explore
+			return 1
+		return super().get_value(old_info, new_info)

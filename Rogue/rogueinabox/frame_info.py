@@ -11,7 +11,9 @@ class RogueFrameInfo:
 		
 	def get_environment_tile_at(self, pos):
 		x, y = pos
-		return self.map[x][y]
+		if x >= 0 and y >= 0 and x < len(self.map) and y < len(self.map[x]):
+			return self.map[x][y]
+		return ' '
 
 	def get_player_pos(self):
 		return self.pixel["agents"]["@"][0]
@@ -25,6 +27,20 @@ class RogueFrameInfo:
 				return self.pixel[key][tile]
 		return []
 		
+	def get_list_of_positions_by_type( self, type ):
+		result = []
+		type_list = self.pixel[type] 
+		for key in type_list:
+			result = list( set().union ( result, type_list[key] ) )
+		return result
+		
+	def get_list_of_walkable_positions(self):
+		passages = self.get_list_of_positions_by_tile("#")
+		doors = self.get_list_of_positions_by_tile("+")
+		floors = self.get_list_of_positions_by_tile(".")
+		items = self.get_list_of_positions_by_type("items")
+		return list(set().union(passages, doors, floors, items))
+
 	def get_tile_count( self, tile ):
 		return len( self.get_list_of_positions_by_tile(tile) )
 				

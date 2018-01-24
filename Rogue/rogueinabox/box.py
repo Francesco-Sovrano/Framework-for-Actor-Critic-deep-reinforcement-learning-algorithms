@@ -178,9 +178,9 @@ class RogueBox:
 		"""return a numpy array representation of the current state using the function specified during init"""
 		return self.state_generator.compute_state(new_info)
 
-	def compute_reward(self, old_info, new_info):
+	def compute_reward(self, frame_history):
 		"""return the reward for a state transition using the function specified during init"""
-		return self.reward_generator.compute_reward(old_info, new_info)
+		return self.reward_generator.compute_reward(frame_history)
 
 	def _dismiss_message(self):
 		"""dismiss a rogue status message.
@@ -227,7 +227,7 @@ class RogueBox:
 			if not self.frame_info:
 				self.frame_info.append( self.parser.parse_screen( old_screen ) )
 			self.frame_info.append( self.parser.parse_screen( new_screen ) )
-			self.reward = self.compute_reward( self.frame_info[-2], self.frame_info[-1] ) # use last 2 frame info
+			self.reward = self.compute_reward( self.frame_info ) # use last frame history
 			self.state = self.compute_state( self.frame_info[-1] ) # use last frame info
 			
 			self.step_count += 1

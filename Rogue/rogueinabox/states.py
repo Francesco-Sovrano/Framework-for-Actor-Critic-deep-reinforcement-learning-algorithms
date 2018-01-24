@@ -26,26 +26,42 @@ from math import floor
 class StateGenerator(ABC):
 	def __init__(self):
 		self._set_shape()
+		self._set_situations_count()
 		self.reset()
 		
 	def reset(self):
 		self.need_reset = False
 
-	@abstractmethod
 	def _set_shape(self):
 		"""The implementing class MUST set the state _shape (should be a tuple)."""
-		self._shape = (0, 0, 0)
+		self._shape = (0, 0, 0) # [heigth, width, channel]
+		
+	def _set_situations_count(self):
+		self._situations = 1 # situations are for multi-agent models
 
-	@abstractmethod
 	def compute_state(self, info):
 		"""Should compute the state and return it."""
+		if info.has_statusbar():
+			value, situation = self.build_state(info)
+			return { "value" : value, "situation" : situation }
+		return { "value" : self.empty_state(), "situation" : 0 }
+		
+	@abstractmethod
+	def build_state(self, info):
 		pass
 
-	def set_layer(self, state, layer, positions, value):
+	def set_positions(self, state, positions, value):
 		for pos in positions:
 			if pos:
 				i, j = pos
-				state[layer][i][j] = value
+				state[i][j] = value
+		return state
+		
+	def set_channel(self, channel, state, positions, value):
+		for pos in positions:
+			if pos:
+				i, j = pos
+				state[i][j][channel] = value
 		return state
 	
 	def empty_state(self):
@@ -63,266 +79,111 @@ class StateGenerator(ABC):
 					return True
 		return False
 		
-class SingleLayer_StateGenerator(StateGenerator):
+class M_P_D_S_StateGenerator(StateGenerator): # 1 situation
 	def _set_shape(self):
-		self._shape = (1, 22, 80)
-		
-	def compute_state(self, info):
+		self._shape = (4, 22, 80) # [heigth, width, channel]
+
+	def build_state(self, info):
 		state = self.empty_state()
-		if info.has_statusbar():
-			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("@"), 2) # rogue (player)
-			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("%"), 4) # stairs
-			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("|"), 8) # walls
-			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("-"), 8) # walls
-			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("+"), 16) # doors
-			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("#"), 16) # tunnel
-		return { "environment" : state, "layer" : 0 }
+		# layer 0: the map
+		state = self.set_positions(state[0], info.get_list_of_walkable_positions(), 1)
+		# layer 1: the player position
+		state = self.set_positions(state[1], info.get_list_of_positions_by_tile("@"), 1)
+		# layer 2: the doors positions
+		state = self.set_positions(state[2], info.get_list_of_positions_by_tile("+"), 1)
+		# layer 3: the stairs positions
+		state = self.set_positions(state[3], info.get_list_of_positions_by_tile("%"), 1)
+		return { "value" : state, "situation" : 0 }
 		
-class TripleLayer_StateGenerator(StateGenerator):
+class SingleLayer_StateGenerator(StateGenerator): # 1 situation
 	def _set_shape(self):
-		self._shape = (3, 22, 80)
+		self._shape = (22, 80, 1) # [heigth, width, channel]
 		
-	def compute_state(self, info):
-		environment = self.empty_state()
-		layer = 2
-		if info.has_statusbar():
-			#layer 1
-			environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("#"), 1) # tunnel
-			#layer 2
-			environment = self.set_layer(environment, 1, info.get_list_of_positions_by_tile("%"), 1) # stairs
-			#layer 3
-			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("."), 1) # floor
-			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("+"), 1) # doors
-			
-			pixel = info.get_tile_below_player()
-			if pixel == '#': # tunnel
-				environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("@"), 2)
-				layer = 0
-			elif pixel == "%": # stairs
-				environment = self.set_layer(environment, 1, info.get_list_of_positions_by_tile("@"), 2)
-				layer = 1
-			else: # floor
-				environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("@"), 2)
-		return { "environment" : environment, "layer" : layer }
-		
-class TripleLayer_1_StateGenerator(TripleLayer_StateGenerator):
-	def compute_state(self, info):
+	def build_state(self, info):
 		state = self.empty_state()
-		layer = 2
-		if info.has_statusbar():
-			
-			#layer 1
-			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("%"), 4) # stairs
-			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("|"), 8) # walls
-			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("-"), 8) # walls
-			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("+"), 16) # doors
-			state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("#"), 16) # tunnel
-			#layer 2
-			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("%"), 4) # stairs
-			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("|"), 8) # walls
-			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("-"), 8) # walls
-			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("+"), 16) # doors
-			state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("#"), 16) # tunnel
-			#layer 3
-			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("%"), 4) # stairs
-			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("|"), 8) # walls
-			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("-"), 8) # walls
-			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("+"), 16) # doors
-			state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("#"), 16) # tunnel
-			
-			pixel = info.get_tile_below_player()
-			if pixel == '#': # tunnel
-				state = self.set_layer(state, 0, info.get_list_of_positions_by_tile("@"), 2) # rogue (player), set it for last otherwise it may be overwritten by other positions!
-				layer = 0
-			elif pixel == "%": # stairs
-				state = self.set_layer(state, 1, info.get_list_of_positions_by_tile("@"), 2) # rogue (player), set it for last otherwise it may be overwritten by other positions!
-				layer = 1
-			else: # floor
-				state = self.set_layer(state, 2, info.get_list_of_positions_by_tile("@"), 2) # rogue (player), set it for last otherwise it may be overwritten by other positions!
-		return { "environment" : state, "layer" : layer }
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("@"), 2) # rogue (player)
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("%"), 4) # stairs
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("|"), 8) # walls
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("-"), 8) # walls
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("+"), 16) # doors
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
+		return state, 0
 		
-class TripleLayer_2_StateGenerator(TripleLayer_StateGenerator):
-	def compute_state(self, info):
-		environment = self.empty_state()
-		layer = 2
-		if info.has_statusbar():
+class TripleSituation_StateGenerator(StateGenerator): # 3 situations
+	def _set_shape(self):
+		self._shape = (22, 80, 1) # [heigth, width, channel]
+		
+	def _set_situations_count(self):
+		self._situations = 3
+		
+	def build_state(self, info):
+		state = self.empty_state()
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("%"), 4) # stairs
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("|"), 8) # walls
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("-"), 8) # walls
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("+"), 16) # doors
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
+		# set it for last otherwise it may be overwritten by other positions!
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("@"), 2) # rogue (player)
 			
-			#layer 1
-			environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("#"), 1) # tunnel
-			environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("+"), 1) # doors
-			#layer 2
-			environment = self.set_layer(environment, 1, info.get_list_of_positions_by_tile("%"), 1) # stairs
-			#layer 3
-			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("-"), 1) # walls
-			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("|"), 1) # walls
-			environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("%"), 2) # stairs
-			
-			pixel = info.get_tile_below_player()
-			if pixel == '#': # tunnel
-				environment = self.set_layer(environment, 0, info.get_list_of_positions_by_tile("@"), 8)
-				layer = 0
-			elif pixel == "%": # stairs
-				environment = self.set_layer(environment, 1, info.get_list_of_positions_by_tile("@"), 8)
-				layer = 1
-			else: # floor
-				environment = self.set_layer(environment, 2, info.get_list_of_positions_by_tile("@"), 8)
-		return { "environment" : environment, "layer" : layer }
+		pixel = info.get_tile_below_player()
+		if pixel == '#': # tunnel
+			situation = 0
+		elif pixel == "%": # stairs
+			situation = 1
+		else:
+			situation = 2
+		return state, situation
 				
-class CroppedView_StateGenerator(StateGenerator):
-	def __init__(self):
-		super().__init__()
-		for i in range(1, len(self._shape)): 
-			if self._shape[i] % 2 == 0: # there should be always a center, thus each layer dimension should be even
-				self._shape[i] += 1
+class CroppedView_StateGenerator(StateGenerator): # 6 situations
+
+	def compute_state(self, info):
+		self.player_position = info.get_player_pos( )
+		if info.has_statusbar() and self.player_position != None:
+			value, situation = self.build_state(info)
+			return { "value" : value, "situation" : situation }
+		return { "value" : self.empty_state(), "situation" : 0 }
 		
 	def _get_relative_coordinates(self, tile_position, centre_position, range):
 		i, j = tile_position
 		x, y = centre_position
-		norm_i = i-x+floor(range[1]/2)
-		norm_j = j-y+floor(range[2]/2)
+		norm_i = i-x+floor(range[0]/2)
+		norm_j = j-y+floor(range[1]/2)
 		return norm_i, norm_j
 		
-	def set_layer(self, centre_position, state, layer, positions, value):
+	def set_channel(self, channel, centre_position, state, positions, value):
 		for pos in positions:
 			if pos:
 				i, j = self._get_relative_coordinates(pos, centre_position, self._shape)
-				if i >= 0 and j >= 0 and i < self._shape[1] and j < self._shape[2]:
-					state[layer][i][j] = value
+				if i >= 0 and j >= 0 and i < self._shape[0] and j < self._shape[1]:
+					state[i][j][channel] = value
 		return state
 		
 	def _set_shape(self):
-		self._shape = (3, 11, 11)
+		self._shape = (17, 17, 1) # [heigth, width, channel]
 		
-	def compute_state(self, info):
-		environment = self.empty_state()
-		layer = 2
-		player_position = info.get_player_pos( )
-		if info.has_statusbar() and player_position != None:
-			
-			#layer 1
-			environment = self.set_layer(player_position, environment, 0, info.get_list_of_positions_by_tile("#"), 1) # tunnel
-			environment = self.set_layer(player_position, environment, 0, info.get_list_of_positions_by_tile("+"), 1) # doors
-			#layer 2
-			environment = self.set_layer(player_position, environment, 1, info.get_list_of_positions_by_tile("%"), 1) # stairs
-			#layer 3
-			environment = self.set_layer(player_position, environment, 2, info.get_list_of_positions_by_tile("-"), 1) # walls
-			environment = self.set_layer(player_position, environment, 2, info.get_list_of_positions_by_tile("|"), 1) # walls
-			environment = self.set_layer(player_position, environment, 2, info.get_list_of_positions_by_tile("%"), 2) # stairs
-			
-			pixel = info.get_tile_below_player()
-			if pixel == '#': # tunnel
-				layer = 0
-			elif pixel == "%": # stairs
-				layer = 1
-				
-		# file = open( '/public/francesco_sovrano/states_debug_info.log',"w") 
-		# for x in range(self._shape[0]):
-			# for y in range(self._shape[1]):
-				# for z in range(self._shape[2]):
-					# file.write( str(environment[x][y][z]) )
-				# file.write( '\n' )
-			# file.write( '\n' )
-		# file.close()
-		return { "environment" : environment, "layer" : layer }
-
-class CroppedView_1_StateGenerator(CroppedView_StateGenerator):
-	def _set_shape(self):
-		self._shape = (3, 17, 17)
+	def _set_situations_count(self):
+		self._situations = 6
 		
-class CroppedView_4_StateGenerator(CroppedView_StateGenerator):
-	def _set_shape(self):
-		self._shape = (6, 17, 17)
-		
-	def compute_state(self, info):
+	def build_state(self, info):
 		state = self.empty_state()
-		player_position = info.get_player_pos( )
-		if info.has_statusbar() and player_position != None:
-			#layer 1
-			state = self.set_layer(player_position, state, 0, info.get_list_of_positions_by_tile("%"), 4) # stairs
-			state = self.set_layer(player_position, state, 0, info.get_list_of_positions_by_tile("|"), 8) # walls
-			state = self.set_layer(player_position, state, 0, info.get_list_of_positions_by_tile("-"), 8) # walls
-			state = self.set_layer(player_position, state, 0, info.get_list_of_positions_by_tile("+"), 16) # doors
-			state = self.set_layer(player_position, state, 0, info.get_list_of_positions_by_tile("#"), 16) # tunnel
-			#layer 2
-			state = self.set_layer(player_position, state, 1, info.get_list_of_positions_by_tile("%"), 4) # stairs
-			state = self.set_layer(player_position, state, 1, info.get_list_of_positions_by_tile("|"), 8) # walls
-			state = self.set_layer(player_position, state, 1, info.get_list_of_positions_by_tile("-"), 8) # walls
-			state = self.set_layer(player_position, state, 1, info.get_list_of_positions_by_tile("+"), 16) # doors
-			state = self.set_layer(player_position, state, 1, info.get_list_of_positions_by_tile("#"), 16) # tunnel
-			#layer 3
-			state = self.set_layer(player_position, state, 2, info.get_list_of_positions_by_tile("%"), 4) # stairs
-			state = self.set_layer(player_position, state, 2, info.get_list_of_positions_by_tile("|"), 8) # walls
-			state = self.set_layer(player_position, state, 2, info.get_list_of_positions_by_tile("-"), 8) # walls
-			state = self.set_layer(player_position, state, 2, info.get_list_of_positions_by_tile("+"), 16) # doors
-			state = self.set_layer(player_position, state, 2, info.get_list_of_positions_by_tile("#"), 16) # tunnel
-			#layer 4
-			state = self.set_layer(player_position, state, 3, info.get_list_of_positions_by_tile("%"), 4) # stairs
-			state = self.set_layer(player_position, state, 3, info.get_list_of_positions_by_tile("|"), 8) # walls
-			state = self.set_layer(player_position, state, 3, info.get_list_of_positions_by_tile("-"), 8) # walls
-			state = self.set_layer(player_position, state, 3, info.get_list_of_positions_by_tile("+"), 16) # doors
-			state = self.set_layer(player_position, state, 3, info.get_list_of_positions_by_tile("#"), 16) # tunnel
-			#layer 5
-			state = self.set_layer(player_position, state, 4, info.get_list_of_positions_by_tile("%"), 4) # stairs
-			state = self.set_layer(player_position, state, 4, info.get_list_of_positions_by_tile("|"), 8) # walls
-			state = self.set_layer(player_position, state, 4, info.get_list_of_positions_by_tile("-"), 8) # walls
-			state = self.set_layer(player_position, state, 4, info.get_list_of_positions_by_tile("+"), 16) # doors
-			state = self.set_layer(player_position, state, 4, info.get_list_of_positions_by_tile("#"), 16) # tunnel
-			#layer 6
-			state = self.set_layer(player_position, state, 5, info.get_list_of_positions_by_tile("%"), 4) # stairs
-			state = self.set_layer(player_position, state, 5, info.get_list_of_positions_by_tile("|"), 8) # walls
-			state = self.set_layer(player_position, state, 5, info.get_list_of_positions_by_tile("-"), 8) # walls
-			state = self.set_layer(player_position, state, 5, info.get_list_of_positions_by_tile("+"), 16) # doors
-			state = self.set_layer(player_position, state, 5, info.get_list_of_positions_by_tile("#"), 16) # tunnel
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("%"), 4) # stairs
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("|"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("-"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("+"), 16) # doors
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 			
-			pixel = info.get_tile_below_player()
-			if pixel == '#': # layer 1
-				return { "environment" : state, "layer" : 0 }
-			if pixel == '+': # layer 2
-				return { "environment" : state, "layer" : 1 }
-			if pixel == "%": # layer 3
-				return { "environment" : state, "layer" : 2 }
-				
-			if info.get_tile_count("%") > 0: # layer 4
-				return { "environment" : state, "layer" : 3 }
+		pixel = info.get_tile_below_player()
+		if pixel == '#': # situation 1
+			return state, 0
+		if pixel == '+': # situation 2
+			return state, 1
+		if pixel == "%": # situation 3
+			return state, 2
+			
+		if info.get_tile_count("%") > 0: # situation 4
+			return state, 3
 
-			if self.environment_tiles_are_in_position_range(info, "|-", player_position, 1): # layer 5
-				return { "environment" : state, "layer" : 4 }
-		return { "environment" : state, "layer" : 5 }  # layer 6
-		
-class CroppedView_5_StateGenerator(CroppedView_StateGenerator):
-	def _set_shape(self):
-		self._shape = (5, 17, 17)
-		
-	def compute_state(self, info):
-		state = self.empty_state()
-		player_position = info.get_player_pos()
-		if info.has_statusbar() and player_position != None:
-			#layer 1
-			state = self.set_layer(player_position, state, 0, info.get_list_of_positions_by_tile("+"), 1) # doors
-			state = self.set_layer(player_position, state, 0, info.get_list_of_positions_by_tile("#"), 1) # passages
-			state = self.set_layer(player_position, state, 0, info.get_list_of_positions_by_tile("|"), 2) # walls
-			state = self.set_layer(player_position, state, 0, info.get_list_of_positions_by_tile("-"), 2) # walls
-			#layer 2
-			state = self.set_layer(player_position, state, 1, info.get_list_of_positions_by_tile("%"), 1) # stairs
-			#layer 3
-			state = self.set_layer(player_position, state, 2, info.get_list_of_positions_by_tile("%"), 1) # stairs
-			state = self.set_layer(player_position, state, 2, info.get_list_of_positions_by_tile("|"), 2) # walls
-			state = self.set_layer(player_position, state, 2, info.get_list_of_positions_by_tile("-"), 2) # walls
-			#layer 4
-			state = self.set_layer(player_position, state, 3, info.get_list_of_positions_by_tile("|"), 1) # walls
-			state = self.set_layer(player_position, state, 3, info.get_list_of_positions_by_tile("-"), 1) # walls
-			#layer 5
-			state = self.set_layer(player_position, state, 4, info.get_list_of_positions_by_tile("|"), 1) # walls
-			state = self.set_layer(player_position, state, 4, info.get_list_of_positions_by_tile("-"), 1) # walls
-			
-			pixel = info.get_tile_below_player()
-			if pixel in '#+': # layer 1
-				return { "environment" : state, "layer" : 0 }
-			if pixel == "%": # layer 2
-				return { "environment" : state, "layer" : 1 }
-			if info.get_tile_count("%") > 0: # layer 3
-				return { "environment" : state, "layer" : 2 }
-			if self.environment_tiles_are_in_position_range(info, "|-", player_position, 1): # layer 4
-				return { "environment" : state, "layer" : 3 }
-				
-		return { "environment" : state, "layer" : 4 } # layer 5
+		if self.environment_tiles_are_in_position_range(info, "|-", self.player_position, 1): # situation 5
+			return state, 4
+		return state, 5

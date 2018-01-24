@@ -13,7 +13,7 @@ import logging
 import time
 
 from environment.environment import Environment
-from model.model import MultiTowerModel
+from model.model import MultiAgentModel
 from train.trainer import Trainer
 from train.rmsprop_applier import RMSPropApplier
 
@@ -64,6 +64,7 @@ class Application(object):
 			diff_global_t = trainer.process(self.sess, self.global_t, self.summary_writer, self.summary_op, self.score_input)
 			self.global_t += diff_global_t
 			
+			# print global statistics
 			if trainer.episode_steps == 0:
 				info = {}
 				for t in self.trainers:
@@ -77,69 +78,27 @@ class Application(object):
 				self.reward_logger.info( log_str )
 
 	def run(self):
-		device = "/cpu:0"
+		self.device = "/cpu:0"
 		if flags.use_gpu:
-			device = "/gpu:0"
-		
-		initial_learning_rate = log_uniform(flags.initial_alpha_low, flags.initial_alpha_high, flags.initial_alpha_log_rate)
-		
-		self.global_t = 0
-		
-		self.stop_requested = False
-		self.terminate_reqested = False
-		
-		environment = Environment.create_environment(flags.env_type, -1)
-		state_shape = environment.get_state_shape()
-		action_size = environment.get_action_size()
-		
-		self.global_network = MultiTowerModel( -1, state_shape, action_size, flags.entropy_beta, device )
-		self.trainers = []
-		
-		learning_rate_input = tf.placeholder("float")
-		
-		grad_applier = RMSPropApplier(learning_rate = learning_rate_input, decay = flags.rmsp_alpha, momentum = 0.0, epsilon = flags.rmsp_epsilon, clip_norm = flags.grad_norm_clip, device = device)
-		
-		for i in range(flags.parallel_size):
-			trainer = Trainer(i, self.global_network, initial_learning_rate, learning_rate_input, grad_applier, flags.env_type, flags.entropy_beta,flags.local_t_max,flags.gamma, flags.max_time_step,device)
-			self.trainers.append(trainer)
-		
+			self.device = "/gpu:0"
+			
 		# prepare session
 		config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
 		if flags.use_gpu:
 			config.gpu_options.allow_growth = True
 		self.sess = tf.Session(config=config)
 		
-		self.sess.run(tf.global_variables_initializer())
+		self.global_t = 0
+		self.stop_requested = False
+		self.terminate_reqested = False
+		
+		self.build_network()
 		
 		# summary for tensorboard
 		self.score_input = tf.placeholder(tf.int32)
 		tf.summary.scalar("score", self.score_input)
-		
 		self.summary_op = tf.summary.merge_all()
 		self.summary_writer = tf.summary.FileWriter(flags.event_dir, self.sess.graph)
-		
-		# init or load checkpoint with saver
-		self.saver = tf.train.Saver(self.global_network.get_vars())
-		
-		checkpoint = tf.train.get_checkpoint_state(flags.checkpoint_dir)
-		if checkpoint and checkpoint.model_checkpoint_path:
-			self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
-			print("checkpoint loaded:", checkpoint.model_checkpoint_path)
-			tokens = checkpoint.model_checkpoint_path.split("-")
-			# set global step
-			self.global_t = int(tokens[1])
-			print(">>> global step set: ", self.global_t)
-			# set wall time
-			wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_t)
-			with open(wall_t_fname, 'r') as f:
-				self.wall_t = float(f.read())
-				self.next_save_steps = (self.global_t + flags.save_interval_step) // flags.save_interval_step * flags.save_interval_step
-				
-		else:
-			print("Could not find old checkpoint")
-			# set wall time
-			self.wall_t = 0.0
-			self.next_save_steps = flags.save_interval_step
 	
 		# run training threads
 		self.train_threads = []
@@ -156,7 +115,51 @@ class Application(object):
 	
 		print('Press Ctrl+C to stop')
 		signal.pause()
-
+		
+	def build_network(self):
+		learning_rate_input = tf.placeholder("float")
+		grad_applier = self.build_global_network(learning_rate_input)
+		self.build_local_networks(learning_rate_input, grad_applier)
+		self.sess.run(tf.global_variables_initializer()) # do it before loading checkpoint
+		self.load_checkpoint()
+		
+	def build_global_network(self, learning_rate_input):
+		environment = Environment.create_environment(flags.env_type, -1)
+		state_shape = environment.get_state_shape()
+		agents_count = environment.get_layers_count()
+		action_size = environment.get_action_size()
+		self.global_network = MultiAgentModel( -1, state_shape, agents_count, action_size, flags.entropy_beta, self.device )
+		return RMSPropApplier(learning_rate = learning_rate_input, decay = flags.rmsp_alpha, momentum = 0.0, epsilon = flags.rmsp_epsilon, clip_norm = flags.grad_norm_clip, device = self.device)
+		
+	def build_local_networks(self, learning_rate_input, grad_applier):
+		initial_learning_rate = log_uniform(flags.initial_alpha_low, flags.initial_alpha_high, flags.initial_alpha_log_rate)
+		self.trainers = []
+		for i in range(flags.parallel_size):
+			trainer = Trainer(i, self.global_network, initial_learning_rate, learning_rate_input, grad_applier, flags.env_type, flags.entropy_beta,flags.local_t_max,flags.gamma, flags.max_time_step, self.device)
+			self.trainers.append(trainer)
+	
+	def load_checkpoint(self):
+		# init or load checkpoint with saver
+		self.saver = tf.train.Saver(self.global_network.get_vars())
+		checkpoint = tf.train.get_checkpoint_state(flags.checkpoint_dir)
+		if checkpoint and checkpoint.model_checkpoint_path:
+			self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
+			print("checkpoint loaded:", checkpoint.model_checkpoint_path)
+			tokens = checkpoint.model_checkpoint_path.split("-")
+			# set global step
+			self.global_t = int(tokens[1])
+			print(">>> global step set: ", self.global_t)
+			# set wall time
+			wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_t)
+			with open(wall_t_fname, 'r') as f:
+				self.wall_t = float(f.read())
+				self.next_save_steps = (self.global_t + flags.save_interval_step) // flags.save_interval_step * flags.save_interval_step
+		else:
+			print("Could not find old checkpoint")
+			# set wall time
+			self.wall_t = 0.0
+			self.next_save_steps = flags.save_interval_step
+			
 	def save(self):
 		""" Save checkpoint. 
 		Called from therad-0.

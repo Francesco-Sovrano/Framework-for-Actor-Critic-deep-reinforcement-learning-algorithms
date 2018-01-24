@@ -12,8 +12,8 @@ def build(option_type):
 	"""
 	# Common
 	tf.app.flags.DEFINE_boolean("use_gpu", False, "whether to use the GPU")
-	tf.app.flags.DEFINE_string("state_generator", "CroppedView_5_StateGenerator", "the state generator must be a classname from rogueinabox/states.py")
-	tf.app.flags.DEFINE_string("reward_generator", "Normalised_StairSeeker_01_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
+	tf.app.flags.DEFINE_string("state_generator", "CroppedView_StateGenerator", "the state generator must be a classname from rogueinabox/states.py")
+	tf.app.flags.DEFINE_string("reward_generator", "StairSeeker_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
 	
 	tf.app.flags.DEFINE_string("env_type", "rogue", "environment type")
 	tf.app.flags.DEFINE_string("env_path", "./Rogue/rogue5.4.4-ant-r1.1.4/rogue", "the path where to find the game")
@@ -38,7 +38,7 @@ def build(option_type):
 		tf.app.flags.DEFINE_float("initial_alpha_low", 1e-4, "log_uniform low limit for learning rate")
 		tf.app.flags.DEFINE_float("initial_alpha_high", 5e-3, "log_uniform high limit for learning rate")
 		tf.app.flags.DEFINE_float("initial_alpha_log_rate", 0.5, "log_uniform interpolate rate for learning rate")
-		tf.app.flags.DEFINE_float("gamma", 0.99, "discount factor for rewards")
+		tf.app.flags.DEFINE_float("gamma", 0.95, "discount factor for rewards")
 		tf.app.flags.DEFINE_float("entropy_beta", 0.001, "entropy regularization constant")
 		tf.app.flags.DEFINE_integer("max_time_step", 10 * 10**7, "max time steps")
 		tf.app.flags.DEFINE_integer("save_interval_step", 100 * 1000, "saving interval steps")

@@ -16,4 +16,4 @@ if [ ! -d "performance" ]; then
   mkdir performance
 fi
 cd ..
-python3 /home/students/francesco.sovrano/Documents/ML/A3C/$DIRECTORY/train.py
+python3 /home/students/francesco.sovrano/Documents/ML/A3C/$DIRECTORY/validate.py

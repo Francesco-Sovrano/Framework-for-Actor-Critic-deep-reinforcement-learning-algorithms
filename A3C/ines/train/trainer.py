@@ -8,7 +8,7 @@ import numpy as np
 import time
 
 from environment.environment import Environment
-from model.model import MultiTowerModel
+from model.model import MultiAgentModel
 
 # get command line args
 import options
@@ -48,21 +48,20 @@ class Trainer(object):
 		self.environment = Environment.create_environment(self.env_type, self.thread_index)
 		self.action_size = self.environment.get_action_size()
 		state_shape = self.environment.get_state_shape()
+		agents_count = self.environment.get_layers_count()
 		self.max_global_time_step = max_global_time_step
 		self.entropy_beta = entropy_beta
 		self.device = device
 	# build network
-		self.local_network = MultiTowerModel(self.thread_index, state_shape, self.action_size, self.entropy_beta, self.device)
+		self.local_network = MultiAgentModel(self.thread_index, state_shape, agents_count, self.action_size, self.entropy_beta, self.device)
 		self.apply_gradients = []
 		self.sync = []
-		
-		for i in range(self.local_network._tower_count):
-			local_tower = self.local_network._tower_list[i]
-			global_tower = self.global_network._tower_list[i]
-			local_tower.prepare_loss()
-			self.apply_gradients.append( self.grad_applier.minimize_local(local_tower.total_loss, global_tower.get_vars(), local_tower.get_vars()) )
-			self.sync.append( local_tower.sync_from(global_tower) )
-		
+		for i in range(self.local_network.agent_count):
+			local_agent = self.local_network.get_agent(i)
+			global_agent = self.global_network.get_agent(i)
+			local_agent.prepare_loss()
+			self.apply_gradients.append( self.grad_applier.minimize_local(local_agent.total_loss, global_agent.get_vars(), local_agent.get_vars()) )
+			self.sync.append( local_agent.sync_from(global_agent) )
 		self.local_t = 0
 		self.initial_learning_rate = initial_learning_rate
 	# For log output
@@ -112,13 +111,12 @@ class Trainer(object):
 		batch["rewards"] = []
 		batch["adversarial_reward"] = []
 		batch["start_lstm_state"] = []
-		for i in range(self.local_network._tower_count):
+		for i in range(self.local_network.agent_count):
 			for key in batch:
 				batch[key].append([])
-			batch["start_lstm_state"][i] = self.local_network._tower_list[i].base_lstm_state_out
+			batch["start_lstm_state"][i] = self.local_network.get_agent(i).base_lstm_state_out
 			
 		states = []
-		towers = []
 		action_rewards = []
 		actions = []
 		rewards = []
@@ -134,21 +132,20 @@ class Trainer(object):
 			last_reward = self.environment.last_reward
 			last_action_reward = self.local_network.concat_action_and_reward(last_action, last_reward)
 			
-			best_tower, best_layer, layer_id = self.local_network.get_best_tower_and_layer(prev_state)
-			pi_, value_ = best_tower.run_policy_and_value(sess, best_layer, last_action_reward)
+			agent = self.local_network.get_agent(prev_state["situation"])
+			pi_, value_ = agent.run_policy_and_value(sess, prev_state["value"], last_action_reward)
 			action = self.choose_action(pi_)
 			
-			states.append(best_layer)
+			states.append( prev_state )
 			action_rewards.append(last_action_reward)
 			actions.append(action)
 			values.append(value_)
-			towers.append(layer_id)
 			
 			if (self.local_t % LOG_INTERVAL == 0):
 				self.info_logger.info(
 					" actions={}".format(pi_) +
 					" value={}".format(value_) +
-					" tower={}".format(layer_id)
+					" agent={}".format(prev_state["situation"])
 				)
 
 			# Process game
@@ -180,6 +177,9 @@ class Trainer(object):
 					if self.episode_reward >= self.max_reward:
 						self.max_reward = self.episode_reward
 						self.environment.print_display(global_t, self.episode_reward)
+				elif flags.show_all_screenshots:
+					self.max_reward = self.episode_reward
+					self.environment.print_display(global_t, self.episode_reward)
 				self._record_score(sess, summary_writer, summary_op, score_input, self.episode_reward, global_t)
 					
 				self.prepare()
@@ -187,7 +187,6 @@ class Trainer(object):
 
 		actions.reverse()
 		states.reverse()
-		towers.reverse()
 		rewards.reverse()
 		values.reverse()
 		action_rewards.reverse()
@@ -195,21 +194,22 @@ class Trainer(object):
 		# If we episode was not done we bootstrap the value from the last state
 		R = 0.0
 		if not terminal_end:
-			best_tower, best_layer, layer_id = self.local_network.get_best_tower_and_layer(new_state)
-			R = best_tower.run_value(sess, best_layer, self.local_network.concat_action_and_reward(actions[0], rewards[0]))
+			agent = self.local_network.get_agent(new_state["situation"])
+			R = agent.run_value(sess, new_state["value"], self.local_network.concat_action_and_reward(actions[0], rewards[0]))
 			
-		for(action, reward, state, value, action_reward, tower) in zip(actions, rewards, states, values, action_rewards, towers):
+		for(action, reward, state, value, action_reward) in zip(actions, rewards, states, values, action_rewards):
 			R = reward + self.gamma * R
 			adversarial_reward = R - value
 			action_map = np.zeros([self.action_size])
 			action_map[action] = 1.0
-			batch["states"][tower].append( state )
-			batch["action_maps"][tower].append( action_map )
-			batch["rewards"][tower].append( R )
-			batch["action_rewards"][tower].append( action_reward )
-			batch["adversarial_reward"][tower].append( adversarial_reward )
+			agent_id = state["situation"]
+			batch["states"][agent_id].append( state["value"] )
+			batch["action_maps"][agent_id].append( action_map )
+			batch["rewards"][agent_id].append( R )
+			batch["action_rewards"][agent_id].append( action_reward )
+			batch["adversarial_reward"][agent_id].append( adversarial_reward )
 		
-		for i in range(self.local_network._tower_count):		
+		for i in range(self.local_network.agent_count):		
 			batch["states"][i].reverse()
 			batch["action_maps"][i].reverse()
 			batch["rewards"][i].reverse()
@@ -223,25 +223,25 @@ class Trainer(object):
 		cur_learning_rate = self._anneal_learning_rate(global_t)
 
 		# Copy weights from shared to local
-		for i in range(self.local_network._tower_count):
+		for i in range(self.local_network.agent_count):
 			sess.run( self.sync[i] )
 
 		# Build feed dictionary
 		batch_base = self._process_base(sess, global_t, summary_writer, summary_op, score_input)
 			
 		# Pupulate the feed dictionary
-		for i in range(self.local_network._tower_count):
+		for i in range(self.local_network.agent_count):
 			if len(batch_base["states"][i]) > 0:
 				feed_dict = { self.learning_rate_input: cur_learning_rate }
-				tower = self.local_network._tower_list[i]
+				agent = self.local_network.get_agent(i)
 				# [Base]
 				feed_dict.update( {
-					tower.base_input: batch_base["states"][i],
-					tower.base_last_action_reward_input: batch_base["action_rewards"][i],
-					tower.base_a: batch_base["action_maps"][i],
-					tower.base_adv: batch_base["adversarial_reward"][i],
-					tower.base_r: batch_base["rewards"][i],
-					tower.base_initial_lstm_state: batch_base["start_lstm_state"][i],
+					agent.base_input: batch_base["states"][i],
+					agent.base_last_action_reward_input: batch_base["action_rewards"][i],
+					agent.base_a: batch_base["action_maps"][i],
+					agent.base_adv: batch_base["adversarial_reward"][i],
+					agent.base_r: batch_base["rewards"][i],
+					agent.base_initial_lstm_state: batch_base["start_lstm_state"][i],
 				} )
 				
 				# Calculate gradients and copy them to global network.

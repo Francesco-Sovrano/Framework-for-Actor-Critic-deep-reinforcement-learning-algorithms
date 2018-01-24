@@ -21,32 +21,31 @@ def fc_initializer(input_channels, dtype=tf.float32):
 		return tf.random_uniform(shape, minval=-d, maxval=d)
 	return _initializer
 
-class MultiTowerModel(object):
-	def __init__( self, id, state_shape, action_size, entropy_beta, device ):
+class MultiAgentModel(object):
+	def __init__( self, id, state_shape, agents_count, action_size, entropy_beta, device ):
 		self._id = id
 		self._device = device
 		self.action_size = action_size
 		# input size
-		self._tower_count = state_shape[0]
-		self._tower_state_shape = (state_shape[1], state_shape[2], 1)
-		self._tower_list = []
+		self.agent_count = agents_count
+		self._agent_state_shape = state_shape
+		self._agent_list = []
 		# create networks
-		for i in range(self._tower_count):
-			self._tower_list.append ( A3CModel( str(id)+"_"+str(i), self._tower_state_shape, action_size, entropy_beta, device ) )
-		# get variables
-		self._variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES) # returns variables for all the towers
+		for i in range(self.agent_count):
+			self._agent_list.append ( A3CModel( str(id)+"_"+str(i), self._agent_state_shape, action_size, entropy_beta, device ) )
 
-	def get_best_tower_and_layer( self, state ):
-		environment = state["environment"]
-		layer = state["layer"]
-		return self._tower_list[layer], np.expand_dims(environment[layer],axis=-1), layer
+	def get_agent( self, id ):
+		return self._agent_list[id]
 		
 	def get_vars(self):
-		return self._variables
+		vars = []
+		for agent in self._agent_list:
+			vars = set().union(agent.get_vars(),vars)
+		return list(vars)
 		
 	def reset(self):
-		for tower in self._tower_list:
-			tower.reset_state()
+		for agent in self._agent_list:
+			agent.reset_state()
 		
 	def concat_action_and_reward(self, action, reward):
 		"""
