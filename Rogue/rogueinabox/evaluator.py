@@ -29,10 +29,10 @@ class RogueEvaluator:
 		result["reward_avg"] = 0
 		result["tiles_avg"] = 0
 		result["steps_avg"] = 0
-		if count <= 0:
-			count = 1
 		if count > len(self.episodes):
 			count = len(self.episodes)
+		if count <= 0:
+			count = 1
 		
 		for e in self.episodes[-int(count):]:
 			if e.has_won:

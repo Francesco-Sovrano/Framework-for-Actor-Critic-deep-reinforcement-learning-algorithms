@@ -237,4 +237,4 @@ class RogueBox:
 		win = self.reward_generator.goal_achieved
 		if win or lose:
 			self.evaluator.add( info = self.frame_info[-1], reward = self.episode_reward, has_won = win, step = self.step_count )
-		return self.reward, self.state, win or lose
+		return self.reward, self.state, win, lose

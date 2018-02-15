@@ -134,6 +134,36 @@ class TripleSituation_StateGenerator(StateGenerator): # 3 situations
 		else:
 			situation = 2
 		return state, situation
+		
+class TripleSituation_1_StateGenerator(TripleSituation_StateGenerator): # 5 situations
+	def _set_shape(self):
+		self._shape = (22, 80, 2) # [heigth, width, channel]
+		
+	def _set_situations_count(self):
+		self._situations = 5
+		
+	def build_state(self, info):
+		state = self.empty_state()
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("%"), 4) # stairs
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("|"), 2) # walls
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("-"), 2) # walls
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("+"), 1) # doors
+		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("#"), 1) # tunnel
+		# set it for last otherwise it may be overwritten by other positions!
+		state = self.set_channel(1, state, info.get_list_of_positions_by_tile("@"), 1) # rogue (player)
+			
+		pixel = info.get_tile_below_player()
+		if pixel == '#': # situation 1
+			return state, 0
+		if pixel == "%": # situation 3
+			return state, 1
+			
+		if info.get_tile_count("%") > 0: # situation 4
+			return state, 2
+
+		if self.environment_tiles_are_in_position_range(info, "|-", info.get_player_pos( ), 1): # situation 5
+			return state, 3
+		return state, 4
 				
 class CroppedView_StateGenerator(StateGenerator): # 6 situations
 
@@ -187,3 +217,143 @@ class CroppedView_StateGenerator(StateGenerator): # 6 situations
 		if self.environment_tiles_are_in_position_range(info, "|-", self.player_position, 1): # situation 5
 			return state, 4
 		return state, 5
+		
+class CroppedView_1_StateGenerator(CroppedView_StateGenerator): # 5 situations
+
+	def _set_situations_count(self):
+		self._situations = 5
+		
+	def build_state(self, info):
+		state = self.empty_state()
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("%"), 4) # stairs
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("|"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("-"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("+"), 16) # doors
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
+			
+		pixel = info.get_tile_below_player()
+		if pixel == '#': # situation 1
+			return state, 0
+		if pixel == "%": # situation 3
+			return state, 1
+			
+		if info.get_tile_count("%") > 0: # situation 4
+			return state, 2
+
+		if self.environment_tiles_are_in_position_range(info, "|-", self.player_position, 1): # situation 5
+			return state, 3
+		return state, 4
+		
+class CroppedView_2_StateGenerator(CroppedView_StateGenerator): # 4 situations
+
+	def _set_situations_count(self):
+		self._situations = 4
+		
+	def build_state(self, info):
+		state = self.empty_state()
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("%"), 4) # stairs
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("|"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("-"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("+"), 16) # doors
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
+			
+		pixel = info.get_tile_below_player()
+		if pixel == '#': # situation 1
+			return state, 0
+		if pixel == "%": # situation 3
+			return state, 1
+
+		if self.environment_tiles_are_in_position_range(info, "|-", self.player_position, 1): # situation 5
+			return state, 2
+		return state, 3
+		
+class CroppedView_3_StateGenerator(CroppedView_StateGenerator): # 3 situations
+
+	def _set_situations_count(self):
+		self._situations = 3
+		
+	def build_state(self, info):
+		state = self.empty_state()
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("%"), 4) # stairs
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("|"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("-"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("+"), 16) # doors
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
+			
+		pixel = info.get_tile_below_player()
+		if pixel == '#': # situation 1
+			return state, 0
+		if pixel == "%": # situation 3
+			return state, 1
+			
+		return state, 2
+		
+class CroppedView_4_StateGenerator(CroppedView_StateGenerator): # 2 situations
+
+	def _set_situations_count(self):
+		self._situations = 2
+		
+	def build_state(self, info):
+		state = self.empty_state()
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("%"), 4) # stairs
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("|"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("-"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("+"), 16) # doors
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
+			
+		pixel = info.get_tile_below_player()
+		if pixel == '#': # situation 1
+			return state, 0
+		return state, 1
+		
+class CroppedView_5_StateGenerator(CroppedView_StateGenerator): # 1 situations
+
+	def _set_situations_count(self):
+		self._situations = 1
+		
+	def build_state(self, info):
+		state = self.empty_state()
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("%"), 4) # stairs
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("|"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("-"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("+"), 16) # doors
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
+		return state, 0
+		
+class CroppedView_6_StateGenerator(CroppedView_StateGenerator): # 2 situations
+
+	def _set_shape(self):
+		self._shape = (17, 17, 2) # [heigth, width, channel]
+
+	def _set_situations_count(self):
+		self._situations = 2
+		
+	def build_state(self, info):
+		state = self.empty_state()
+		state = self.set_channel(1, self.player_position, state, info.get_list_of_positions_by_tile("%"), 1) # stairs
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("|"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("-"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("+"), 1) # doors
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("#"), 1) # tunnel
+			
+		pixel = info.get_tile_below_player()
+		if pixel == '#': # situation 1
+			return state, 0
+		return state, 1
+		
+class CroppedView_7_StateGenerator(CroppedView_StateGenerator): # 1 situations
+
+	def _set_shape(self):
+		self._shape = (17, 17, 2) # [heigth, width, channel]
+
+	def _set_situations_count(self):
+		self._situations = 1
+		
+	def build_state(self, info):
+		state = self.empty_state()
+		state = self.set_channel(1, self.player_position, state, info.get_list_of_positions_by_tile("%"), 1) # stairs
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("|"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("-"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("+"), 16) # doors
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
+		return state, 0

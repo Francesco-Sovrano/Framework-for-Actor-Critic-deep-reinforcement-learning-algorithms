@@ -163,3 +163,13 @@ class ImprovedStairSeeker_RewardGenerator(StairSeeker_RewardGenerator):
 		if old_info.get_tile_below_player() == '+' and new_info.get_tile_count("#") > old_info.get_tile_count("#"): # has started to explore
 			return 1
 		return super().get_value(old_info, new_info)
+		
+class ImprovedStairSeeker2_RewardGenerator(StairSeeker_RewardGenerator):
+
+	def get_value (self, old_info, new_info):
+		if old_info.get_tile_below_player() == '+' and new_info.get_tile_count("#") > old_info.get_tile_count("#"): # has started to explore
+			return 1
+		if new_info.statusbar["dungeon_level"] > old_info.statusbar["dungeon_level"]:
+			self.goal_achieved = True
+			return 100
+		return super().get_value(old_info, new_info)
