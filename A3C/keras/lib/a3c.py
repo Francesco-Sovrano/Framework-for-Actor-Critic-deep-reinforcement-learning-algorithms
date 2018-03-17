@@ -6,6 +6,12 @@ def a3c_loss(input_taken_act=None, input_advantage=None, input_R=None, policy_ou
 			 entropy_beta=None):
 	# [base A3C]
 
+	input_taken_act = input_taken_act[0]
+	input_advantage = input_advantage[0, :, 0]
+	input_R = input_R[0]
+	policy_out = policy_out[0]
+	value_out = value_out[0]
+
 	# Avoid NaN with clipping when value in pi becomes zero
 	log_pi = K.log(K.clip(policy_out, 1e-20, 1.0))
 
@@ -21,5 +27,5 @@ def a3c_loss(input_taken_act=None, input_advantage=None, input_R=None, policy_ou
 	# (Learning rate for Critic is half of Actor's, so multiply by 0.5)
 	value_loss = 0.5 * l2_loss
 
-	base_loss = policy_loss + value_loss
-	return base_loss
+	total_loss = policy_loss + value_loss
+	return total_loss
