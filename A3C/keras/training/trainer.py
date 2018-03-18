@@ -105,7 +105,7 @@ class Trainer(object):
 			last_action_reward = self.local_network.concat_action_and_reward(last_action, last_reward)
 			
 			agent = self.local_network.get_agent(prev_state["situation"])
-			pi_, value_ = agent.run_policy_and_value(prev_state["value"], last_action_reward)
+			pi_, [value_] = agent.run_policy_and_value(prev_state["value"], last_action_reward)
 			action = self.choose_action(pi_)
 			
 			states.append( prev_state )
@@ -164,10 +164,10 @@ class Trainer(object):
 		action_rewards.reverse()
 
 		# If we episode was not done we bootstrap the value from the last state
-		R = np.zeros((1,))
+		R = 0.0
 		if not terminal_end:
 			agent = self.local_network.get_agent(new_state["situation"])
-			R = agent.run_value(new_state["value"], self.local_network.concat_action_and_reward(actions[0], rewards[0]))
+			[R] = agent.run_value(new_state["value"], self.local_network.concat_action_and_reward(actions[0], rewards[0]))
 			
 		for(action, reward, state, value, action_reward) in zip(actions, rewards, states, values, action_rewards):
 			R = reward + self.gamma * R

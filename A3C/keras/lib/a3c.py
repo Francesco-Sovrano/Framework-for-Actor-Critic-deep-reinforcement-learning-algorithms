@@ -7,10 +7,10 @@ def a3c_loss(input_taken_act=None, input_advantage=None, input_R=None, policy_ou
 	# [base A3C]
 
 	input_taken_act = input_taken_act[0]
-	input_advantage = input_advantage[0, :, 0]
+	input_advantage = input_advantage[0]
 	input_R = input_R[0]
 	policy_out = policy_out[0]
-	value_out = value_out[0]
+	value_out = value_out[0, :, 0]
 
 	# Avoid NaN with clipping when value in pi becomes zero
 	log_pi = K.log(K.clip(policy_out, 1e-20, 1.0))

@@ -113,8 +113,8 @@ class A3CModel(object):
 		input_state = Input(batch_shape=batch_state_shape, name='input_state')
 		input_action_reward = Input(batch_shape=(batch_size, None, action_size+1), name='input_act_reward')
 		input_taken_act = Input(batch_shape=(batch_size, None, action_size), name='input_taken_act')
-		input_advantage = Input(batch_shape=(batch_size, None, 1), name='input_advantage')
-		input_R = Input(batch_shape=(batch_size, None, 1), name='input_R')
+		input_advantage = Input(batch_shape=(batch_size, None), name='input_advantage')
+		input_R = Input(batch_shape=(batch_size, None), name='input_R')
 
 		init_conv1 = Initializer_muupan(1)
 		init_conv2 = Initializer_muupan(16)
