@@ -16,7 +16,7 @@ configs = {
    'userinterface': 'curses',
    'verbose': 3,
    'gui': True,
-   'rogue': '/home/dcortesi/rogue/D_RogueInABox_lib/Rogue/rogue5.4.4-ant-r1.1.4/rogue',
+   'rogue': './Rogue/rogue5.4.4-ant-r1.1.4/rogue',
    'memory_size': 0,
    'test': False,
    'timer_ms': 250

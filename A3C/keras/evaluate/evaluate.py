@@ -18,7 +18,7 @@ else:
 
 
 configs = {'gui': False,
-           'rogue': '/home/dcortesi/rogue/D_RogueInABox_lib/Rogue/rogue5.4.4-ant-r1.1.4/rogue'}
+           'rogue': './Rogue/rogue5.4.4-ant-r1.1.4/rogue'}
 agent = A3C_Agent(configs)
 
 for run in range(ARGS.nruns):
