@@ -11,13 +11,11 @@ from keras.layers import Input, Conv2D, Flatten, Dense, LSTM, Concatenate, Activ
 from keras.initializers import Initializer
 from keras import backend as K
 
-
 from lib.layers import ReLu
 from lib import a3c
 from lib.keras_utils import load_optmizer_from_hdf5_file, save_optmizer_to_hdf5_file
 
-import options
-flags = options.get()
+from options import flags
 
 
 class Initializer_muupan(Initializer):

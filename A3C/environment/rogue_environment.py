@@ -4,8 +4,7 @@ from __future__ import division
 from __future__ import print_function
 
 # get command line args
-import options
-flags = options.get()
+from options import flags
 
 import datetime
 import logging

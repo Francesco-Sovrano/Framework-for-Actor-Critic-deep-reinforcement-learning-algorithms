@@ -14,9 +14,7 @@ import h5py
 import tarfile
 import shutil
 
-import options
-options.build("training")
-flags = options.get()
+from options import flags
 if not flags.use_gpu:
 	# hide gpus so keras can't use them
 	# this must be done before importing either keras or tensorflow

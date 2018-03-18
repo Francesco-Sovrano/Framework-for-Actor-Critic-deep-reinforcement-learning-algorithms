@@ -3,8 +3,7 @@ import numpy as np
 
 from legacy.train_noconv import Application
 import tensorflow as tf
-import options
-flags = options.get()
+from options import flags
 
 from rogueinabox.baseagent import BaseAgent
 from environment.environment import Environment

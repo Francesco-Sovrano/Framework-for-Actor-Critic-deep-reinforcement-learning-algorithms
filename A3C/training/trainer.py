@@ -11,8 +11,8 @@ from environment.environment import Environment
 from model.model import MultiAgentModel
 
 # get command line args
-import options
-flags = options.get()
+from options import flags
+
 
 LOG_INTERVAL = 100
 PERFORMANCE_LOG_INTERVAL = 1000

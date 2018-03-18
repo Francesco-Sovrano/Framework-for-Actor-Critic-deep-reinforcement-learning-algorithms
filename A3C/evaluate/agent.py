@@ -4,8 +4,7 @@ import numpy as np
 import train
 Application = train.Application
 
-import options
-flags = options.get()
+from options import flags
 
 from rogueinabox.baseagent import BaseAgent
 
