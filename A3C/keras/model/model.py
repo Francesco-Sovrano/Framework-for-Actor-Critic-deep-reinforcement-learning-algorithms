@@ -14,7 +14,7 @@ from keras import backend as K
 
 from lib.layers import ReLu
 from lib import a3c
-from lib.keras import load_optmizer_from_hdf5_file, save_optmizer_to_hdf5_file
+from lib.keras_utils import load_optmizer_from_hdf5_file, save_optmizer_to_hdf5_file
 
 import options
 flags = options.get()
@@ -90,12 +90,12 @@ class MultiAgentModel(object):
 		for agent in self._agent_list:
 			agent.save_optimizer(hdf5_file)
 
-	def load_optimizers(self, hdf5_file):
+	def load_optimizers(self, hdf5_file, custom_objects=None):
 		"""
 		:type hdf5_file: h5py.File
 		"""
 		for agent in self._agent_list:
-			agent.load_optimizer(hdf5_file)
+			agent.load_optimizer(hdf5_file, custom_objects=custom_objects)
 
 
 class A3CModel(object):
@@ -210,6 +210,7 @@ class A3CModel(object):
 	def save_optimizer(self, hdf5_file):
 		save_optmizer_to_hdf5_file(self.traning_net, self._id, hdf5_file)
 
-	def load_optimizer(self, hdf5_file):
-		load_optmizer_from_hdf5_file(self.traning_net, self._id, hdf5_file,
-									 custom_objects={'identity_loss': identity_loss})
+	def load_optimizer(self, hdf5_file, custom_objects=None):
+		custom_objects = custom_objects or {}
+		custom_objects = dict(identity_loss=identity_loss, **custom_objects)
+		load_optmizer_from_hdf5_file(self.traning_net, self._id, hdf5_file, custom_objects=custom_objects)
