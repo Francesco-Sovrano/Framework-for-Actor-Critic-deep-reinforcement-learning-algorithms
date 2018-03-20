@@ -1,3 +1,4 @@
 __pycache__/
-*.o
-*.pyc
+**/*.o
+**/*.pyc
+**/rogue.scr

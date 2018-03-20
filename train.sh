@@ -1,3 +1,4 @@
 #!/bin/bash
 
-./A3C/train.sh
+python3 A3C/train.py
+

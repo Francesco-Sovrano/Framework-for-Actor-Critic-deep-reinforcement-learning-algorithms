@@ -1,6 +1,4 @@
 #!/bin/bash
 
-DIRECTORY=$(hostname)
-
-PYTHONPATH=Rogue/:A3C/$DIRECTORY python A3C/$DIRECTORY/evaluate/visualize.py $*
+PYTHONPATH=Rogue/:A3C python3 A3C/evaluate/visualize.py $*
 
