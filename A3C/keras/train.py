@@ -115,19 +115,17 @@ class Application(object):
 
 			while True:
 				# pauses if it's time to save
-				paused = self.thread_check_saving_pause(trainer)
+				self.thread_check_saving_pause()
 
 				if self.terminate_reqested or self.global_t > flags.max_time_step:
 					trainer.stop()
 					if parallel_index == 0:
-						self.thread_save(trainer)
-					elif not paused:
-						self.thread_save_optimizer(trainer)
-					self.thread_stop()
+						self.thread_save()
+					self.thread_stop(trainer)
 					break
 				if parallel_index == 0 and self.global_t > self.next_save_steps:
 					# Save checkpoint
-					self.thread_save(trainer)
+					self.thread_save()
 
 				diff_global_t = trainer.process(self.global_t)
 				self.global_t += diff_global_t
@@ -205,7 +203,7 @@ class Application(object):
 				local_network.load_optimizers(hdf5_file)
 		except OSError:
 			# no save file found
-			local_network.compile(optimizer=self._make_optimizer(self.initial_learning_rate, flags))
+			local_network.compile(optimizer=self._make_optimizer())
 		trainer = Trainer(id, self.global_weigths, local_network, flags.env_type, flags.local_t_max, flags.gamma, flags.max_time_step, self.device)
 		return trainer
 
@@ -213,22 +211,20 @@ class Application(object):
 		dummy_net = self.build_network(-1)
 		self.global_weigths = dummy_net.get_weights()
 
-	def _make_optimizer(self, initial_learning_rate, flags):
+	def _make_optimizer(self):
+		lr = self.initial_learning_rate
 		decay = 1 / (self.environment.get_situations_count() * flags.max_time_step)
-		return RMSprop(lr=initial_learning_rate, rho=flags.rmsp_alpha, epsilon=flags.rmsp_epsilon, decay=decay)
+		return RMSprop(lr=lr, rho=flags.rmsp_alpha, epsilon=flags.rmsp_epsilon, decay=decay)
 
-	def thread_check_saving_pause(self, trainer):
+	def thread_check_saving_pause(self):
 		"""
 		If a saving pause was requested, pauses the calling thread execution.
-		This also saves the optimizer of the network of the supplied trainer.
 		N.B. the trainer should be the one created by the current thread, otherwise keras will raise errors
 
-		:type trainer: Trainer
 		:return: whether the thread paused
 		"""
 		if not self.pause_event.is_set():
 			print(threading.current_thread().getName(), "waiting")
-			self.thread_save_optimizer(trainer)
 			# notify the thread that requested the pause
 			with self.pause_cond:
 				self.pause_cond.waiting += 1
@@ -249,14 +245,17 @@ class Application(object):
 		with self.pause_cond:
 			self.pause_cond.wait_for(lambda : self.pause_cond.waiting == flags.parallel_size -1)
 
-	def thread_stop(self):
+	def thread_stop(self, trainer):
 		"""
-		Informs the thread supposed to save a checkpoint that this thread is terminating
+		Saves the thread optimizer and informs the thread supposed to save a checkpoint that this thread is terminating
+
+		:param Trainer trainer:
 		"""
-		print(threading.current_thread().getName(), "terminating", flush=True)
 		with self.pause_cond:
+			self.thread_save_optimizer(trainer)
 			self.pause_cond.waiting += 1
 			self.pause_cond.notify()
+		print(threading.current_thread().getName(), "terminating", flush=True)
 
 	def thread_save_optimizer(self, trainer):
 		"""
@@ -270,17 +269,17 @@ class Application(object):
 		with h5py.File(opt_fname, mode='w') as hdf5_file:
 			trainer.local_network.save_optimizers(hdf5_file)
 			
-	def thread_save(self, trainer):
+	def thread_save(self):
 		""" Save checkpoint. Called from thread-0.
+
 		:type trainer: Trainer
 		"""
 		print("pausing to save", flush=True)
 		self.pause_threads()
-		self.thread_save_optimizer(trainer)
 
 		print('Start saving.')
 
-		self.save_checkpoint(pack_optimizers=self.terminate_reqested)
+		self.save_checkpoint()
 
 		print('End saving.')
 
@@ -288,7 +287,7 @@ class Application(object):
 		self.pause_event.set()
 		self.next_save_steps += flags.save_interval_step
 
-	def save_checkpoint(self, pack_optimizers=False):
+	def save_checkpoint(self):
 		# Create dir
 		os.makedirs(flags.checkpoint_dir, exist_ok=True)
 
@@ -307,14 +306,7 @@ class Application(object):
 		with open(weights_fname, mode='wb') as f:
 			pickle.dump(self.global_weigths, f)
 
-		# optimizers are saved by each thread in .thread_save_optimizer()
-
-		if pack_optimizers:
-			opt_dir = '%s/optimizers' % flags.checkpoint_dir
-			tname = '%s/optimizers.tar' % flags.checkpoint_dir
-			with tarfile.open(tname, mode='w') as t:
-				t.add(opt_dir)
-			shutil.rmtree(opt_dir)
+		# optimizers are saved only when terminating in .thread_stop()
 
 	def load_checkpoint(self, raise_exc=False):
 		print("Attempting to load checkpoint...", end=' ')
@@ -332,15 +324,6 @@ class Application(object):
 			weights_fname = '%s/weights.pkl' % flags.checkpoint_dir
 			with open(weights_fname, mode='rb') as f:
 				self.global_weigths = pickle.load(f)
-
-			# unpack optimizers
-			try:
-				tname = '%s/optimizers.tar' % flags.checkpoint_dir
-				with tarfile.open(tname, mode='r') as t:
-					t.extractall()
-				os.unlink(tname)
-			except FileNotFoundError:
-				pass
 
 			# optimizers will be loaded in .build_network()
 
