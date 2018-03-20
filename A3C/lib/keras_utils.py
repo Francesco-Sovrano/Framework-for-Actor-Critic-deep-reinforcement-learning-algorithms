@@ -93,7 +93,7 @@ def load_optmizer_from_hdf5_group(model, hdf5_group, custom_objects=None):
     training_config = hdf5_group.attrs.get('training_config')
     training_config = json.loads(training_config.decode('utf-8'))
     optimizer_config = training_config['optimizer_config']
-    optimizer = optimizers.deserialize(optimizer_config)
+    optimizer = optimizers.deserialize(optimizer_config, custom_objects=custom_objects)
 
     # Recover loss functions and metrics.
     loss = convert_custom_objects(training_config['loss'], custom_objects)
