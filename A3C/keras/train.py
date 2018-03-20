@@ -30,6 +30,7 @@ from environment.environment import Environment
 from model.model import MultiAgentModel
 from training.trainer import Trainer
 from lib.utils import log_uniform
+from lib.optimizers import CustomRMSprop
 
 
 graph = tf.get_default_graph()
@@ -200,10 +201,10 @@ class Application(object):
 		opt_fname = '%s/optimizers/%s.hdf5' % (flags.checkpoint_dir, thread_name)
 		try:
 			with h5py.File(opt_fname, mode='r') as hdf5_file:
-				local_network.load_optimizers(hdf5_file)
+				local_network.load_optimizers(hdf5_file, custom_objects={'CustomRMSprop': CustomRMSprop})
 		except OSError:
 			# no save file found
-			local_network.compile(optimizer=self._make_optimizer())
+			local_network.compile(self._make_optimizer)
 		trainer = Trainer(id, self.global_weigths, local_network, flags.env_type, flags.local_t_max, flags.gamma, flags.max_time_step, self.device)
 		return trainer
 
@@ -213,8 +214,8 @@ class Application(object):
 
 	def _make_optimizer(self):
 		lr = self.initial_learning_rate
-		decay = 1 / (self.environment.get_situations_count() * flags.max_time_step)
-		return RMSprop(lr=lr, rho=flags.rmsp_alpha, epsilon=flags.rmsp_epsilon, decay=decay)
+		return CustomRMSprop(learning_rate=lr, decay=flags.rmsp_alpha, momentum=0.0, epsilon=flags.rmsp_epsilon,
+							 clipnorm=flags.grad_norm_clip, max_iterations=flags.max_time_step)
 
 	def thread_check_saving_pause(self):
 		"""

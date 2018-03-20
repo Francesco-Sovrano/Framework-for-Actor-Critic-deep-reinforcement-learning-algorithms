@@ -72,9 +72,13 @@ class MultiAgentModel(object):
 		action_reward[-1] = float(reward)
 		return action_reward
 
-	def compile(self, optimizer=None):
+	def compile(self, make_optimizer_fn):
+		"""
+		:param make_optimizer_fn:
+			function that returns an optimizer instance when called
+		"""
 		for agent in self._agent_list:
-			agent.compile(optimizer=optimizer)
+			agent.compile(optimizer=make_optimizer_fn())
 
 	def get_weights(self):
 		return [agent.get_weights() for agent in self._agent_list]
