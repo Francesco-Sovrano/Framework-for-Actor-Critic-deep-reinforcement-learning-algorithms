@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import logging
 import numpy as np
 import time
@@ -113,14 +114,14 @@ class Trainer(object):
 		batch["start_lstm_state"] = []
 		for i in range(self.local_network.agent_count):
 			for key in batch:
-				batch[key].append([])
+				batch[key].append(collections.deque())
 			batch["start_lstm_state"][i] = self.local_network.get_agent(i).base_lstm_state_out
 			
-		states = []
-		action_rewards = []
-		actions = []
-		rewards = []
-		values = []
+		states = collections.deque()
+		action_rewards = collections.deque()
+		actions = collections.deque()
+		rewards = collections.deque()
+		values = collections.deque()
 		terminal_end = False
 		new_state = None
 		
@@ -136,10 +137,10 @@ class Trainer(object):
 			pi_, value_ = agent.run_policy_and_value(sess, prev_state["value"], last_action_reward)
 			action = self.choose_action(pi_)
 			
-			states.append( prev_state )
-			action_rewards.append(last_action_reward)
-			actions.append(action)
-			values.append(value_)
+			states.appendleft(prev_state)
+			action_rewards.appendleft(last_action_reward)
+			actions.appendleft(action)
+			values.appendleft(value_)
 			
 			if (self.local_t % LOG_INTERVAL == 0):
 				self.info_logger.info(
@@ -155,11 +156,11 @@ class Trainer(object):
 			self.episode_reward += reward
 			self.episode_steps += 1
 
-			rewards.append( reward )
+			rewards.appendleft(reward)
 			self.local_t += 1
 
 			if win or lose:
-				self.stats = self.environment.game.evaluator.statistics( flags.match_count_for_evaluation )
+				self.stats = self.environment.get_statistics()
 				log_str = ""
 				for key in self.stats:
 					log_str += " " + key + "=" + str(self.stats[key])
@@ -183,12 +184,6 @@ class Trainer(object):
 				self.prepare()
 				break
 
-		actions.reverse()
-		states.reverse()
-		rewards.reverse()
-		values.reverse()
-		action_rewards.reverse()
-
 		# If we episode was not done we bootstrap the value from the last state
 		R = 0.0
 		if not (win or lose):
@@ -201,18 +196,11 @@ class Trainer(object):
 			action_map = np.zeros([self.action_size])
 			action_map[action] = 1.0
 			agent_id = state["situation"]
-			batch["states"][agent_id].append( state["value"] )
-			batch["action_maps"][agent_id].append( action_map )
-			batch["rewards"][agent_id].append( R )
-			batch["action_rewards"][agent_id].append( action_reward )
-			batch["adversarial_reward"][agent_id].append( adversarial_reward )
-		
-		for i in range(self.local_network.agent_count):		
-			batch["states"][i].reverse()
-			batch["action_maps"][i].reverse()
-			batch["rewards"][i].reverse()
-			batch["action_rewards"][i].reverse()
-			batch["adversarial_reward"][i].reverse()
+			batch["states"][agent_id].appendleft( state["value"] )
+			batch["action_maps"][agent_id].appendleft( action_map )
+			batch["rewards"][agent_id].appendleft( R )
+			batch["action_rewards"][agent_id].appendleft( action_reward )
+			batch["adversarial_reward"][agent_id].appendleft( adversarial_reward )
 		
 		return batch
 	
@@ -230,17 +218,16 @@ class Trainer(object):
 		# Pupulate the feed dictionary
 		for i in range(self.local_network.agent_count):
 			if len(batch_base["states"][i]) > 0:
-				feed_dict = { self.learning_rate_input: cur_learning_rate }
 				agent = self.local_network.get_agent(i)
-				# [Base]
-				feed_dict.update( {
+				feed_dict = {
+					self.learning_rate_input: cur_learning_rate,
 					agent.base_input: batch_base["states"][i],
 					agent.base_last_action_reward_input: batch_base["action_rewards"][i],
 					agent.base_a: batch_base["action_maps"][i],
 					agent.base_adv: batch_base["adversarial_reward"][i],
 					agent.base_r: batch_base["rewards"][i],
 					agent.base_initial_lstm_state: batch_base["start_lstm_state"][i],
-				} )
+				}
 				
 				# Calculate gradients and copy them to global network.
 				sess.run( self.apply_gradients[i], feed_dict )

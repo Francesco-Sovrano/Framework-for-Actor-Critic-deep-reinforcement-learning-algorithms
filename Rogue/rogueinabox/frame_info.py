@@ -16,7 +16,10 @@ class RogueFrameInfo:
 		return ' '
 
 	def get_player_pos(self):
-		return self.pixel["agents"]["@"][0]
+		if len(self.pixel["agents"]["@"])>0:
+			return self.pixel["agents"]["@"][0]
+		print("Error: no agent @ visible on screen")
+		return (-1,-1)
 		
 	def has_statusbar(self):
 		return not self.statusbar["is_empty"]

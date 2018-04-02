@@ -77,10 +77,10 @@ class RogueBox:
 		return ['h', 'j', 'k', 'l', '>']
 	
 	"""Start a rogue game and expose interface to communicate with it"""
-	def __init__(self, game_exe_path, state_generator, reward_generator, max_step_count):
+	def __init__(self, game_exe_path, state_generator, reward_generator, max_step_count, match_count_for_evaluation):
 		self.rogue_path = game_exe_path
 		self.parser = RogueParser()
-		self.evaluator = RogueEvaluator()
+		self.evaluator = RogueEvaluator(match_count_for_evaluation)
 		self.max_step_count = max_step_count
 		if self.max_step_count <= 0:
 			self.max_step_count = 1

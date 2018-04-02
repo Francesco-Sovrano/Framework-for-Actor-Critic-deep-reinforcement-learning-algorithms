@@ -20,8 +20,8 @@ def build(option_type):
 	tf.app.flags.DEFINE_string("checkpoint_dir", "./checkpoint", "checkpoint directory")
 	tf.app.flags.DEFINE_string("event_dir", "./events", "events directory")
 	tf.app.flags.DEFINE_string("log_dir", "./log", "events directory")
-	tf.app.flags.DEFINE_boolean("show_best_screenshots", False, "whether to save the best matches")
-	tf.app.flags.DEFINE_boolean("show_all_screenshots", True, "whether to save all the matches")
+	tf.app.flags.DEFINE_boolean("show_best_screenshots", True, "whether to save the best matches")
+	tf.app.flags.DEFINE_boolean("show_all_screenshots", False, "whether to save all the matches")
 
 	tf.app.flags.DEFINE_string("rogueinabox_path", "/home/students/francesco.sovrano/Documents/ML/Rogue", "where to find the package") # to remove!
 

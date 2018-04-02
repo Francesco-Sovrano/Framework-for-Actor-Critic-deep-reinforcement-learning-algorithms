@@ -30,7 +30,7 @@ class RogueEnvironment(environment.Environment):
 		environment.Environment.__init__(self)
 		self.thread_index = thread_index
 		self.real_actions = RogueBox.get_actions()
-		self.game = RogueBox(flags.env_path, flags.state_generator, flags.reward_generator, flags.steps_per_episode)
+		self.game = RogueBox(flags.env_path, flags.state_generator, flags.reward_generator, flags.steps_per_episode, flags.match_count_for_evaluation)
 
 	def reset(self):
 		if flags.show_best_screenshots or flags.show_all_screenshots:
@@ -47,6 +47,9 @@ class RogueEnvironment(environment.Environment):
 		
 	def get_screen(self):
 		return self.game.get_screen()
+		
+	def get_statistics(self):
+		return self.game.evaluator.statistics()
 		
 	def _save_display(self):
 		self.screenshots.append( self.game.get_screen() )
