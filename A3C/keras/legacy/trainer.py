@@ -11,9 +11,8 @@ from environment.environment import Environment
 from .model import MultiAgentModel
 
 # get command line args
-import options
+from options import flags
 
-flags = options.get()
 
 LOG_INTERVAL = 100
 PERFORMANCE_LOG_INTERVAL = 1000
@@ -126,6 +125,7 @@ class Trainer(object):
             batch["start_lstm_state"][i] = self.local_network.get_agent(i).base_lstm_state_out
 
         states = []
+        situations = []
         action_rewards = []
         actions = []
         rewards = []
@@ -140,12 +140,14 @@ class Trainer(object):
             last_action = self.environment.last_action
             last_reward = self.environment.last_reward
             last_action_reward = self.local_network.concat_action_and_reward(last_action, last_reward)
+            last_situation = self.environment.last_situation
 
-            agent = self.local_network.get_agent(prev_state["situation"])
-            pi_, value_ = agent.run_policy_and_value(sess, prev_state["value"], last_action_reward)
+            agent = self.local_network.get_agent(last_situation)
+            pi_, value_ = agent.run_policy_and_value(sess, prev_state, last_action_reward)
             action = self.choose_action(pi_)
 
             states.append(prev_state)
+            situations.append(last_situation)
             action_rewards.append(last_action_reward)
             actions.append(action)
             values.append(value_)
@@ -154,7 +156,7 @@ class Trainer(object):
                 self.info_logger.info(
                     " actions={}".format(pi_) +
                     " value={}".format(value_) +
-                    " agent={}".format(prev_state["situation"])
+                    " agent={}".format(last_situation)
                 )
 
             # Process game
@@ -197,6 +199,7 @@ class Trainer(object):
 
         actions.reverse()
         states.reverse()
+        situations.reverse()
         rewards.reverse()
         values.reverse()
         action_rewards.reverse()
@@ -204,17 +207,19 @@ class Trainer(object):
         # If we episode was not done we bootstrap the value from the last state
         R = 0.0
         if not terminal_end:
-            agent = self.local_network.get_agent(new_state["situation"])
-            R = agent.run_value(sess, new_state["value"],
+            new_situation = self.environment.last_situation
+            agent = self.local_network.get_agent(new_situation)
+            R = agent.run_value(sess, new_state,
                                 self.local_network.concat_action_and_reward(actions[0], rewards[0]))
 
-        for (action, reward, state, value, action_reward) in zip(actions, rewards, states, values, action_rewards):
+        for (action, reward, state, situation, value, action_reward) in zip(
+                actions, rewards, states, situations, values, action_rewards):
             R = reward + self.gamma * R
             adversarial_reward = R - value
             action_map = np.zeros([self.action_size])
             action_map[action] = 1.0
-            agent_id = state["situation"]
-            batch["states"][agent_id].append(state["value"])
+            agent_id = situation
+            batch["states"][agent_id].append(state)
             batch["action_maps"][agent_id].append(action_map)
             batch["rewards"][agent_id].append(R)
             batch["action_rewards"][agent_id].append(action_reward)

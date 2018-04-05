@@ -18,10 +18,7 @@ MultiAgentModel = Vars['MultiAgentModel']
 from .trainer import Trainer
 from legacy.rmsprop_applier import RMSPropApplier
 
-import options
-
-options.build("training")
-flags = options.get()
+from options import flags
 
 
 def log_uniform(lo, hi, rate):

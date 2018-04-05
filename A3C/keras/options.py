@@ -33,18 +33,18 @@ def build(option_type):
 	"""
 	# Common
 	_flags.DEFINE_boolean("use_gpu", False, "whether to use the GPU")
-	_flags.DEFINE_string("state_generator", "CroppedView_1_StateGenerator", "the state generator must be a classname from rogueinabox/states.py")
-	_flags.DEFINE_string("reward_generator", "ImprovedStairSeeker_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
+	_flags.DEFINE_string("state_generator", "CroppedView_2L_17x17_StateGenerator", "the state generator must be a classname from environment.states or roguelib.states")
+	_flags.DEFINE_string("reward_generator", "ImprovedStairSeeker_RewardGenerator", "the reward generator must be a classname from environment.rewards or roguelib.states")
+	_flags.DEFINE_string("situation_generator", "Stairs_SituationGenerator", "the situation generator must be a classname from environment.situations")
 	
 	_flags.DEFINE_string("env_type", "rogue", "environment type")
-	_flags.DEFINE_string("env_path", "./Rogue/rogue5.4.4-ant-r1.1.4/rogue", "the path where to find the game")
+	_flags.DEFINE_string("env_path", "", "the path where to find the game (empty for default)")
+	_flags.DEFINE_boolean("use_monsters", False, "whether to enable monsters")
 	_flags.DEFINE_string("checkpoint_dir", "./checkpoint", "checkpoint directory")
 	_flags.DEFINE_string("event_dir", "./events", "events directory")
 	_flags.DEFINE_string("log_dir", "./log", "events directory")
 	_flags.DEFINE_boolean("show_best_screenshots", True, "whether to save the best matches")
 	_flags.DEFINE_boolean("show_all_screenshots", False, "whether to save all the matches")
-
-	_flags.DEFINE_string("rogueinabox_path", "./Rogue", "where to find the package") # to remove!
 
 	# For training
 	if option_type == 'training':
