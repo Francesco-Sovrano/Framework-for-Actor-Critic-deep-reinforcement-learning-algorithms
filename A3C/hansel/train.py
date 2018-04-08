@@ -38,7 +38,7 @@ class Application(object):
 		self.reward_logger.addHandler(hdlr) 
 		self.reward_logger.setLevel(logging.DEBUG)
 		self.loaded_checkpoint = False
-		self.global_stats = {}
+		self.global_env = Environment.create_environment(flags.env_type, -1)
 	
 	def train_function(self, parallel_index, preparing):
 		""" Train each environment. """
@@ -47,7 +47,7 @@ class Application(object):
 		if preparing:
 			trainer.prepare()
 			if self.loaded_checkpoint:
-				trainer.stats = self.global_stats
+				trainer.environment.copy_match_history(self.global_env)
 		
 		# set start_time
 		trainer.set_start_time(self.start_time)
@@ -131,7 +131,7 @@ class Application(object):
 		self.load_checkpoint()
 		
 	def build_global_network(self, learning_rate_input):
-		environment = Environment.create_environment(flags.env_type, -1)
+		environment = self.global_env
 		state_shape = environment.get_state_shape()
 		agents_count = environment.get_situations_count()
 		action_size = environment.get_action_size()
@@ -205,9 +205,9 @@ class Application(object):
 
 	def fill_stats(self, sess, matches=200):
 		# plays a number "matches" of games until a terminal state is reached
-		# this is only useful for filling the environment's evaluator statistics
+		# this is only useful for filling the global environment's evaluator statistics
 
-		environment = Environment.create_environment(flags.env_type, -1)
+		environment = self.global_env
 
 		for _ in range(matches):
 			environment.reset()
@@ -229,8 +229,6 @@ class Application(object):
 
 		environment.stop()
 		self.global_network.reset()
-
-		self.global_stats = environment.get_statistics()
 		
 	def signal_handler(self, signal, frame):
 		print('You pressed Ctrl+C!')

@@ -12,6 +12,7 @@ import logging
 import sys
 sys.path.append(flags.rogueinabox_path)
 import numpy as np
+import copy
 
 from environment import environment
 from rogueinabox.box import RogueBox
@@ -31,6 +32,9 @@ class RogueEnvironment(environment.Environment):
 		self.thread_index = thread_index
 		self.real_actions = RogueBox.get_actions()
 		self.game = RogueBox(flags.env_path, flags.state_generator, flags.reward_generator, flags.steps_per_episode, flags.match_count_for_evaluation)
+
+	def copy_match_history(self, environment):
+		self.game.evaluator.episodes = copy.deepcopy(environment.game.evaluator.episodes)
 
 	def reset(self):
 		if flags.show_best_screenshots or flags.show_all_screenshots:

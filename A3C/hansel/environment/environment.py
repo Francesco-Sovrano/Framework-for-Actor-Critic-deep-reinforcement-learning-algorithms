@@ -29,3 +29,6 @@ class Environment(object):
 
 	def stop(self):
 		pass
+
+	def copy_match_history(self, environment):
+		pass
