@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import threading
+import numpy as np
 
 import signal
 import math
@@ -36,6 +37,8 @@ class Application(object):
 		hdlr.setFormatter(formatter)
 		self.reward_logger.addHandler(hdlr) 
 		self.reward_logger.setLevel(logging.DEBUG)
+		self.loaded_checkpoint = False
+		self.global_stats = {}
 	
 	def train_function(self, parallel_index, preparing):
 		""" Train each environment. """
@@ -43,6 +46,8 @@ class Application(object):
 		trainer = self.trainers[parallel_index]
 		if preparing:
 			trainer.prepare()
+			if self.loaded_checkpoint:
+				trainer.stats = self.global_stats
 		
 		# set start_time
 		trainer.set_start_time(self.start_time)
@@ -93,6 +98,8 @@ class Application(object):
 		self.terminate_reqested = False
 		
 		self.build_network()
+		if self.loaded_checkpoint:
+			self.fill_stats(self.sess, matches=flags.match_count_for_evaluation)
 		
 		# summary for tensorboard
 		self.score_input = tf.placeholder(tf.int32)
@@ -154,6 +161,7 @@ class Application(object):
 			with open(wall_t_fname, 'r') as f:
 				self.wall_t = float(f.read())
 				self.next_save_steps = (self.global_t + flags.save_interval_step) // flags.save_interval_step * flags.save_interval_step
+			self.loaded_checkpoint = True
 		else:
 			print("Could not find old checkpoint")
 			# set wall time
@@ -194,6 +202,35 @@ class Application(object):
 					thread = threading.Thread(target=self.train_function, args=(i,False))
 					self.train_threads[i] = thread
 					thread.start()
+
+	def fill_stats(self, sess, matches=200):
+		# plays a number "matches" of games until a terminal state is reached
+		# this is only useful for filling the environment's evaluator statistics
+
+		environment = Environment.create_environment(flags.env_type, -1)
+
+		for _ in range(matches):
+			environment.reset()
+			self.global_network.reset()
+			terminal = False
+
+			while not terminal:
+				prev_state = environment.last_state
+				last_action = environment.last_action
+				last_reward = environment.last_reward
+				last_action_reward = self.global_network.concat_action_and_reward(last_action, last_reward)
+
+				agent = self.global_network.get_agent(prev_state["situation"])
+				pi_, value_ = agent.run_policy_and_value(sess, prev_state["value"], last_action_reward)
+				action = np.random.choice(range(len(pi_)), p=pi_)
+
+				_new_state, _reward, win, lose = environment.process(action)
+				terminal = win or lose
+
+		environment.stop()
+		self.global_network.reset()
+
+		self.global_stats = environment.get_statistics()
 		
 	def signal_handler(self, signal, frame):
 		print('You pressed Ctrl+C!')
