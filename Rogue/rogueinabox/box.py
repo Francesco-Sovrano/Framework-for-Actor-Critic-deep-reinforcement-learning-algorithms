@@ -23,11 +23,8 @@ import pty
 import signal
 import shlex
 import pyte
-import re
 import numpy as np
-import itertools
-import scipy
-import copy
+import time
 
 import rogueinabox.rewards as rewards
 import rogueinabox.states as states
@@ -104,8 +101,12 @@ class RogueBox:
 		# wait until the rogue spawns
 		self.screen = self.get_empty_screen()
 		self._update_screen()
+		# max_iter = 1000
 		while self.game_over(self.screen):
 			self._update_screen()
+			# max_iter -= 1
+			# if max_iter == 0:
+				# raise ValueError('Possible deadlock')
 		
 		# we move the rogue (up, down, left, right) to be able to know what is the tile below it
 		actions = RogueBox.get_actions()
@@ -128,6 +129,7 @@ class RogueBox:
 		
 	def _update_screen(self):
 		"""update the virtual screen and the class variable"""
+		time.sleep(.001) # sleep for a while, no need for an active wait
 		update = self.pipe.read(65536)
 		if update:
 			self.terminal.feed(update)
@@ -213,7 +215,9 @@ class RogueBox:
 		"""send a command to rogue"""
 		old_screen = self.screen
 		self.pipe.write(command.encode())
+		self.pipe.write('\x12'.encode()) # workaround to fully refresh the screen output
 		new_screen = old_screen
+		# max_iter = 1000
 		while old_screen[-1] == new_screen[-1]: # after a command execution, the new screen is always different from the old one
 			# print (self.screen[-1])
 			self._update_screen()
@@ -221,14 +225,15 @@ class RogueBox:
 				self._dismiss_message()
 				self._update_screen()
 			new_screen = self.screen
+			# max_iter -= 1
+			# if max_iter == 0:
+				# raise ValueError('Possible deadlock')
 		
 		lose = self.game_over(new_screen)
 		if not lose:
-			if not self.frame_info:
-				self.frame_info.append( self.parser.parse_screen( old_screen ) )
-			self.frame_info.append( self.parser.parse_screen( new_screen ) )
-			self.reward = self.compute_reward( self.frame_info ) # use last frame history
-			self.state = self.compute_state( self.frame_info[-1] ) # use last frame info
+			self.frame_info.append(self.parser.parse_screen(new_screen))
+			self.reward = self.compute_reward(self.frame_info) # use last frame history
+			self.state = self.compute_state(self.frame_info[-1]) # use last frame info
 			
 			self.step_count += 1
 			self.episode_reward += self.reward

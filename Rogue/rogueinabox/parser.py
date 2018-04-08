@@ -74,11 +74,9 @@ class RogueParser:
 		# get statusbar
 		new_statusbar = self.build_statusbar(screen)
 		# get new level
-		new_level = new_statusbar ["dungeon_level"]
+		new_level = new_statusbar ["dungeon_level"] if not new_statusbar["is_empty"] else 1
 		# get old level
-		old_level = 1
-		if self.last_info:
-			old_level = self.last_info.statusbar ["dungeon_level"]
+		old_level = self.last_info.statusbar ["dungeon_level"] if self.last_info and not self.last_info.statusbar ["is_empty"] else 1
 			
 		# check whether the environment has changed -> the environment cannot change unless the player has reached a new level
 		if new_level > old_level: # has reached a new level
@@ -91,24 +89,25 @@ class RogueParser:
 		self.pixel["monsters"] = self.build_type_dict("monsters")
 		self.pixel["items"] = self.build_type_dict("items")
 
-		# populate the info dictionary
-		# file = open( '/public/francesco_sovrano/parser_debug_info.log',"w") 
-		for x, j in itertools.product(range(1, 23), range(80)):
-			pixel = screen[x][j]
-			i = x-1 # The internal map has a different size and it is 22x80, on the other hand the screen is 24x80. The first and the last screen line contains useless metadata
-			if pixel in self.rogue_dict["environment"]: # immobile environment
-				# file.write( self.environment_map[i][j] )
-				if str(self.environment_map[i][j]) == ' ': # once initialised, there is no need to re-initialise it again because the environment is immobile
-					# file.write( pixel )
-					self.environment_map[i][j] = pixel
-					self.environment_dict[pixel].append((i,j))
-			elif pixel in self.rogue_dict["items"]: # items
-				self.pixel["items"][pixel].append((i,j))
-			elif pixel in self.rogue_dict["agents"]: # agents
-				self.pixel["agents"][pixel].append((i,j))
-			elif pixel in self.rogue_dict["monsters"]: # monsters
-				self.pixel["monsters"][pixel].append((i,j))
-		# file.close() 
+		if not new_statusbar["is_empty"]:
+			# populate the info dictionary
+			# file = open( '/public/francesco_sovrano/parser_debug_info.log',"w") 
+			for x, j in itertools.product(range(1, 23), range(80)):
+				pixel = screen[x][j]
+				i = x-1 # The internal map has a different size and it is 22x80, on the other hand the screen is 24x80. The first and the last screen line contains useless metadata
+				if pixel in self.rogue_dict["environment"]: # immobile environment
+					# file.write( self.environment_map[i][j] )
+					if str(self.environment_map[i][j]) == ' ': # once initialised, there is no need to re-initialise it again because the environment is immobile
+						# file.write( pixel )
+						self.environment_map[i][j] = pixel
+						self.environment_dict[pixel].append((i,j))
+				elif pixel in self.rogue_dict["items"]: # items
+					self.pixel["items"][pixel].append((i,j))
+				elif pixel in self.rogue_dict["agents"]: # agents
+					self.pixel["agents"][pixel].append((i,j))
+				elif pixel in self.rogue_dict["monsters"]: # monsters
+					self.pixel["monsters"][pixel].append((i,j))
+			# file.close() 
 		
 		self.pixel["environment"] = copy.deepcopy( self.environment_dict ) # deepcopy required
 		self.last_info = RogueFrameInfo( pixel = self.pixel, map = copy.deepcopy( self.environment_map ), statusbar = new_statusbar, screen = screen )

@@ -294,3 +294,29 @@ class CroppedView_1b_2L_StateGenerator(CroppedView_StateGenerator): # 4 situatio
 		if self.environment_tiles_are_in_position_range(info, "|-", self.player_position, 1): # situation 2
 			return state, 2
 		return state, 3
+		
+class CroppedView_1b_3L_StateGenerator(CroppedView_StateGenerator): # 4 situations
+	def _set_shape(self):
+		self._shape = (17, 17, 3) # [heigth, width, channel]
+
+	def _set_situations_count(self):
+		self._situations = 4
+		
+	def build_state(self, info):
+		state = self.empty_state()
+		state = self.set_channel(1, self.player_position, state, info.get_list_of_positions_by_tile("%"), 4) # stairs
+		state = self.set_channel(2, self.player_position, state, info.get_list_of_positions_by_tile("|"), 8) # walls
+		state = self.set_channel(2, self.player_position, state, info.get_list_of_positions_by_tile("-"), 8) # walls
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("+"), 16) # doors
+		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
+			
+		pixel = info.get_tile_below_player()
+		if pixel == '#': # situation 0
+			return state, 0
+			
+		if info.get_tile_count("%") > 0: # situation 1
+			return state, 1
+
+		if self.environment_tiles_are_in_position_range(info, "|-", self.player_position, 1): # situation 2
+			return state, 2
+		return state, 3

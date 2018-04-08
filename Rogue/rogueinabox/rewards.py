@@ -33,6 +33,8 @@ class RewardGenerator(ABC):
 		self.default_reward = 0
 
 	def compute_reward(self, frame_history):
+		if len(frame_history) < 2:
+			return self.default_reward
 		new_info = frame_history[-1]
 		old_info = frame_history[-2]
 		if old_info.has_statusbar() and new_info.has_statusbar():
@@ -160,16 +162,20 @@ class StairSeeker_RewardGenerator(RewardGenerator):
 class ImprovedStairSeeker_RewardGenerator(StairSeeker_RewardGenerator):
 
 	def get_value (self, old_info, new_info):
-		if old_info.get_tile_below_player() == '+' and new_info.get_tile_count("#") > old_info.get_tile_count("#"): # has started to explore
+		if old_info.get_tile_below_player() == '+' and new_info.get_tile_count("#") > old_info.get_tile_count("#"): # has opened a new door
 			return 1
 		return super().get_value(old_info, new_info)
 		
-class ImprovedStairSeeker2_RewardGenerator(StairSeeker_RewardGenerator):
+class ImprovedStairSeeker_2_RewardGenerator(StairSeeker_RewardGenerator):
 
 	def get_value (self, old_info, new_info):
-		if old_info.get_tile_below_player() == '+' and new_info.get_tile_count("#") > old_info.get_tile_count("#"): # has started to explore
-			return 1
-		if new_info.statusbar["dungeon_level"] > old_info.statusbar["dungeon_level"]:
-			self.goal_achieved = True
-			return 100
+		if old_info.get_tile_below_player() == '+' and new_info.get_tile_count("#") > old_info.get_tile_count("#"): # has opened a new door
+			return 0.5
+		return super().get_value(old_info, new_info)
+		
+class ImprovedStairSeeker_3_RewardGenerator(StairSeeker_RewardGenerator):
+
+	def get_value (self, old_info, new_info):
+		if old_info.get_tile_below_player() == '+' and new_info.get_tile_count("#") > old_info.get_tile_count("#"): # has opened a new door
+			return 0.25
 		return super().get_value(old_info, new_info)

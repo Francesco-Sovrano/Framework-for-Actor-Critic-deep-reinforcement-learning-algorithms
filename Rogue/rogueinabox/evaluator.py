@@ -30,22 +30,22 @@ class RogueEvaluator:
 	
 	def statistics(self): # O(self.match_count_for_evaluation)
 		result = {}
-		result["win_perc"] = 0
-		result["reward_avg"] = 0
-		result["tiles_avg"] = 0
-		result["steps_avg"] = 0
+		result["accuracy"] = 0
+		result["avg_reward"] = 0
+		result["avg_tiles"] = 0
+		result["avg_steps"] = 0
 		
-		count = min(len(self.episodes), self.match_count_for_evaluation)
+		count = len(self.episodes)
 		if count>0:
 			for e in self.episodes:
 				if e.has_won:
-					result["win_perc"] += 1
-					result["steps_avg"] += e.step
-				result["reward_avg"] += e.reward
-				result["tiles_avg"] += e.info.get_known_tiles_count()
-			result["win_perc"] /= count
-			result["reward_avg"] /= count
-			result["tiles_avg"] /= count
-			result["steps_avg"] /= count
+					result["accuracy"] += 1
+					result["avg_steps"] += e.step
+				result["avg_reward"] += e.reward
+				result["avg_tiles"] += e.info.get_known_tiles_count()
+			result["accuracy"] /= count
+			result["avg_reward"] /= count
+			result["avg_tiles"] /= count
+			result["avg_steps"] /= count
 		return result
 		
