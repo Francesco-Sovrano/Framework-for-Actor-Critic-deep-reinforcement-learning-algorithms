@@ -105,7 +105,7 @@ class RogueBox:
 		while self.game_over(self.screen):
 			self._update_screen()
 			max_iter -= 1
-			if max_iter == 0:
+			if max_iter <= 0:
 				# raise ValueError('Possible deadlock')
 				print('Reset episode due to possible deadlock')
 				return self.reset()
@@ -229,7 +229,7 @@ class RogueBox:
 				max_iter -= 1
 			new_screen = self.screen
 			max_iter -= 1
-			if max_iter == 0:
+			if max_iter <= 0:
 				raise ValueError('Possible deadlock')
 		
 		lose = self.game_over(new_screen)
