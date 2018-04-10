@@ -9,6 +9,8 @@ flags = options.get()
 
 import datetime
 import logging
+import os
+import pickle
 import sys
 sys.path.append(flags.rogueinabox_path)
 import numpy as np
@@ -33,8 +35,17 @@ class RogueEnvironment(environment.Environment):
 		self.real_actions = RogueBox.get_actions()
 		self.game = RogueBox(flags.env_path, flags.state_generator, flags.reward_generator, flags.steps_per_episode, flags.match_count_for_evaluation)
 
-	def copy_match_history(self, environment):
-		self.game.evaluator.episodes = copy.deepcopy(environment.game.evaluator.episodes)
+	def _episodes_path(self, checkpoint_dir, global_t):
+		return os.path.join(checkpoint_dir, 'episodes', 'episodes-%s-%s.pkl' % (self.thread_index, global_t))
+
+	def save_episodes(self, checkpoint_dir, global_t):
+		os.makedirs(os.path.join(checkpoint_dir, 'episodes'), exist_ok=True)
+		with open(self._episodes_path(checkpoint_dir, global_t), mode='wb') as pkfile:
+			pickle.dump(self.game.evaluator.episodes, pkfile)
+
+	def restore_episodes(self, checkpoint_dir, global_t):
+		with open(self._episodes_path(checkpoint_dir, global_t), mode='rb') as pkfile:
+			self.game.evaluator.episodes = pickle.load(pkfile)
 
 	def reset(self):
 		if flags.show_best_screenshots or flags.show_all_screenshots:

@@ -30,5 +30,8 @@ class Environment(object):
 	def stop(self):
 		pass
 
-	def copy_match_history(self, environment):
+	def save_episodes(self, checkpoint_dir, global_t):
+		pass
+
+	def restore_episodes(self, checkpoint_dir, global_t):
 		pass

@@ -37,7 +37,6 @@ class Application(object):
 		hdlr.setFormatter(formatter)
 		self.reward_logger.addHandler(hdlr) 
 		self.reward_logger.setLevel(logging.DEBUG)
-		self.loaded_checkpoint = False
 		self.global_env = Environment.create_environment(flags.env_type, -1)
 	
 	def train_function(self, parallel_index, preparing):
@@ -46,8 +45,6 @@ class Application(object):
 		trainer = self.trainers[parallel_index]
 		if preparing:
 			trainer.prepare()
-			if self.loaded_checkpoint:
-				trainer.environment.copy_match_history(self.global_env)
 		
 		# set start_time
 		trainer.set_start_time(self.start_time)
@@ -98,8 +95,6 @@ class Application(object):
 		self.terminate_reqested = False
 		
 		self.build_network()
-		if self.loaded_checkpoint:
-			self.fill_stats(self.sess, matches=flags.match_count_for_evaluation)
 		
 		# summary for tensorboard
 		self.score_input = tf.placeholder(tf.int32)
@@ -156,12 +151,15 @@ class Application(object):
 			# set global step
 			self.global_t = int(tokens[1])
 			print(">>> global step set: ", self.global_t)
+			# load episodes for stats
+			for t in self.trainers:
+				t.environment.restore_episodes(flags.checkpoint_dir, self.global_t)
+				t.stats = t.environment.get_statistics()
 			# set wall time
 			wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_t)
 			with open(wall_t_fname, 'r') as f:
 				self.wall_t = float(f.read())
 				self.next_save_steps = (self.global_t + flags.save_interval_step) // flags.save_interval_step * flags.save_interval_step
-			self.loaded_checkpoint = True
 		else:
 			print("Could not find old checkpoint")
 			# set wall time
@@ -182,6 +180,10 @@ class Application(object):
 		# Save
 		if not os.path.exists(flags.checkpoint_dir):
 			os.mkdir(flags.checkpoint_dir)
+
+		# save episodes for stats
+		for t in self.trainers:
+			t.environment.save_episodes(flags.checkpoint_dir, self.global_t)
 	
 		# Write wall time
 		wall_t = time.time() - self.start_time
@@ -202,33 +204,6 @@ class Application(object):
 					thread = threading.Thread(target=self.train_function, args=(i,False))
 					self.train_threads[i] = thread
 					thread.start()
-
-	def fill_stats(self, sess, matches=200):
-		# plays a number "matches" of games until a terminal state is reached
-		# this is only useful for filling the global environment's evaluator statistics
-
-		environment = self.global_env
-
-		for _ in range(matches):
-			environment.reset()
-			self.global_network.reset()
-			terminal = False
-
-			while not terminal:
-				prev_state = environment.last_state
-				last_action = environment.last_action
-				last_reward = environment.last_reward
-				last_action_reward = self.global_network.concat_action_and_reward(last_action, last_reward)
-
-				agent = self.global_network.get_agent(prev_state["situation"])
-				pi_, value_ = agent.run_policy_and_value(sess, prev_state["value"], last_action_reward)
-				action = np.random.choice(range(len(pi_)), p=pi_)
-
-				_new_state, _reward, win, lose = environment.process(action)
-				terminal = win or lose
-
-		environment.stop()
-		self.global_network.reset()
 		
 	def signal_handler(self, signal, frame):
 		print('You pressed Ctrl+C!')
