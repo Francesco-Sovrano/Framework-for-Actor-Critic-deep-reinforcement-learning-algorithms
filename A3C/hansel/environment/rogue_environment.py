@@ -13,6 +13,7 @@ import os
 import pickle
 import sys
 import collections
+import warnings
 sys.path.append(flags.rogueinabox_path)
 import numpy as np
 import copy
@@ -54,8 +55,12 @@ class RogueEnvironment(environment.Environment):
 			os.unlink(old_path)
 
 	def restore_episodes(self, checkpoint_dir, global_t):
-		with open(self._episodes_path(checkpoint_dir, global_t), mode='rb') as pkfile:
-			self.game.evaluator.episodes = pickle.load(pkfile)
+		path = self._episodes_path(checkpoint_dir, global_t)
+		try:
+			with open(path, mode='rb') as pkfile:
+				self.game.evaluator.episodes = pickle.load(pkfile)
+		except FileNotFoundError:
+			warnings.warn('Episodes file %s not found: stats may be skewed.' % path)
 
 	def reset(self):
 		if flags.show_best_screenshots or flags.show_all_screenshots:
