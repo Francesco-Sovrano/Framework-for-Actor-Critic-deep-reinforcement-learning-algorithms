@@ -101,12 +101,14 @@ class RogueBox:
 		# wait until the rogue spawns
 		self.screen = self.get_empty_screen()
 		self._update_screen()
-		# max_iter = 1000
+		max_iter = 1000
 		while self.game_over(self.screen):
 			self._update_screen()
-			# max_iter -= 1
-			# if max_iter == 0:
+			max_iter -= 1
+			if max_iter <= 0:
 				# raise ValueError('Possible deadlock')
+				print('Reset episode due to possible deadlock')
+				return self.reset()
 		
 		# we move the rogue (up, down, left, right) to be able to know what is the tile below it
 		actions = RogueBox.get_actions()
@@ -215,19 +217,20 @@ class RogueBox:
 		"""send a command to rogue"""
 		old_screen = self.screen
 		self.pipe.write(command.encode())
-		self.pipe.write('\x12'.encode()) # workaround to fully refresh the screen output
+		# self.pipe.write('\x12'.encode()) # workaround to fully refresh the screen output
 		new_screen = old_screen
-		# max_iter = 1000
+		max_iter = 1000
 		while old_screen[-1] == new_screen[-1]: # after a command execution, the new screen is always different from the old one
 			# print (self.screen[-1])
 			self._update_screen()
-			while self._need_to_dismiss(): # will dismiss all upcoming messages
+			while max_iter>0 and self._need_to_dismiss(): # will dismiss all upcoming messages
 				self._dismiss_message()
 				self._update_screen()
+				max_iter -= 1
 			new_screen = self.screen
-			# max_iter -= 1
-			# if max_iter == 0:
-				# raise ValueError('Possible deadlock')
+			max_iter -= 1
+			if max_iter <= 0:
+				raise ValueError('Possible deadlock')
 		
 		lose = self.game_over(new_screen)
 		if not lose:
