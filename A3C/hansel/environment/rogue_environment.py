@@ -52,7 +52,11 @@ class RogueEnvironment(environment.Environment):
 		self._saved_episodes.append(path)
 		if len(self._saved_episodes) > EPISODES_TO_KEEP:
 			old_path = self._saved_episodes.popleft()
-			os.unlink(old_path)
+			try:
+				os.unlink(old_path)
+			except FileNotFoundError:
+				warnings.warn('Attempting to delete unexisting episodes file %s: it was removed by an external program.'
+							  % old_path, RuntimeWarning)
 
 	def restore_episodes(self, checkpoint_dir, global_t):
 		path = self._episodes_path(checkpoint_dir, global_t)
@@ -60,7 +64,7 @@ class RogueEnvironment(environment.Environment):
 			with open(path, mode='rb') as pkfile:
 				self.game.evaluator.episodes = pickle.load(pkfile)
 		except FileNotFoundError:
-			warnings.warn('Episodes file %s not found: stats may be skewed.' % path)
+			warnings.warn('Episodes file %s not found: stats may be skewed.' % path, RuntimeWarning)
 
 	def reset(self):
 		if flags.show_best_screenshots or flags.show_all_screenshots:
