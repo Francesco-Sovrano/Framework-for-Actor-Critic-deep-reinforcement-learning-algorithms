@@ -27,7 +27,7 @@ def build(option_type):
 
 	# For training
 	if option_type == 'training':
-		tf.app.flags.DEFINE_integer("parallel_size", 2, "parallel thread size")
+		tf.app.flags.DEFINE_integer("parallel_size", 16, "parallel thread size")
 		tf.app.flags.DEFINE_integer("steps_per_episode", 500, "number of maximum actions execution per episode")
 		tf.app.flags.DEFINE_integer("match_count_for_evaluation", 200, "number of matches used for evaluation scores")
 		tf.app.flags.DEFINE_integer("local_t_max", 60, "repeat step size")

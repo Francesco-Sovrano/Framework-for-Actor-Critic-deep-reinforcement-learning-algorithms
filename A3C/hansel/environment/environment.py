@@ -94,3 +94,9 @@ class Environment(ABC):
 	@abstractmethod
 	def stop(self):
 		pass
+
+	def save_episodes(self, checkpoint_dir, global_t):
+		pass
+
+	def restore_episodes(self, checkpoint_dir, global_t):
+		pass

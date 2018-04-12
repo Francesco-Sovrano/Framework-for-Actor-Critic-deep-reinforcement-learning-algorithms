@@ -7,11 +7,19 @@ from __future__ import print_function
 import options
 flags = options.get()
 
+import os
+import pickle
+import collections
+import warnings
+
 from environment import environment
 from .situations import rogue_situations
 from .rewards import rogue_rewards
 from .states import rogue_states
 from roguelib_module.rogueinabox import RogueBox
+
+
+EPISODES_TO_KEEP = 5
 
 
 class RogueEnvironment(environment.Environment):
@@ -25,6 +33,7 @@ class RogueEnvironment(environment.Environment):
 		super().__init__()
 		self.thread_index = thread_index
 		self.real_actions = RogueBox.get_actions()
+		self._saved_episodes = collections.deque()
 		self.game = RogueBox(game_exe_path=flags.env_path or None,
 							 use_monsters=flags.use_monsters,
 							 max_step_count=flags.steps_per_episode,
@@ -36,6 +45,31 @@ class RogueEnvironment(environment.Environment):
 
 	def _create_situation_generator(self):
 		return self._instantiate_from_module(rogue_situations, flags.situation_generator, on_exc_return_name=False)
+
+	def _episodes_path(self, checkpoint_dir, global_t):
+		return os.path.join(checkpoint_dir, 'episodes', 'episodes-%s-%s.pkl' % (self.thread_index, global_t))
+
+	def save_episodes(self, checkpoint_dir, global_t):
+		os.makedirs(os.path.join(checkpoint_dir, 'episodes'), exist_ok=True)
+		path = self._episodes_path(checkpoint_dir, global_t)
+		with open(path, mode='wb') as pkfile:
+			pickle.dump(self.game.evaluator.episodes, pkfile)
+		self._saved_episodes.append(path)
+		if len(self._saved_episodes) > EPISODES_TO_KEEP:
+			old_path = self._saved_episodes.popleft()
+			try:
+				os.unlink(old_path)
+			except FileNotFoundError:
+				warnings.warn('Attempting to delete unexisting episodes file %s: it was removed by an external program.'
+							  % old_path, RuntimeWarning)
+
+	def restore_episodes(self, checkpoint_dir, global_t):
+		path = self._episodes_path(checkpoint_dir, global_t)
+		try:
+			with open(path, mode='rb') as pkfile:
+				self.game.evaluator.episodes = pickle.load(pkfile)
+		except FileNotFoundError:
+			warnings.warn('Episodes file %s not found: stats may be skewed.' % path, RuntimeWarning)
 
 	def reset(self):
 		super().reset()

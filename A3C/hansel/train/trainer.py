@@ -239,5 +239,4 @@ class Trainer(object):
 				self._print_log(global_t)
 
 		# Return advanced local step size
-		diff_local_t = self.local_t - start_local_t
-		return diff_local_t
+		return self.local_t - start_local_t

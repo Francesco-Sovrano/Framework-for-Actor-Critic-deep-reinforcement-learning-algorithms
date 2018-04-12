@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import threading
+import numpy as np
 
 import signal
 import math
@@ -36,6 +37,7 @@ class Application(object):
 		hdlr.setFormatter(formatter)
 		self.reward_logger.addHandler(hdlr) 
 		self.reward_logger.setLevel(logging.DEBUG)
+		self.global_env = Environment.create_environment(flags.env_type, -1)
 	
 	def train_function(self, parallel_index, preparing):
 		""" Train each environment. """
@@ -124,7 +126,7 @@ class Application(object):
 		self.load_checkpoint()
 		
 	def build_global_network(self, learning_rate_input):
-		environment = Environment.create_environment(flags.env_type, -1)
+		environment = self.global_env
 		state_shape = environment.get_state_shape()
 		agents_count = environment.get_situations_count()
 		action_size = environment.get_action_size()
@@ -149,6 +151,10 @@ class Application(object):
 			# set global step
 			self.global_t = int(tokens[1])
 			print(">>> global step set: ", self.global_t)
+			# load episodes for stats
+			for t in self.trainers:
+				t.environment.restore_episodes(flags.checkpoint_dir, self.global_t)
+				t.stats = t.environment.get_statistics()
 			# set wall time
 			wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_t)
 			with open(wall_t_fname, 'r') as f:
@@ -174,6 +180,10 @@ class Application(object):
 		# Save
 		if not os.path.exists(flags.checkpoint_dir):
 			os.mkdir(flags.checkpoint_dir)
+
+		# save episodes for stats
+		for t in self.trainers:
+			t.environment.save_episodes(flags.checkpoint_dir, self.global_t)
 	
 		# Write wall time
 		wall_t = time.time() - self.start_time
