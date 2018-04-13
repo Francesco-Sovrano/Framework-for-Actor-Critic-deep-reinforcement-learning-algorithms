@@ -151,7 +151,10 @@ class Application(object):
 			# set global step
 			self.global_t = int(tokens[1])
 			print(">>> global step set: ", self.global_t)
+			# load episodes for stats
 			for t in self.trainers:
+				t.environment.restore_episodes(flags.checkpoint_dir, self.global_t)
+				t.stats = t.environment.get_statistics()
 			# set wall time
 			wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_t)
 			with open(wall_t_fname, 'r') as f:
