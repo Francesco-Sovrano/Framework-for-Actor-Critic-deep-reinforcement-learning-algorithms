@@ -151,6 +151,7 @@ class Application(object):
 			# set global step
 			self.global_t = int(tokens[1])
 			print(">>> global step set: ", self.global_t)
+			for t in self.trainers:
 			# set wall time
 			wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_t)
 			with open(wall_t_fname, 'r') as f:
@@ -176,6 +177,10 @@ class Application(object):
 		# Save
 		if not os.path.exists(flags.checkpoint_dir):
 			os.mkdir(flags.checkpoint_dir)
+
+		# save episodes for stats
+		for t in self.trainers:
+			t.environment.save_episodes(flags.checkpoint_dir, self.global_t)
 	
 		# Write wall time
 		wall_t = time.time() - self.start_time

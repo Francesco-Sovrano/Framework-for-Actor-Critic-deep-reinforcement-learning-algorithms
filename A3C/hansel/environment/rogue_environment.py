@@ -9,13 +9,20 @@ flags = options.get()
 
 import datetime
 import logging
+import os
+import pickle
 import sys
+import collections
+import warnings
 sys.path.append(flags.rogueinabox_path)
 import numpy as np
 import copy
 
 from environment import environment
 from rogueinabox.box import RogueBox
+
+EPISODES_TO_KEEP = 5
+
 
 class RogueEnvironment(environment.Environment):
 	def get_action_size(self):
@@ -31,10 +38,33 @@ class RogueEnvironment(environment.Environment):
 		environment.Environment.__init__(self)
 		self.thread_index = thread_index
 		self.real_actions = RogueBox.get_actions()
+		self._saved_episodes = collections.deque()
 		self.game = RogueBox(flags.env_path, flags.state_generator, flags.reward_generator, flags.steps_per_episode, flags.match_count_for_evaluation)
 
-	def copy_match_history(self, environment):
-		self.game.evaluator.episodes = copy.deepcopy(environment.game.evaluator.episodes)
+	def _episodes_path(self, checkpoint_dir, global_t):
+		return os.path.join(checkpoint_dir, 'episodes', 'episodes-%s-%s.pkl' % (self.thread_index, global_t))
+
+	def save_episodes(self, checkpoint_dir, global_t):
+		os.makedirs(os.path.join(checkpoint_dir, 'episodes'), exist_ok=True)
+		path = self._episodes_path(checkpoint_dir, global_t)
+		with open(path, mode='wb') as pkfile:
+			pickle.dump(self.game.evaluator.episodes, pkfile)
+		self._saved_episodes.append(path)
+		if len(self._saved_episodes) > EPISODES_TO_KEEP:
+			old_path = self._saved_episodes.popleft()
+			try:
+				os.unlink(old_path)
+			except FileNotFoundError:
+				warnings.warn('Attempting to delete unexisting episodes file %s: it was removed by an external program.'
+							  % old_path, RuntimeWarning)
+
+	def restore_episodes(self, checkpoint_dir, global_t):
+		path = self._episodes_path(checkpoint_dir, global_t)
+		try:
+			with open(path, mode='rb') as pkfile:
+				self.game.evaluator.episodes = pickle.load(pkfile)
+		except FileNotFoundError:
+			warnings.warn('Episodes file %s not found: stats may be skewed.' % path, RuntimeWarning)
 
 	def reset(self):
 		if flags.show_best_screenshots or flags.show_all_screenshots:
