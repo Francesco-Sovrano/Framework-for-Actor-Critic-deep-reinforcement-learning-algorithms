@@ -185,7 +185,7 @@ class Trainer(object):
 				break
 
 		R = 0.0
-		if not win: # bootstrap if episode has not been won
+		if not (win or lose): # bootstrap if episode is not terminated
 			agent = self.local_network.get_agent(new_state["situation"])
 			R = agent.run_value(sess, new_state["value"], self.local_network.concat_action_and_reward(actions[0], rewards[0]))
 			

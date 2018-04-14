@@ -12,7 +12,7 @@ def build(option_type):
 	"""
 	# Common
 	tf.app.flags.DEFINE_boolean("use_gpu", False, "whether to use the GPU")
-	tf.app.flags.DEFINE_string("state_generator", "CroppedView_1b_2L_StateGenerator", "the state generator must be a classname from rogueinabox/states.py")
+	tf.app.flags.DEFINE_string("state_generator", "CroppedView_2b_2L_StateGenerator", "the state generator must be a classname from rogueinabox/states.py")
 	tf.app.flags.DEFINE_string("reward_generator", "ImprovedStairSeeker_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
 	
 	tf.app.flags.DEFINE_string("env_type", "rogue", "environment type")

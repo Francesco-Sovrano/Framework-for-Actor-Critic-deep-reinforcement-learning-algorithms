@@ -180,7 +180,7 @@ class Application(object):
 		# Save
 		if not os.path.exists(flags.checkpoint_dir):
 			os.mkdir(flags.checkpoint_dir)
-
+	
 		# save episodes for stats
 		for t in self.trainers:
 			t.environment.save_episodes(flags.checkpoint_dir, self.global_t)
