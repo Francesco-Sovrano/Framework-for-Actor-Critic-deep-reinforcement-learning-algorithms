@@ -197,11 +197,7 @@ class Trainer(object):
 		self.local_network.set_weights(self.global_weights)
 
 		# Create batch by playing
-		try:
-			batch_base = self._process_base(global_t)
-		except:
-			self.prepare()
-			return 0
+		batch_base = self._process_base(global_t)
 			
 		# Train networks for each situation on the batch
 		for i in range(self.local_network.agent_count):
