@@ -12,9 +12,8 @@ def build(option_type):
 	"""
 	# Common
 	tf.app.flags.DEFINE_boolean("use_gpu", False, "whether to use the GPU")
-	tf.app.flags.DEFINE_string("state_generator", "CroppedView_2L_17x17_StateGenerator", "the state generator must be a classname from environment.states or roguelib.states")
+	tf.app.flags.DEFINE_string("state_generator", "CroppedView_2b_2L_StateGenerator", "the state generator must be a classname from environment.states or roguelib.states")
 	tf.app.flags.DEFINE_string("reward_generator", "ImprovedStairSeeker_RewardGenerator", "the reward generator must be a classname from environment.rewards or roguelib.states")
-	tf.app.flags.DEFINE_string("situation_generator", "Stairs_SituationGenerator", "the situation generator must be a classname from environment.situations")
 	
 	tf.app.flags.DEFINE_string("env_type", "rogue", "environment type")
 	tf.app.flags.DEFINE_string("env_path", "", "the path where to find the game (empty for default)")
