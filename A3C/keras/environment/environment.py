@@ -28,7 +28,6 @@ class Environment(ABC):
 		raise ValueError('unknown environment type "%s"' % env_type)
 
 	def __init__(self):
-		self._situation_generator = self._create_situation_generator()
 		self.last_state = None
 		self.last_action = None
 		self.last_reward = None
@@ -54,23 +53,8 @@ class Environment(ABC):
 			raise ValueError('no class named "%s" was found in module %s' % (cls_name, module.__name__))
 		return getattr(module, cls_name)()
 
-	@abstractmethod
-	def _create_situation_generator(self):
-		"""Creates and returns a situation generator
-
-		:rtype: situations.SituationGenerator
-		"""
-		pass
-
-	def get_situation_generator(self):
-		"""Returns the environment's situation generator
-
-		:rtype: SituationGenerator
-		"""
-		return self._situation_generator
-
 	def get_situations_count(self):
-		return self._situation_generator.situations_count()
+		return 1
 
 	@abstractmethod
 	def get_action_size(self):
@@ -88,9 +72,16 @@ class Environment(ABC):
 	def process(self, action):
 		pass
 
+	@abstractmethod
 	def reset(self):
-		self._situation_generator.reset()
+		pass
 
 	@abstractmethod
 	def stop(self):
+		pass
+
+	def save_episodes(self, checkpoint_dir, global_t):
+		pass
+
+	def restore_episodes(self, checkpoint_dir, global_t):
 		pass

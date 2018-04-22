@@ -79,7 +79,7 @@ class RogueEnvironment(environment.Environment):
 
 	def stop(self):
 		self.game.stop()
-
+		
 	def _process_frame(self, action):
 		return self.game.send_command(action)
 

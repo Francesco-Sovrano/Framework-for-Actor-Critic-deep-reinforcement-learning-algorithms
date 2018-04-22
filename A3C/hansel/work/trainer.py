@@ -9,7 +9,7 @@ import numpy as np
 import time
 
 from environment.environment import Environment
-from model.model import MultiAgentModel
+from model.multi_agent_model import MultiAgentModel
 
 # get command line args
 import options
@@ -184,9 +184,8 @@ class Trainer(object):
 				self.prepare()
 				break
 
-		# If we episode was not done we bootstrap the value from the last state
 		R = 0.0
-		if not (win or lose):
+		if not (win or lose): # bootstrap if episode is not terminated
 			agent = self.local_network.get_agent(new_state["situation"])
 			R = agent.run_value(sess, new_state["value"], self.local_network.concat_action_and_reward(actions[0], rewards[0]))
 			
@@ -214,6 +213,7 @@ class Trainer(object):
 
 		# Build feed dictionary
 		batch_base = self._process_base(sess, global_t, summary_writer, summary_op, score_input)
+
 		# Pupulate the feed dictionary
 		for i in range(self.local_network.agent_count):
 			if len(batch_base["states"][i]) > 0:

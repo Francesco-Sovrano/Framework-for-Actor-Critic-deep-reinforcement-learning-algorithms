@@ -7,11 +7,18 @@ from __future__ import print_function
 import options
 flags = options.get()
 
+import os
+import pickle
+import collections
+import warnings
+
 from environment import environment
-from .situations import rogue_situations
 from .rewards import rogue_rewards
 from .states import rogue_states
 from roguelib_module.rogueinabox import RogueBox
+
+
+EPISODES_TO_KEEP = 5
 
 
 class RogueEnvironment(environment.Environment):
@@ -21,10 +28,14 @@ class RogueEnvironment(environment.Environment):
 	def get_state_shape(self):
 		return self.game.state_generator.get_shape()
 
+	def get_situations_count(self):
+		return self.game.state_generator._situations
+
 	def __init__(self, thread_index):
 		super().__init__()
 		self.thread_index = thread_index
 		self.real_actions = RogueBox.get_actions()
+		self._saved_episodes = collections.deque()
 		self.game = RogueBox(game_exe_path=flags.env_path or None,
 							 use_monsters=flags.use_monsters,
 							 max_step_count=flags.steps_per_episode,
@@ -34,21 +45,41 @@ class RogueEnvironment(environment.Environment):
 							 refresh_after_commands=False,
 							 move_rogue=True)
 
-	def _create_situation_generator(self):
-		return self._instantiate_from_module(rogue_situations, flags.situation_generator, on_exc_return_name=False)
+	def _episodes_path(self, checkpoint_dir, global_t):
+		return os.path.join(checkpoint_dir, 'episodes', 'episodes-%s-%s.pkl' % (self.thread_index, global_t))
+
+	def save_episodes(self, checkpoint_dir, global_t):
+		os.makedirs(os.path.join(checkpoint_dir, 'episodes'), exist_ok=True)
+		path = self._episodes_path(checkpoint_dir, global_t)
+		with open(path, mode='wb') as pkfile:
+			pickle.dump(self.game.evaluator.episodes, pkfile)
+		self._saved_episodes.append(path)
+		if len(self._saved_episodes) > EPISODES_TO_KEEP:
+			old_path = self._saved_episodes.popleft()
+			try:
+				os.unlink(old_path)
+			except FileNotFoundError:
+				warnings.warn('Attempting to delete unexisting episodes file %s: it was removed by an external program.'
+							  % old_path, RuntimeWarning)
+
+	def restore_episodes(self, checkpoint_dir, global_t):
+		path = self._episodes_path(checkpoint_dir, global_t)
+		try:
+			with open(path, mode='rb') as pkfile:
+				self.game.evaluator.episodes = pickle.load(pkfile)
+		except FileNotFoundError:
+			warnings.warn('Episodes file %s not found: stats may be skewed.' % path, RuntimeWarning)
 
 	def reset(self):
-		super().reset()
 		if flags.show_best_screenshots or flags.show_all_screenshots:
 			self.screenshots = list()
 			self.screeninfo = list()
 		self.last_action = self.real_actions.index('>')
 		self.last_reward, self.last_state, _, _ = self.game.reset()
-		self.last_situation = self._situation_generator.compute_situation(self.game.frame_history)
 
 	def stop(self):
 		self.game.stop()
-
+		
 	def _process_frame(self, action):
 		return self.game.send_command(action)
 
@@ -83,7 +114,6 @@ class RogueEnvironment(environment.Environment):
 		self.last_state = new_state
 		self.last_action = action
 		self.last_reward = reward
-		self.last_situation = self._situation_generator.compute_situation(self.game.frame_history)
 
 		if flags.show_best_screenshots or flags.show_all_screenshots:
 			self._save_display()

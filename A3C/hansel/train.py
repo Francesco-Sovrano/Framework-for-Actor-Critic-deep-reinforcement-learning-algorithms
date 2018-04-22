@@ -5,18 +5,18 @@ from __future__ import print_function
 
 import tensorflow as tf
 import threading
-import numpy as np
 
 import signal
 import math
 import os
 import logging
 import time
+import sys
 
 from environment.environment import Environment
-from model.model import MultiAgentModel
-from train.trainer import Trainer
-from train.rmsprop_applier import RMSPropApplier
+from model.multi_agent_model import MultiAgentModel
+from work.trainer import Trainer
+from work.rmsprop_applier import RMSPropApplier
 
 import options
 options.build("training")
@@ -37,7 +37,6 @@ class Application(object):
 		hdlr.setFormatter(formatter)
 		self.reward_logger.addHandler(hdlr) 
 		self.reward_logger.setLevel(logging.DEBUG)
-		self.global_env = Environment.create_environment(flags.env_type, -1)
 	
 	def train_function(self, parallel_index, preparing):
 		""" Train each environment. """
@@ -78,6 +77,7 @@ class Application(object):
 				for key in info:
 					log_str += " " + key + "=" + str(info[key]/len(self.trainers))
 				self.reward_logger.info( log_str )
+				sys.stdout.flush()
 
 	def run(self):
 		self.device = "/cpu:0"
@@ -126,7 +126,7 @@ class Application(object):
 		self.load_checkpoint()
 		
 	def build_global_network(self, learning_rate_input):
-		environment = self.global_env
+		environment = Environment.create_environment(flags.env_type, -1)
 		state_shape = environment.get_state_shape()
 		agents_count = environment.get_situations_count()
 		action_size = environment.get_action_size()
@@ -180,7 +180,7 @@ class Application(object):
 		# Save
 		if not os.path.exists(flags.checkpoint_dir):
 			os.mkdir(flags.checkpoint_dir)
-
+	
 		# save episodes for stats
 		for t in self.trainers:
 			t.environment.save_episodes(flags.checkpoint_dir, self.global_t)
