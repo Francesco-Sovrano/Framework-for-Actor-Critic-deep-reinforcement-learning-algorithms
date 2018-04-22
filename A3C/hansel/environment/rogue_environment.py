@@ -13,7 +13,6 @@ import collections
 import warnings
 
 from environment import environment
-from .situations import rogue_situations
 from .rewards import rogue_rewards
 from .states import rogue_states
 from roguelib_module.rogueinabox import RogueBox
@@ -46,10 +45,6 @@ class RogueEnvironment(environment.Environment):
 							 refresh_after_commands=False,
 							 move_rogue=True)
 
-	def _create_situation_generator(self):
-		# return self._instantiate_from_module(rogue_situations, flags.situation_generator, on_exc_return_name=False)
-	    return None
-
 	def _episodes_path(self, checkpoint_dir, global_t):
 		return os.path.join(checkpoint_dir, 'episodes', 'episodes-%s-%s.pkl' % (self.thread_index, global_t))
 
@@ -76,13 +71,11 @@ class RogueEnvironment(environment.Environment):
 			warnings.warn('Episodes file %s not found: stats may be skewed.' % path, RuntimeWarning)
 
 	def reset(self):
-		super().reset()
 		if flags.show_best_screenshots or flags.show_all_screenshots:
 			self.screenshots = list()
 			self.screeninfo = list()
 		self.last_action = self.real_actions.index('>')
 		self.last_reward, self.last_state, _, _ = self.game.reset()
-		# self.last_situation = self._situation_generator.compute_situation(self.game.frame_history)
 
 	def stop(self):
 		self.game.stop()
@@ -121,7 +114,6 @@ class RogueEnvironment(environment.Environment):
 		self.last_state = new_state
 		self.last_action = action
 		self.last_reward = reward
-		# self.last_situation = self._situation_generator.compute_situation(self.game.frame_history)
 
 		if flags.show_best_screenshots or flags.show_all_screenshots:
 			self._save_display()
