@@ -17,7 +17,8 @@ else:
     from legacy_agent import A3C_Agent
 
 
-configs = {'gui': False}
+configs = {'gui': False,
+           'episodes_for_evaluation': ARGS.nruns}
 agent = A3C_Agent(configs)
 
 for run in range(ARGS.nruns):
@@ -33,7 +34,7 @@ for run in range(ARGS.nruns):
             break
 
 agent.environment.game.stop()
-stats = agent.environment.game.evaluator.statistics(count=ARGS.nruns)
+stats = agent.environment.get_statistics()
 
 with open(ARGS.filepath, mode='w') as f:
     json.dump(stats, f, indent=4)
