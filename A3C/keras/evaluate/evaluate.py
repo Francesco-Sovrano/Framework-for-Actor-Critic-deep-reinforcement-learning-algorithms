@@ -17,8 +17,7 @@ else:
     from legacy_agent import A3C_Agent
 
 
-configs = {'gui': False,
-           'rogue': './Rogue/rogue5.4.4-ant-r1.1.4/rogue'}
+configs = {'gui': False}
 agent = A3C_Agent(configs)
 
 for run in range(ARGS.nruns):
