@@ -2,5 +2,5 @@
 
 DIRECTORY=$(hostname)
 
-PYTHONPATH=Rogue/:A3C/$DIRECTORY python A3C/$DIRECTORY/evaluate/visualize.py $*
+PYTHONPATH=./:A3C/$DIRECTORY:A3C/$DIRECTORY/evaluate python A3C/$DIRECTORY/evaluate/visualize.py $*
 
