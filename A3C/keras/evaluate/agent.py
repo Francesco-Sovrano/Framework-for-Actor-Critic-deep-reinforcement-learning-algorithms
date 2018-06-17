@@ -4,10 +4,7 @@ import numpy as np
 import train
 Application = train.Application
 
-import options
-flags = options.get()
-
-from rogueinabox.baseagent import BaseAgent
+from roguelib_module.baseagent import BaseAgent
 
 
 class A3C_Agent(BaseAgent):
@@ -28,9 +25,10 @@ class A3C_Agent(BaseAgent):
         last_action = self.environment.last_action
         last_reward = self.environment.last_reward
         last_action_reward = self.model.concat_action_and_reward(last_action, last_reward)
+        last_situation = self.environment.last_situation
 
-        agent = self.model.get_agent(prev_state["situation"])
-        pi, value = agent.run_policy_and_value(prev_state["value"], last_action_reward)
+        agent = self.model.get_agent(last_situation)
+        pi, value = agent.run_policy_and_value(prev_state, last_action_reward)
         action = np.random.choice(range(len(pi)), p=pi)
 
         _new_state, _reward, win, lose = self.environment.process(action)

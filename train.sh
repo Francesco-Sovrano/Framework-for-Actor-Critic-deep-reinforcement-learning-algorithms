@@ -1,3 +1,3 @@
 #!/bin/bash
 
-./A3C/train.sh
+PYTHONPATH=. ./A3C/train.sh

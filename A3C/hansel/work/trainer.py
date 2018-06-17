@@ -102,7 +102,7 @@ class Trainer(object):
 			elapsed_time = time.time() - self.start_time
 			steps_per_sec = global_t / elapsed_time
 			print("### Performance : {} STEPS in {:.0f} sec. {:.0f} STEPS/sec. {:.2f}M STEPS/hour".format( global_t, elapsed_time, steps_per_sec, steps_per_sec * 3600 / 1000000.))
-		
+
 	# [Base A3C]
 	def _process_base(self, sess, global_t, summary_writer, summary_op, score_input):
 		batch = {}
@@ -211,31 +211,26 @@ class Trainer(object):
 		for i in range(self.local_network.agent_count):
 			sess.run( self.sync[i] )
 
-		try:
-			# Build feed dictionary
-			batch_base = self._process_base(sess, global_t, summary_writer, summary_op, score_input)
-				
-			# Pupulate the feed dictionary
-			for i in range(self.local_network.agent_count):
-				if len(batch_base["states"][i]) > 0:
-					agent = self.local_network.get_agent(i)
-					feed_dict = {
-						self.learning_rate_input: cur_learning_rate,
-						agent.base_input: batch_base["states"][i],
-						agent.base_last_action_reward_input: batch_base["action_rewards"][i],
-						agent.base_a: batch_base["action_maps"][i],
-						agent.base_adv: batch_base["adversarial_reward"][i],
-						agent.base_r: batch_base["rewards"][i],
-						agent.base_initial_lstm_state: batch_base["start_lstm_state"][i],
-					}
-					
-					# Calculate gradients and copy them to global network.
-					sess.run( self.apply_gradients[i], feed_dict )
-					self._print_log(global_t)
-			
-			# Return advanced local step size
-			return self.local_t - start_local_t
-		except:
-			traceback.print_exc()
-			self.prepare()
-			return 0
+		# Build feed dictionary
+		batch_base = self._process_base(sess, global_t, summary_writer, summary_op, score_input)
+
+		# Pupulate the feed dictionary
+		for i in range(self.local_network.agent_count):
+			if len(batch_base["states"][i]) > 0:
+				agent = self.local_network.get_agent(i)
+				feed_dict = {
+					self.learning_rate_input: cur_learning_rate,
+					agent.base_input: batch_base["states"][i],
+					agent.base_last_action_reward_input: batch_base["action_rewards"][i],
+					agent.base_a: batch_base["action_maps"][i],
+					agent.base_adv: batch_base["adversarial_reward"][i],
+					agent.base_r: batch_base["rewards"][i],
+					agent.base_initial_lstm_state: batch_base["start_lstm_state"][i],
+				}
+
+				# Calculate gradients and copy them to global network.
+				sess.run( self.apply_gradients[i], feed_dict )
+		self._print_log(global_t)
+
+		# Return advanced local step size
+		return self.local_t - start_local_t

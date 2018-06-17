@@ -2,19 +2,15 @@
 import argparse
 
 parser = argparse.ArgumentParser(description='Evaluate an agent from a training checkpoint')
-parser.add_argument('--nruns', '-n', type=int, default=200, help='number of runs over which averaging the evaluation')
+parser.add_argument('--nruns', '-n', type=int, default=1000, help='number of runs over which averaging the evaluation')
 parser.add_argument('--steps', '-s', type=int, default=500, help='maximum number of steps per run')
 parser.add_argument('--filepath', '-f', default='stats.json', help='evaluation output file path')
-parser.add_argument('--legacy', '-l', help='use legacy agent', action='store_true')
 ARGS = parser.parse_args()
 print("ARGS:", ARGS)
 
 import json
 
-if not ARGS.legacy:
-    from agent import A3C_Agent
-else:
-    from legacy_agent import A3C_Agent
+from agent import A3C_Agent
 
 
 configs = {'gui': False,

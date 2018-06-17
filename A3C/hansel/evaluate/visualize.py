@@ -2,14 +2,10 @@
 import argparse
 
 parser = argparse.ArgumentParser(description='Evaluate an agent from a training checkpoint')
-parser.add_argument('--legacy', '-l', help='use legacy agent', action='store_true')
 ARGS = parser.parse_args()
 print("ARGS:", ARGS)
 
-if not ARGS.legacy:
-    from agent import A3C_Agent
-else:
-    from legacy_agent import A3C_Agent
+from agent import A3C_Agent
 
 
 configs = {
@@ -18,7 +14,7 @@ configs = {
    'gui': True,
    'memory_size': 0,
    'test': False,
-   'timer_ms': 250
+   'timer_ms': 50
 }
 
 agent = A3C_Agent(configs)
