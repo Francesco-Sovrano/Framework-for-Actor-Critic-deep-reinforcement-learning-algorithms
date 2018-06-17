@@ -1,4 +1,0 @@
-[submodule "roguelib_module"]
-	path = roguelib_module
-	url = git@gitlab.com:rogueinabox/roguelib_module.git
-	branch = master

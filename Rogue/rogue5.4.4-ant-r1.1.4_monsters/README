@@ -1,0 +1,124 @@
+Wed Jul 12 14:23:12 EDT 2017
+
+
+This Version:
+
+  [r1.1.4] Temporary fix to mdport.c to work around a compile 
+error (from a recent change in curses - see TODO).  I've added
+the definition of NCURSES_INTERNALS as suggested by Sven Joachim 
+(thanks! :) ).  I'm not sure if such a definition is backwards
+compatible for older curses.  If you are still using an older
+version and you see a compile error in mdport.c remove the 
+define and see if that fixes the problem.
+
+
+  General:
+
+  This version of rogue has been altered to work with rogomatic 
+in a more friendly manner (changing some ambiguous messages to be 
+unique).  Also fixed were a few grammar errors and a bug when the 
+nymph stole an item from the pack (she now steals all of the items
+if there are multiple items).
+
+  Also changed to allow the setting of the random number generation 
+sequence by using the environment variable SEED (set to a positive 
+integer) for more repeatable results.  This makes testing much 
+easier...
+
+
+  Simple install instructions:
+
+  - binaries are set to go to /usr/local/bin by default.
+
+    1. unpack archive
+    2. go to that subdirectory
+    3. configure
+    4. compile
+    6. install
+
+
+  something like:
+
+   $ tar axf rogue5.4.4-ant-r1.1.4-src.tar.gz
+   $ cd rogue5.4.4-ant-r1.1.4
+   $ ./configure
+   $ make
+   $ make install
+
+
+  If you change anything in configure.ac (to do your own version or 
+to use different compiler settings, etc.) then there is a handy way 
+to redo the makefile setup by using the following commands (you will 
+need make, automake, autoconf, etc. tools installed):
+
+   $ make maintainer-clean
+   $ ./bootstrap
+   $ ./configure
+
+
+  Other version details:
+
+  [r1.1.3] Changes to main.c and mdport.c to fix compile and 
+make problems for "builds of ncurses with the symbol 
+NCURSES_OPAQUE defined...  NCURSES_OPAQUE is defined in the 
+default Cygwin setup these days."  Thanks for the patch Branden.
+
+  [r1.1.2] A small change in teleport() which 
+checks to make sure teleport scrolls or teleport 
+traps do not put the hero down upon an item 
+(a workaround for a bug in rogomatic).
+
+  [r1.1.1] A small change which uses the shell
+environment variable GETROGUEPID if it exists to
+generate a file name with the process id (PID)
+as part of the name.  This is used by my scripts
+that I use for debugging.  If you do not set
+the environment variable you will not see any
+difference with the previous version of rogue.
+
+  [r1.1.0] I've reverted two changes made quite 
+some time ago (silvery is now back to being silver 
+and golden is back to being gold).  other changes 
+include some more clarity to messages so that when 
+something happens or doesn't happen the message is 
+unique.
+
+  The most significant change is the fact that
+a scroll of protection also uncurses armor.  I
+think something that says "shimmering gold shield"
+should do the whole job, don't you?
+
+  [r1.0.9] Segfault when the hero threw a non-weapon 
+object into a corner to destroy it.  Fixed fall() in
+weapons.c to use a more general object message.
+
+  [r1.0.8] Fixed a bug in new level creation, if a maze
+was created above a room and the room was too close 
+to the maze then it could not be connected and rogue
+would loop forever trying to find it.
+
+  As this can affect the number of times the random
+number generator is called a few of the previous runs 
+using SEED may no longer be replicable.  If these
+runs were used in learning in some way then other runs 
+may also diverge.
+
+
+  Other bug fixes were:
+
+   - make sure free'd items were not later referenced
+   - start a new level not on top of an item
+   - free used missiles
+
+
+  For the purists:
+
+  A less altered version is available in the same place 
+you found this version, but I am no longer making any
+changes to that code at all (bugs I find only get applied 
+to this version).
+
+
+  Comments, Questions, Bugfixes, etc.:
+
+  ant at anthive dot com
