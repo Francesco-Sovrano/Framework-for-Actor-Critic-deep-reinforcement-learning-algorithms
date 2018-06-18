@@ -162,7 +162,7 @@ class ModelManager(object):
 		
 		action = self.environment.choose_action(agent_policy)
 		new_state, reward, terminal = self.environment.process(action)
-		reward = np.clip(reward, -1, 1)
+		# reward = np.clip(reward, -1, 1)
 
 		self.batch["states"][agent_id].append(state)
 		self.batch["concat"][agent_id].append(concat)
