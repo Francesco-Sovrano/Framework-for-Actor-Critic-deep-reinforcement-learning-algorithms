@@ -39,13 +39,16 @@ class ModelManager(object):
 		self.model_list = []
 		self._model_usage_matrix = np.zeros(agents_count)
 		self._model_usage_list = collections.deque()		
-		# the manager
 		if self.has_manager:
+			# the manager
 			self.manager = A3CModel(id=str(self.id)+"_0", state_shape=state_shape, policy_size=agents_count, entropy_beta=flags.entropy_beta, clip=self.clip[0], device=self.device, concat_size=action_size+1)
 			self.model_list.append(self.manager)
-		# the agents
-		for i in range(agents_count):
-			agent=A3CModel(id=str(self.id)+"_"+str(i+1), state_shape=state_shape, policy_size=action_size, entropy_beta=flags.entropy_beta*(i+1), clip=self.clip[i+1], device=self.device, concat_size=action_size+1)
+			# the agents
+			for i in range(agents_count):
+				agent=A3CModel(id=str(self.id)+"_"+str(i+1), state_shape=state_shape, policy_size=action_size, entropy_beta=flags.entropy_beta*(i+1), clip=self.clip[i+1], device=self.device, concat_size=action_size+1)
+				self.model_list.append(agent)
+		else:
+			agent=A3CModel(id=str(self.id)+"_0", state_shape=state_shape, policy_size=action_size, entropy_beta=flags.entropy_beta, clip=self.clip[0], device=self.device, concat_size=action_size+1)
 			self.model_list.append(agent)
 			
 	# Build experience buffer
