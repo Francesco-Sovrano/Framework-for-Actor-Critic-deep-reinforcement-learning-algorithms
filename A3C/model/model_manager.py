@@ -76,10 +76,13 @@ class ModelManager(object):
 			initial_learning_rate = flags.alpha
 			if i == 0 and self.model_size > 1:
 				initial_learning_rate *= flags.partitioner_learning_factor
-			self.learning_rate.append( eval('tf.train.'+flags.alpha_annealing_function)(learning_rate=initial_learning_rate, global_step=self.global_step[i], decay_steps=flags.alpha_decay_steps, decay_rate=flags.alpha_decay_rate) if flags.alpha_annealing_function != 'constant' else initial_learning_rate )
+			self.learning_rate.append( eval('tf.train.'+flags.alpha_annealing_function)(learning_rate=initial_learning_rate, global_step=self.global_step[i], decay_steps=flags.alpha_decay_steps, decay_rate=flags.alpha_decay_rate) if flags.alpha_decay else initial_learning_rate )
 		# clip
-			self.clip.append( eval('tf.train.'+flags.clip_annealing_function)(learning_rate=flags.clip, global_step=self.global_step[i], decay_steps=flags.clip_decay_steps, decay_rate=flags.clip_decay_rate) if flags.clip_annealing_function != 'constant' else flags.clip )
+			self.clip.append( eval('tf.train.'+flags.clip_annealing_function)(learning_rate=flags.clip, global_step=self.global_step[i], decay_steps=flags.clip_decay_steps, decay_rate=flags.clip_decay_rate) if flags.clip_decay else flags.clip )
 		# gradient optimizer
+			if i == 0 and self.model_size > 1:
+				self.gradient_optimizer.append( eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True) )
+			else:	
 			self.gradient_optimizer.append( eval('tf.train.'+flags.optimizer+'Optimizer')(learning_rate=self.learning_rate[i], use_locking=True) )
 			
 	def bind_to_global(self, global_network):
@@ -162,7 +165,6 @@ class ModelManager(object):
 		
 		action = self.environment.choose_action(agent_policy)
 		new_state, reward, terminal = self.environment.process(action)
-		# reward = np.clip(reward, -1, 1)
 
 		self.batch["states"][agent_id].append(state)
 		self.batch["concat"][agent_id].append(concat)
