@@ -83,7 +83,7 @@ class ModelManager(object):
 			if i == 0 and self.model_size > 1:
 				self.gradient_optimizer.append( eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True) )
 			else:	
-			self.gradient_optimizer.append( eval('tf.train.'+flags.optimizer+'Optimizer')(learning_rate=self.learning_rate[i], use_locking=True) )
+				self.gradient_optimizer.append( eval('tf.train.'+flags.optimizer+'Optimizer')(learning_rate=self.learning_rate[i], use_locking=True) )
 			
 	def bind_to_global(self, global_network):
 		apply_gradients = []
