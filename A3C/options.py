@@ -17,8 +17,8 @@ def build():
 	tf.app.flags.DEFINE_string("policy_loss", "PPO", "policy loss function: vanilla, PPO, averagePPO, openaiPPO") # usually averagePPO works with GAE
 	tf.app.flags.DEFINE_string("value_loss", "vanilla", "value loss function: vanilla, PVO, averagePVO") # usually averagePVO works with GAE
 # Partitioner parameters
-	tf.app.flags.DEFINE_integer("partition_count", 3, "Number of partitions of the input space. Set to 1 for no partitions.")
-	tf.app.flags.DEFINE_float("partitioner_learning_factor", 1, "Should be a number greater than 0. Usually the partitioner has an higher learning rate than the others. This factor is used to change the initial learning rate of the partitioner only.") # default is 2.0
+	tf.app.flags.DEFINE_integer("partition_count", 3, "Number of partitions of the input space. Set to 1 for no partitions.") # default is 3
+	tf.app.flags.DEFINE_float("partitioner_learning_factor", 2, "Should be a number greater than 0. Usually the partitioner has an higher learning rate than the others. This factor is used to change the initial learning rate of the partitioner only.") # default is 3
 	tf.app.flags.DEFINE_string("partitioner_optimizer", "ProximalAdagrad", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is ProximalAdagrad
 # Clip range
 	tf.app.flags.DEFINE_float("clip", 0.2, "PPO/PVO initial clip range") # default is 0.2, for openAI is 0.1
@@ -34,9 +34,9 @@ def build():
 	tf.app.flags.DEFINE_float("alpha_decay_rate", 0.96, "decay rate")
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
-	tf.app.flags.DEFINE_float("replay_ratio", 4, "Mean number of experience replays. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4
-	tf.app.flags.DEFINE_float("replay_size", 25000, "Maximum size of the experience replay buffer") # default is 25000
-	tf.app.flags.DEFINE_float("replay_start", 5000, "Should be greater than 0 and lower than replay_size. Train on x batches before using experience replay") # default is 5000
+	tf.app.flags.DEFINE_float("replay_ratio", 1, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4
+	tf.app.flags.DEFINE_integer("replay_size", 25000, "Maximum size of the experience replay buffer") # default is 25000
+	tf.app.flags.DEFINE_integer("replay_start", 5000, "Should be greater than 0 and lower than replay_size. Train on x batches before using experience replay") # default is 5000
 # Actor-Critic parameters
 	# Learning rate for Critic is half of Actor's, so multiply by 0.5 (default)
 	tf.app.flags.DEFINE_float("value_coefficient", 0.5, "value coefficient for tuning Critic learning rate") # default is 0.5, for openAI is 0.25
