@@ -34,7 +34,7 @@ def build():
 	tf.app.flags.DEFINE_float("alpha_decay_rate", 0.96, "decay rate")
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
-	tf.app.flags.DEFINE_float("replay_ratio", 0, "Mean number of experience replays. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4
+	tf.app.flags.DEFINE_float("replay_ratio", 4, "Mean number of experience replays. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4
 	tf.app.flags.DEFINE_float("replay_size", 25000, "Maximum size of the experience replay buffer") # default is 25000
 	tf.app.flags.DEFINE_float("replay_start", 5000, "Should be greater than 0 and lower than replay_size. Train on x batches before using experience replay") # default is 5000
 # Actor-Critic parameters

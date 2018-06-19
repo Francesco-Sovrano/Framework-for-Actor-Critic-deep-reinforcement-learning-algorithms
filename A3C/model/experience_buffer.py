@@ -1,11 +1,8 @@
 import numpy as np
 
-import options
-flags = options.get()
-
 class Buffer(object):
-	def __init__(self, size=2500):
-		self.size = 2500
+	def __init__(self, size):
+		self.size = size
 		# Memory
 		self.batches = [None]*self.size
 		# Size indexes
