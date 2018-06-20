@@ -98,9 +98,9 @@ class Worker(object):
 			
 		step = 0
 		while step < flags.local_t_max and not self.terminal:
-			step += 1
-			reward, self.terminal = self.local_network.act(session=self.sess)
+			reward, self.terminal = self.local_network.act(session=self.sess, step=step)
 			self.episode_reward += reward
+			step += 1 # do it after calling self.local_network.act
 			
 		if self.train: # train using batch
 			self.local_network.save_batch(session=self.sess, bootstrap=not self.terminal)
