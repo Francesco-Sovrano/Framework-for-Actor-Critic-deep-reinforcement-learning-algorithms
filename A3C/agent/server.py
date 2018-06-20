@@ -155,7 +155,7 @@ class Application(object):
 			with open(wall_t_fname, 'r') as f:
 				self.wall_t = float(f.read())
 				self.next_save_steps = (self.global_t + flags.save_interval_step) // flags.save_interval_step * flags.save_interval_step
-			self.load_train_counters(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_t))
+			self.load_important_information(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_t))
 			print("Checkpoint loaded:", checkpoint.model_checkpoint_path)
 		else:
 			# set wall time
@@ -184,7 +184,7 @@ class Application(object):
 	
 		print('Start saving..')
 		self.saver.save(self.sess, flags.checkpoint_dir + '/checkpoint', global_step=self.global_t)
-		self.save_train_counters(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_t))
+		self.save_important_information(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_t))
 		print('Checkpoint saved in ' + flags.checkpoint_dir)
 	
 		if not self.terminate_reqested:
@@ -197,25 +197,36 @@ class Application(object):
 					self.train_threads[i] = thread
 					thread.start()
 					
-	def save_train_counters(self, path):
-		train_count_matrix = []
+	def save_important_information(self, path):
+		persistent_memory = {}
+		persistent_memory["train_count_matrix"] = []
+		if flags.replay_ratio > 0:
+			persistent_memory["experience_buffers"] = []
 		for trainer in self.trainers:
+			# train counters
 			tc = []
 			for model in trainer.local_network.model_list:
 				tc.append(model.train_count)
-			train_count_matrix.append(tc)
+			persistent_memory["train_count_matrix"].append(tc)
+			# experience buffer
+			if flags.replay_ratio > 0:
+				persistent_memory["experience_buffers"].append(trainer.local_network.experience_buffer)
 		with open(path, 'wb') as f:
-			pickle.dump(train_count_matrix, f, pickle.HIGHEST_PROTOCOL)
+			pickle.dump(persistent_memory, f, pickle.HIGHEST_PROTOCOL)
 			
-	def load_train_counters(self, path):
+	def load_important_information(self, path):
 		with open(path, 'rb') as f:
-			train_count_matrix = pickle.load(f)
+			persistent_memory = pickle.load(f)
 			i = 0
 			for trainer in self.trainers:
+				# train counters
 				j=0
 				for model in trainer.local_network.model_list:
-					model.train_count = train_count_matrix[i][j]
+					model.train_count = persistent_memory["train_count_matrix"][i][j]
 					j+=1
+				# experience buffer
+				if flags.replay_ratio > 0:
+					trainer.local_network.experience_buffer = persistent_memory["experience_buffers"][i]
 				i+=1
 		
 	def signal_handler(self, signal, frame):
