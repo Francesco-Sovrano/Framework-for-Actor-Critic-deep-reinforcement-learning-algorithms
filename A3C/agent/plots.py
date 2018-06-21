@@ -7,46 +7,19 @@ import matplotlib
 matplotlib.use('Agg') # non-interactive backend
 import matplotlib.pyplot as plt
 
-def parse(log_fname):
-	log = []
-	with open(log_fname) as logfile:
-		for i, line in enumerate(logfile):
-			try:
-				splitted = line.split(' ')
-				# date_str = splitted[0] + ' ' + splitted[1]
-				# date = datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S,%f')
-				# obj = {'date': date}
-				obj = {}
-				for x in splitted[2:]:
-					x = re.sub('[\',\[\]]', '', x)
-					# print(x)
-					if '=' in x:
-						key, val = x.split('=')
-						obj[key] = float(val)
-				log.append(obj)
-			except Exception as e:
-				print("exc %s on line %s" % (repr(e), i+1))
-				print("skipping line")
-				continue
-	return log
-
-def plot(max_steps, logfiles, figure_file):
-	# linewidth=0.4
-	# markersize=0.1
-	logs = []
+def plot(logs, figure_file):
+	# Find the smallest log file, its length is the maximum length of each plot of each log
 	min_data_length = sys.maxsize # max int
-	for fname in logfiles:
-		log = {'name': fname, 'data': parse(fname)}
+	for log in logs:
 		if len(log["data"]) < min_data_length:
 			min_data_length = len(log["data"])
-		logs.append(log)
-	stats = sorted(logs[0]["data"][0].keys(), key=lambda t: t[0]) # statistics keys sorted by name
-	
+	# Get statistics keys
+	stats = sorted(logs[0]["data"][0].keys(), key=lambda t: t[0]) # statistics keys sorted by name	
 	# Create new figure and two subplots, sharing both axes
 	ncols=3
 	nrows=math.ceil(len(stats)/ncols)
 	figure, plots = plt.subplots(nrows=nrows, ncols=ncols, sharey=False, sharex=False, figsize=(ncols*10,nrows*10))
-	
+	# Populate plots
 	x = range(min_data_length)
 	x_label = 'Number of steps'
 	for log in logs:
@@ -83,3 +56,32 @@ def plot(max_steps, logfiles, figure_file):
 	plt.xlabel(x_label)
 	figure.savefig(figure_file)
 	print("Plot figure saved in ", figure_file)
+
+def plot_files(log_files, figure_file):
+	logs = []
+	for fname in logfiles:
+		logs.append({'name': fname, 'data': parse(fname)})
+	plot(logs, figure_file)
+	
+def parse(log_fname):
+	log = []
+	with open(log_fname) as logfile:
+		for i, line in enumerate(logfile):
+			try:
+				splitted = line.split(' ')
+				# date_str = splitted[0] + ' ' + splitted[1]
+				# date = datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S,%f')
+				# obj = {'date': date}
+				obj = {}
+				for x in splitted[2:]:
+					x = re.sub('[\',\[\]]', '', x)
+					# print(x)
+					if '=' in x:
+						key, val = x.split('=')
+						obj[key] = float(val)
+				log.append(obj)
+			except Exception as e:
+				print("exc %s on line %s" % (repr(e), i+1))
+				print("skipping line")
+				continue
+	return log

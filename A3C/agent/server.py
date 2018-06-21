@@ -17,7 +17,7 @@ import pickle
 from environment.environment import Environment
 from model.model_manager import ModelManager
 from agent.client import Worker
-import plots as plt
+import agent.plots as plt
 
 import options
 options.build()
@@ -27,6 +27,7 @@ import numpy as np
 
 class Application(object):
 	def __init__(self):
+		self.statistics_history = []
 		self.train_logfile = flags.log_dir + '/train_results.log'
 		# Training logger
 		self.training_logger = logging.getLogger('results')
@@ -82,15 +83,10 @@ class Application(object):
 		for thread in threads: # wait for all threads to end
 			thread.join()
 		# get overall statistics
-		info = {}
-		for t in testers:
-			for key in t.stats:
-				if not info.get(key):
-					info[key] = 0
-				info[key] += t.stats[key]
+		info = self.get_global_statistics(clients=testers)
 		# write results to file
 		with open(flags.log_dir + '/test_results.log', "w", encoding="utf-8") as file:
-			file.write(str([key + "=" + str(value/len(testers)) for key, value in sorted(info.items(), key=lambda t: t[0])]))
+			file.write(str([key + "=" + str(value) for key, value in sorted(info.items(), key=lambda t: t[0])]))
 		print('End testing')
 		print('Test result saved in ' + flags.log_dir + '/test_results.log')
 
@@ -120,14 +116,21 @@ class Application(object):
 			
 			# print global statistics
 			if trainer.terminal:
-				info = {}
-				for t in self.trainers:
-					for key in t.stats:
-						if not info.get(key):
-							info[key] = 0
-						info[key] += t.stats[key]
-				self.training_logger.info( str([key + "=" + str(value/len(self.trainers)) for key, value in sorted(info.items(), key=lambda t: t[0])]) ) # Print statistics
+				info = self.get_global_statistics(clients=self.trainers)
+				self.statistics_history.append(info)
+				self.training_logger.info( str([key + "=" + str(value) for key, value in sorted(info.items(), key=lambda t: t[0])]) ) # Print statistics
 				sys.stdout.flush()
+				
+	def get_global_statistics(self, clients):
+		info = {}
+		for t in clients:
+			for key in t.stats:
+				if not info.get(key):
+					info[key] = 0
+				info[key] += t.stats[key]
+		for key in info:
+			info[key] /= len(clients)
+		return info
 		
 	def train(self):
 		# run training threads
@@ -185,8 +188,10 @@ class Application(object):
 			f.write(str(wall_t))
 	
 		# Print plot
-		plt.plot(max_steps=self.global_t, logfiles=[self.train_logfile], figure_file=flags.log_dir + '/train_plot.jpg')
+		log_dictionary_list = [{'name': "train_plot", 'data': self.statistics_history}]
+		plt.plot(logs=log_dictionary_list, figure_file=flags.log_dir + '/train_plot.jpg')
 		
+		# Save Checkpoint
 		print('Start saving..')
 		self.saver.save(self.sess, flags.checkpoint_dir + '/checkpoint', global_step=self.global_t)
 		self.save_important_information(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_t))
