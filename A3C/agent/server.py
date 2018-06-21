@@ -17,6 +17,7 @@ import pickle
 from environment.environment import Environment
 from model.model_manager import ModelManager
 from agent.client import Worker
+import plots as plt
 
 import options
 options.build()
@@ -26,11 +27,12 @@ import numpy as np
 
 class Application(object):
 	def __init__(self):
+		self.train_logfile = flags.log_dir + '/train_results.log'
 		# Training logger
 		self.training_logger = logging.getLogger('results')
 		if not os.path.isdir(flags.log_dir):
 			os.mkdir(flags.log_dir)
-		hdlr = logging.FileHandler(flags.log_dir + '/train_results.log')
+		hdlr = logging.FileHandler(self.train_logfile)
 		formatter = logging.Formatter('%(asctime)s %(message)s')
 		hdlr.setFormatter(formatter)
 		self.training_logger.addHandler(hdlr) 
@@ -182,6 +184,9 @@ class Application(object):
 		with open(wall_t_fname, 'w') as f:
 			f.write(str(wall_t))
 	
+		# Print plot
+		plt.plot(max_steps=self.global_t, logfiles=[self.train_logfile], figure_file=flags.log_dir + '/train_plot.jpg')
+		
 		print('Start saving..')
 		self.saver.save(self.sess, flags.checkpoint_dir + '/checkpoint', global_step=self.global_t)
 		self.save_important_information(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_t))

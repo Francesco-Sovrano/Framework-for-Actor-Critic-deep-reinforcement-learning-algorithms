@@ -153,21 +153,26 @@ class ModelManager(object):
 		self.agent_reward_list = collections.deque()
 		self.agent_value_list = collections.deque()
 		self.agent_id = 0
+		self.step = 0 # start from 0
 		
 	def query_partitioner(self, step):
 		return step%flags.partitioner_granularity==0
 		
-	def act(self, session, step):
-		query_partitioner = self.query_partitioner(step)
+	def act(self, session):
 		state = self.environment.last_state
 		concat = self.environment.get_last_action_reward()
-		if self.has_manager and query_partitioner:
-			self.agent_id, manager_policy, manager_value = self.get_agentID_by_state(sess=session, state=[state], concat=[concat])
+		
+		if self.has_manager:
+			query_partitioner = self.query_partitioner(self.step)
+			if query_partitioner:
+				self.agent_id, manager_policy, manager_value = self.get_agentID_by_state(sess=session, state=[state], concat=[concat])
 		agent = self.get_model(self.agent_id)
 		agent_policy, agent_value = agent.run_policy_and_value(sess=session, state=[state], concat=[concat])
 		
 		action = self.environment.choose_action(agent_policy)
 		new_state, reward, terminal = self.environment.process(action)
+		if flags.clip_reward:
+			reward = np.clip(reward, flags.min_reward, flags.max_reward)
 
 		self.batch["states"][self.agent_id].append(state)
 		self.batch["concat"][self.agent_id].append(concat)
@@ -185,6 +190,8 @@ class ModelManager(object):
 				self.batch["concat"][0].append(concat)
 				self.batch["values"][0].append(manager_value)
 				self.batch["policies"][0].append(manager_policy)
+				
+		self.step += 1 # exec this command last
 		return reward, terminal
 			
 	def save_batch(self, session, bootstrap):
@@ -194,10 +201,9 @@ class ModelManager(object):
 		if bootstrap: # bootstrap the value from the last state
 			state = self.environment.last_state
 			last_action_reward = self.environment.get_last_action_reward()
-			# if self.has_manager:
-				# agent_id, _, _ = self.get_agentID_by_state(sess=session, state=[state], concat=[last_action_reward])
-			# else:
-				# agent_id = 0
+			if self.has_manager and self.query_partitioner(self.step):
+				self.agent_id, _, _ = self.get_agentID_by_state(sess=session, state=[state], concat=[last_action_reward])
+			
 			agent = self.get_model(self.agent_id)
 			discounted_cumulative_reward = agent.run_value(sess=session, state=[state], concat=[last_action_reward])
 			
