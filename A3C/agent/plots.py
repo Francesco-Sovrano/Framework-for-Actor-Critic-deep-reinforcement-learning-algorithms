@@ -21,7 +21,7 @@ def plot(logs, figure_file):
 	figure, plots = plt.subplots(nrows=nrows, ncols=ncols, sharey=False, sharex=False, figsize=(ncols*10,nrows*10))
 	# Populate plots
 	x = range(min_data_length)
-	x_label = 'Number of steps'
+	x_label = 'Episodes'
 	for log in logs:
 		name = log["name"]
 		data = log["data"]
