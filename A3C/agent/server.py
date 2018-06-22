@@ -160,7 +160,10 @@ class Application(object):
 				self.wall_t = float(f.read())
 				self.next_save_steps = (self.global_t + flags.save_interval_step) // flags.save_interval_step * flags.save_interval_step
 			self.load_important_information(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_t))
-			print("Checkpoint loaded:", checkpoint.model_checkpoint_path)
+			print("Checkpoint loaded: ", checkpoint.model_checkpoint_path)
+			# load statistics history from train logfile
+			self.statistics_history = plt.parse(self.train_logfile)
+			print("Old statistics loaded: ", self.train_logfile)
 		else:
 			# set wall time
 			self.wall_t = 0.0
@@ -209,7 +212,7 @@ class Application(object):
 	def save_important_information(self, path):
 		persistent_memory = {}
 		persistent_memory["train_count_matrix"] = []
-		persistent_memory["statistics_history"] = self.statistics_history
+		# persistent_memory["statistics_history"] = self.statistics_history
 		if flags.replay_ratio > 0:
 			persistent_memory["experience_buffers"] = []
 		for trainer in self.trainers:
@@ -227,7 +230,7 @@ class Application(object):
 	def load_important_information(self, path):
 		with open(path, 'rb') as f:
 			persistent_memory = pickle.load(f)
-			self.statistics_history = persistent_memory["statistics_history"]
+			# self.statistics_history = persistent_memory["statistics_history"]
 			i = 0
 			for trainer in self.trainers:
 				# train counters
