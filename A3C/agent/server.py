@@ -209,6 +209,7 @@ class Application(object):
 	def save_important_information(self, path):
 		persistent_memory = {}
 		persistent_memory["train_count_matrix"] = []
+		persistent_memory["statistics_history"] = self.statistics_history
 		if flags.replay_ratio > 0:
 			persistent_memory["experience_buffers"] = []
 		for trainer in self.trainers:
@@ -226,6 +227,7 @@ class Application(object):
 	def load_important_information(self, path):
 		with open(path, 'rb') as f:
 			persistent_memory = pickle.load(f)
+			self.statistics_history = persistent_memory["statistics_history"]
 			i = 0
 			for trainer in self.trainers:
 				# train counters
