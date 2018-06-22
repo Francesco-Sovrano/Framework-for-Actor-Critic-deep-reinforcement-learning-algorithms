@@ -47,26 +47,28 @@ class RogueEvaluator:
 	
 	def statistics(self): # O(self.match_count_for_evaluation)
 		result = {}
-		result["accuracy"] = 0
 		result["avg_reward"] = 0
 		result["avg_tiles"] = 0
-		# result["avg_level"] = 0
-		result["avg_success_steps"] = 0
+		result["avg_level"] = 0
+		result["avg_steps"] = 0
+		# result["avg_success_steps"] = 0
 		
 		count = len(self.episodes)
+		# victories = 0
 		if count>0:
 			for e in self.episodes:
-				if e.has_won:
-					result["accuracy"] += 1
-					result["avg_success_steps"] += e.step
+				result["avg_steps"] += e.step
 				result["avg_reward"] += e.reward
 				result["avg_tiles"] += e.info.get_known_tiles_count()
-				# result["avg_level"] += e.info.statusbar["dungeon_level"] if not e.info.statusbar["is_empty"] else 0
-			if result["accuracy"] > 0:
-				result["avg_success_steps"] /= result["accuracy"] # do it BEFORE averaging the accuracy
-				result["accuracy"] /= count # do it AFTER averaging the success_steps
+				result["avg_level"] += e.info.statusbar["dungeon_level"]-1 if not e.info.statusbar["is_empty"] else 0
+				# if e.has_won:
+					# result["avg_success_steps"] += e.step
+					# victories +=1
+			result["avg_steps"] /= count
 			result["avg_reward"] /= count
 			result["avg_tiles"] /= count
-			# result["avg_level"] /= count
+			result["avg_level"] /= count
+			# if victories > 0:
+				# result["avg_success_steps"] /= victories
 		return result
 		

@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+options_built = False
 def build():
 	tf.app.flags.DEFINE_boolean("use_gpu", False, "whether to use the GPU")
 	tf.app.flags.DEFINE_integer("max_time_step", 10**8, "max time steps")
@@ -72,6 +73,9 @@ def build():
 	tf.app.flags.DEFINE_integer("steps_per_episode", 500, "number of maximum actions execution per episode")
 	tf.app.flags.DEFINE_string("env_path", "./Rogue/rogue5.4.4-ant-r1.1.4_monsters/rogue", "the path where to find the game")
 	tf.app.flags.DEFINE_string("rogueinabox_path", "./Rogue", "where to find the package") # to remove!
+	options_built = True
 	
 def get():
+	if not options_built:
+		build()
 	return tf.app.flags.FLAGS

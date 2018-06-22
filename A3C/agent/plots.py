@@ -7,6 +7,10 @@ import matplotlib
 matplotlib.use('Agg') # non-interactive backend
 import matplotlib.pyplot as plt
 
+# get command line args
+import options
+flags = options.get()
+
 def plot(logs, figure_file):
 	# Find the smallest log file, its length is the maximum length of each plot of each log
 	min_data_length = sys.maxsize # max int
@@ -20,7 +24,12 @@ def plot(logs, figure_file):
 	nrows=math.ceil(len(stats)/ncols)
 	figure, plots = plt.subplots(nrows=nrows, ncols=ncols, sharey=False, sharex=False, figsize=(ncols*10,nrows*10))
 	# Populate plots
-	x = range(min_data_length)
+	data_length = min_data_length-flags.match_count_for_evaluation
+	if data_length < 2:
+		print("Not enough data for a reasonable plot")
+		return
+		
+	x = range(data_length)
 	x_label = 'Episodes'
 	for log in logs:
 		name = log["name"]
@@ -37,7 +46,7 @@ def plot(logs, figure_file):
 				y = []
 				min = float("+inf")
 				max = float("-inf")
-				for obj in data[:min_data_length]:
+				for obj in data[flags.match_count_for_evaluation:min_data_length]:
 					val = obj[key]
 					y.append(val)
 					if val > max:

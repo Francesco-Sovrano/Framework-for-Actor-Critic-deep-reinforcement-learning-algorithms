@@ -20,7 +20,6 @@ from agent.client import Worker
 import agent.plots as plt
 
 import options
-options.build()
 flags = options.get()
 
 import numpy as np
