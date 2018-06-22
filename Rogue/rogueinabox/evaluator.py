@@ -23,8 +23,19 @@ from __future__ import print_function
 import collections
 
 class Episode:
-	def __init__(self, info, reward, has_won, step):
-		self.info = info
+	def __init__(self, infos, reward, has_won, step):
+		self.level = 0
+		self.tiles = 0
+		for t in range(len(infos)):
+			info = infos[t]
+			if not info.statusbar["is_empty"]:
+				current_level = info.statusbar["dungeon_level"]-1
+				if self.level < current_level:
+					self.level = current_level
+					self.tiles += infos[t-1].get_known_tiles_count()
+		if len(infos) > 1:
+			if infos[-1].statusbar["dungeon_level"] == infos[-2].statusbar["dungeon_level"]:
+				self.tiles += infos[-1].get_known_tiles_count()
 		self.reward = reward
 		self.has_won = has_won
 		self.step = step
@@ -59,8 +70,8 @@ class RogueEvaluator:
 			for e in self.episodes:
 				result["avg_steps"] += e.step
 				result["avg_reward"] += e.reward
-				result["avg_tiles"] += e.info.get_known_tiles_count()
-				result["avg_level"] += e.info.statusbar["dungeon_level"]-1 if not e.info.statusbar["is_empty"] else 0
+				result["avg_tiles"] += e.tiles
+				result["avg_level"] += e.level
 				# if e.has_won:
 					# result["avg_success_steps"] += e.step
 					# victories +=1

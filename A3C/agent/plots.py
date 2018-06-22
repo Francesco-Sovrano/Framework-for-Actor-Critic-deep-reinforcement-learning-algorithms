@@ -64,6 +64,7 @@ def plot(logs, figure_file):
 						if v < y[key]["min"]:
 							y[key]["min"] = v
 			except Exception as e:
+				x.pop() # remove an element from x
 				pass
 			# add average to data for plotting
 			for key in stats: # foreach statistic

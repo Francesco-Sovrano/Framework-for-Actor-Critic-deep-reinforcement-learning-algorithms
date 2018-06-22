@@ -256,9 +256,7 @@ class RogueBox:
 			self.episode_reward += self.reward
 			lose=self.step_count > self.max_step_count or self.state_generator.need_reset
 		win=self.reward_generator.goal_achieved
-		if win:
-			self.frame_info.pop() # if win is when a new level is reached, then remove the last frame or get wrong information about seen tiles
 			
 		if win or lose:
-			self.evaluator.add( info=self.frame_info[-1], reward=self.episode_reward, has_won=win, step=self.step_count )
+			self.evaluator.add( info=self.frame_info, reward=self.episode_reward, has_won=win, step=self.step_count )
 		return self.reward, self.state, win, lose
