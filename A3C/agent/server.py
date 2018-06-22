@@ -26,7 +26,7 @@ import numpy as np
 
 class Application(object):
 	def __init__(self):
-		self.statistics_history = []
+		# self.statistics_history = []
 		self.train_logfile = flags.log_dir + '/train_results.log'
 		# Training logger
 		self.training_logger = logging.getLogger('results')
@@ -116,7 +116,7 @@ class Application(object):
 			# print global statistics
 			if trainer.terminal:
 				info = self.get_global_statistics(clients=self.trainers)
-				self.statistics_history.append(info)
+				# self.statistics_history.append(info)
 				self.training_logger.info( str([key + "=" + str(value) for key, value in sorted(info.items(), key=lambda t: t[0])]) ) # Print statistics
 				sys.stdout.flush()
 				
@@ -162,8 +162,8 @@ class Application(object):
 			self.load_important_information(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_t))
 			print("Checkpoint loaded: ", checkpoint.model_checkpoint_path)
 			# load statistics history from train logfile
-			self.statistics_history = plt.parse(self.train_logfile)
-			print("Old statistics loaded: ", self.train_logfile)
+			# self.statistics_history = plt.parse(self.train_logfile)
+			# print("Old statistics loaded: ", self.train_logfile)
 		else:
 			# set wall time
 			self.wall_t = 0.0
@@ -190,8 +190,10 @@ class Application(object):
 			f.write(str(wall_t))
 	
 		# Print plot
-		log_dictionary_list = [{'name': "train_plot", 'data': self.statistics_history}]
-		plt.plot(logs=log_dictionary_list, figure_file=flags.log_dir + '/train_plot.jpg')
+		if flags.compute_plot_when_saving:
+			# log_dictionary_list = [{'name': "train_plot", 'data': self.statistics_history}]
+			# plt.plot(logs=log_dictionary_list, figure_file=flags.log_dir + '/train_plot.jpg')
+			plt.plot_files(log_files=[self.train_logfile], figure_file=flags.log_dir + '/train_plot.jpg')
 		
 		# Save Checkpoint
 		print('Start saving..')

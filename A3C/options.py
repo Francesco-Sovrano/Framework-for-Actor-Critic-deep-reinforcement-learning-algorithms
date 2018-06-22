@@ -66,6 +66,9 @@ def build():
 	tf.app.flags.DEFINE_string("log_dir", "./log", "events directory")
 	tf.app.flags.DEFINE_boolean("show_best_screenshots", True, "whether to save best matches")
 	tf.app.flags.DEFINE_boolean("show_all_screenshots", False, "whether to save all the matches")
+# Plot
+	tf.app.flags.DEFINE_boolean("compute_plot_when_saving", True, "Whether to compute the plot when saving checkpoints")
+	tf.app.flags.DEFINE_integer("max_plot_size", 1000, "Maximum number of points in the plot. The smaller it is, the less RAM is required. If the log file has more than max_plot_size points, then max_plot_size means of slices are used instead.")
 # Rogue stuff
 	tf.app.flags.DEFINE_string("state_generator", "Channel6_Complete_CroppedView_StateGenerator", "the state generator must be a classname from rogueinabox/states.py")
 	tf.app.flags.DEFINE_string("reward_generator", "Improved_ENSS_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
@@ -73,9 +76,12 @@ def build():
 	tf.app.flags.DEFINE_integer("steps_per_episode", 500, "number of maximum actions execution per episode")
 	tf.app.flags.DEFINE_string("env_path", "./Rogue/rogue5.4.4-ant-r1.1.4_monsters/rogue", "the path where to find the game")
 	tf.app.flags.DEFINE_string("rogueinabox_path", "./Rogue", "where to find the package") # to remove!
+	
+	global options_built
 	options_built = True
 	
 def get():
+	global options_built
 	if not options_built:
 		build()
 	return tf.app.flags.FLAGS
