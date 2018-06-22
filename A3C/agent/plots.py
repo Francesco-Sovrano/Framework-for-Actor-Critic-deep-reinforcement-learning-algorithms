@@ -36,12 +36,12 @@ def plot(logs, figure_file):
 		# Remove first flags.match_count_for_evaluation objects from data
 		for _ in range(flags.match_count_for_evaluation):
 			next(data)
-		# Build y and x
+		# Build x
+		x = range(plot_size)
+		# Build y
 		y = {}
-		x = {}
 		for key in stats: # foreach statistic
 			y[key] = {"min":float("+inf"), "max":float("-inf"), "data":[]}
-			x = range(plot_size)
 		for _ in range(plot_size):
 			value_sum = {}
 			# initialize
@@ -63,7 +63,7 @@ def plot(logs, figure_file):
 			# add average to data for plotting
 			for key in stats: # foreach statistic
 				y[key]["data"].append(value_sum[key]/data_per_plotpoint)
-		# populate plots
+		# Populate plots
 		for j in range(ncols):
 			for i in range(nrows):
 				plot = plots[i][j]
