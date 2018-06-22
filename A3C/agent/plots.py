@@ -42,7 +42,7 @@ def plot(logs, figure_file):
 		for _ in range(flags.match_count_for_evaluation):
 			next(data)
 		# Build x
-		x = range(plot_size)
+		x = list(range(plot_size))
 		# Build y
 		y = {}
 		for key in stats: # foreach statistic
@@ -53,22 +53,26 @@ def plot(logs, figure_file):
 			for key in stats: # foreach statistic
 				value_sum[key] = 0
 			# compute value_sum foreach key
-			try:
-				for _ in range(data_per_plotpoint):
+			bad_obj_count = 0
+			for _ in range(data_per_plotpoint):
+				try:
 					obj = next(data)
-					for key in stats: # foreach statistic
-						v = obj[key]
-						value_sum[key] += v
-						if v > y[key]["max"]:
-							y[key]["max"] = v
-						if v < y[key]["min"]:
-							y[key]["min"] = v
-			except Exception as e:
+				except Exception as e:
+					bad_obj_count += 1
+					continue # try with next obj
+				for key in stats: # foreach statistic
+					v = obj[key]
+					value_sum[key] += v
+					if v > y[key]["max"]:
+						y[key]["max"] = v
+					if v < y[key]["min"]:
+						y[key]["min"] = v
+			if bad_obj_count == data_per_plotpoint:
 				x.pop() # remove an element from x
-				pass
-			# add average to data for plotting
-			for key in stats: # foreach statistic
-				y[key]["data"].append(value_sum[key]/data_per_plotpoint)
+			else:
+				# add average to data for plotting
+				for key in stats: # foreach statistic
+					y[key]["data"].append(value_sum[key]/(data_per_plotpoint-bad_obj_count))
 		# Populate plots
 		for j in range(ncols):
 			for i in range(nrows):
