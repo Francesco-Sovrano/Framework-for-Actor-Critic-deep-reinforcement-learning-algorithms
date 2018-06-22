@@ -28,8 +28,13 @@ def plot(logs, figure_file):
 	nrows=math.ceil(len(stats)/ncols)
 	figure, plots = plt.subplots(nrows=nrows, ncols=ncols, sharey=False, sharex=False, figsize=(ncols*10,nrows*10))
 	# Populate plots
-	plot_size = flags.max_plot_size if min_data_length > flags.max_plot_size else min_data_length
-	data_per_plotpoint = math.ceil(min_data_length/plot_size)
+	if min_data_length > flags.max_plot_size:		
+		plot_size = flags.max_plot_size
+		data_per_plotpoint = min_data_length//plot_size
+	else:
+		plot_size = min_data_length
+		data_per_plotpoint = 1
+		
 	for log in logs:
 		name = log["name"]
 		data = log["data"]
