@@ -17,7 +17,6 @@ def plot(logs, figure_file):
 	for log in logs:
 		if log["length"] < min_data_length:
 			min_data_length = log["length"]
-	min_data_length -= flags.match_count_for_evaluation # we are going to remove the first flags.match_count_for_evaluation objects from data, because they are too noisy
 	if min_data_length < 2:
 		print("Not enough data for a reasonable plot")
 		return		
@@ -38,9 +37,6 @@ def plot(logs, figure_file):
 	for log in logs:
 		name = log["name"]
 		data = log["data"]
-		# Remove first flags.match_count_for_evaluation objects from data
-		for _ in range(flags.match_count_for_evaluation):
-			next(data)
 		# Build x
 		x = list(range(plot_size))
 		# Build y

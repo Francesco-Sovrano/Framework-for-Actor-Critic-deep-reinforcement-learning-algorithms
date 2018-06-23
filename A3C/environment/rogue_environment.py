@@ -49,7 +49,7 @@ class RogueEnvironment(environment.Environment):
 		
 	def _save_display(self):
 		self.screenshots.append( self.get_screen() )
-		last_frame = self.game.frame_info[-1]
+		last_frame = self.game.get_frame(-1)
 		self.screeninfo.append( "reward: {2}, passages: {0}, doors: {1}, below_player: {3}\n".format(
 			last_frame.get_tile_count("#"),
 			last_frame.get_tile_count("+"), 

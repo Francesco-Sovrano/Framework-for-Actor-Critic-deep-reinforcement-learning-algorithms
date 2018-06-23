@@ -102,7 +102,7 @@ class RogueBox:
 	def _start(self):
 		self.step_count=0
 		self.episode_reward=0
-		self.frame_info=[]
+		self.frame_history=[]
 		
 		self.parser.reset()
 		self.reward_generator.reset()
@@ -226,6 +226,12 @@ class RogueBox:
 		self.pipe.write('y'.encode())
 		self.pipe.write('\n'.encode())
 		
+	def get_frame(self, index):
+		frame_len = len(self.frame_history)
+		if index < -frame_len or index >= frame_len:
+			return None
+		return self.frame_history[index]
+		
 	# interact with rogue methods		
 	def send_command(self, command):
 		"""send a command to rogue"""
@@ -248,9 +254,9 @@ class RogueBox:
 		
 		lose=self.game_over(new_screen)
 		if not lose:
-			self.frame_info.append(self.parser.parse_screen(new_screen))
-			self.reward=self.compute_reward(self.frame_info) # use last frame history
-			self.state=self.compute_state(self.frame_info[-1]) # use last frame info
+			self.frame_history.append(self.parser.parse_screen(new_screen))
+			self.reward=self.compute_reward(self.frame_history) # use frame history
+			self.state=self.compute_state(self.frame_history[-1]) # use last frame info
 			
 			self.step_count += 1
 			self.episode_reward += self.reward
@@ -258,5 +264,5 @@ class RogueBox:
 		win=self.reward_generator.goal_achieved
 			
 		if win or lose:
-			self.evaluator.add( info=self.frame_info, reward=self.episode_reward, has_won=win, step=self.step_count )
+			self.evaluator.add( infos=self.frame_history, reward=self.episode_reward, has_won=win, step=self.step_count )
 		return self.reward, self.state, win, lose

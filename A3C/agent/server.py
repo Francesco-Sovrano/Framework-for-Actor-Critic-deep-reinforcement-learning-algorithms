@@ -26,7 +26,6 @@ import numpy as np
 
 class Application(object):
 	def __init__(self):
-		# self.statistics_history = []
 		self.train_logfile = flags.log_dir + '/train_results.log'
 		# Training logger
 		self.training_logger = logging.getLogger('results')
@@ -116,17 +115,19 @@ class Application(object):
 			# print global statistics
 			if trainer.terminal:
 				info = self.get_global_statistics(clients=self.trainers)
-				# self.statistics_history.append(info)
-				self.training_logger.info( str([key + "=" + str(value) for key, value in sorted(info.items(), key=lambda t: t[0])]) ) # Print statistics
-				sys.stdout.flush()
+				if info:
+					self.training_logger.info( str([key + "=" + str(value) for key, value in sorted(info.items(), key=lambda t: t[0])]) ) # Print statistics
+					sys.stdout.flush() # force printing immediately
 				
 	def get_global_statistics(self, clients):
 		info = {}
-		for t in clients:
-			for key in t.stats:
+		for client in clients:
+			if client.terminated_episodes < flags.match_count_for_evaluation: # ignore the first flags.match_count_for_evaluation objects from data, because they are too noisy
+				continue
+			for key in client.stats:
 				if not info.get(key):
 					info[key] = 0
-				info[key] += t.stats[key]
+				info[key] += client.stats[key]
 		for key in info:
 			info[key] /= len(clients)
 		return info
@@ -161,9 +162,6 @@ class Application(object):
 				self.next_save_steps = (self.global_t + flags.save_interval_step) // flags.save_interval_step * flags.save_interval_step
 			self.load_important_information(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_t))
 			print("Checkpoint loaded: ", checkpoint.model_checkpoint_path)
-			# load statistics history from train logfile
-			# self.statistics_history = plt.parse(self.train_logfile)
-			# print("Old statistics loaded: ", self.train_logfile)
 		else:
 			# set wall time
 			self.wall_t = 0.0
@@ -191,8 +189,6 @@ class Application(object):
 	
 		# Print plot
 		if flags.compute_plot_when_saving:
-			# log_dictionary_list = [{'name': "train_plot", 'data': self.statistics_history}]
-			# plt.plot(logs=log_dictionary_list, figure_file=flags.log_dir + '/train_plot.jpg')
 			plt.plot_files(log_files=[self.train_logfile], figure_file=flags.log_dir + '/train_plot.jpg')
 		
 		# Save Checkpoint
@@ -214,7 +210,6 @@ class Application(object):
 	def save_important_information(self, path):
 		persistent_memory = {}
 		persistent_memory["train_count_matrix"] = []
-		# persistent_memory["statistics_history"] = self.statistics_history
 		if flags.replay_ratio > 0:
 			persistent_memory["experience_buffers"] = []
 		for trainer in self.trainers:
@@ -232,7 +227,6 @@ class Application(object):
 	def load_important_information(self, path):
 		with open(path, 'rb') as f:
 			persistent_memory = pickle.load(f)
-			# self.statistics_history = persistent_memory["statistics_history"]
 			i = 0
 			for trainer in self.trainers:
 				# train counters

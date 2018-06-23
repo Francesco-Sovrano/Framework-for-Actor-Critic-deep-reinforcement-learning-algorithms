@@ -48,6 +48,7 @@ class Worker(object):
 		self.terminal = True
 		self.local_t = 0
 		self.prev_local_t = 0
+		self.terminated_episodes = 0
 		self.stats = {}
 
 	def update_statistics(self):
@@ -101,6 +102,8 @@ class Worker(object):
 			reward, self.terminal = self.local_network.act(session=self.sess)
 			self.episode_reward += reward
 			step += 1
+		if self.terminal: # an episode has terminated
+			self.terminated_episodes += 1
 			
 		if self.train: # train using batch
 			self.local_network.save_batch(session=self.sess, bootstrap=not self.terminal)

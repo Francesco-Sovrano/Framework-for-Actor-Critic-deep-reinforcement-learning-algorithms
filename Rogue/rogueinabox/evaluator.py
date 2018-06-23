@@ -24,21 +24,24 @@ import collections
 
 class Episode:
 	def __init__(self, infos, reward, has_won, step):
-		self.level = 0
-		self.tiles = 0
-		for t in range(len(infos)):
-			info = infos[t]
-			if not info.statusbar["is_empty"]:
-				current_level = info.statusbar["dungeon_level"]-1
-				if self.level < current_level:
-					self.level = current_level
-					self.tiles += infos[t-1].get_known_tiles_count()
-		if len(infos) > 1:
-			if infos[-1].statusbar["dungeon_level"] == infos[-2].statusbar["dungeon_level"]:
-				self.tiles += infos[-1].get_known_tiles_count()
 		self.reward = reward
 		self.has_won = has_won
 		self.step = step
+		self.level = 0
+		self.tiles = 0
+		# count level and tiles
+		infos_length = len(infos)
+		if infos_length < 1:
+			return
+		for t in range(infos_length):
+			info = infos[t]
+			if not info.statusbar["is_empty"]: # the statusbar is not empty
+				current_level = info.statusbar["dungeon_level"]-1
+				if self.level < current_level: # level has changed
+					self.level = current_level
+					self.tiles += infos[t-1].get_known_tiles_count() # is the sum of all the tiles discovered in every level
+		if infos_length == 1 or infos[-1].statusbar["dungeon_level"] == infos[-2].statusbar["dungeon_level"]: # the last frame was not a level change
+			self.tiles += infos[-1].get_known_tiles_count() # add the current amount of tiles of the current level
 	
 class RogueEvaluator:
 
@@ -51,8 +54,8 @@ class RogueEvaluator:
 		self.min_reward = 0
 		self.max_reward = 0
 		
-	def add(self, info, reward, has_won, step): # O(1)
-		self.episodes.append( Episode(info, reward, has_won, step) )
+	def add(self, infos, reward, has_won, step): # O(1)
+		self.episodes.append( Episode(infos, reward, has_won, step) )
 		if len(self.episodes) > self.match_count_for_evaluation:
 			self.episodes.popleft()
 	
