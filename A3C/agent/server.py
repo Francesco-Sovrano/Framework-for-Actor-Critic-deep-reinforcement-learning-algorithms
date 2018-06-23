@@ -121,15 +121,18 @@ class Application(object):
 				
 	def get_global_statistics(self, clients):
 		info = {}
+		unused_clients = 0
 		for client in clients:
 			if client.terminated_episodes < flags.match_count_for_evaluation: # ignore the first flags.match_count_for_evaluation objects from data, because they are too noisy
+				unused_clients += 1
 				continue
 			for key in client.stats:
 				if not info.get(key):
 					info[key] = 0
 				info[key] += client.stats[key]
-		for key in info:
-			info[key] /= len(clients)
+		if unused_clients < len(clients):
+			for key in info:
+				info[key] /= len(clients) - unused_clients
 		return info
 		
 	def train(self):
