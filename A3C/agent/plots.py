@@ -38,7 +38,7 @@ def plot(logs, figure_file):
 		name = log["name"]
 		data = log["data"]
 		# Build x
-		x = list(range(plot_size))
+		x = [i*data_per_plotpoint for i in range(plot_size)]
 		# Build y
 		y = {}
 		for key in stats: # foreach statistic
