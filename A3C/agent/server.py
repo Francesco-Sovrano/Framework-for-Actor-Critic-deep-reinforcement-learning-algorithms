@@ -117,7 +117,7 @@ class Application(object):
 				info = self.get_global_statistics(clients=self.trainers)
 				if info:
 					self.training_logger.info( str([key + "=" + str(value) for key, value in sorted(info.items(), key=lambda t: t[0])]) ) # Print statistics
-					sys.stdout.flush() # force printing immediately
+				sys.stdout.flush() # force print immediately what is in output buffer
 				
 	def get_global_statistics(self, clients):
 		info = {}

@@ -90,6 +90,8 @@ def plot(logs, figure_file):
 	plt.xlabel('Episodes')
 	figure.savefig(figure_file)
 	print("Plot figure saved in ", figure_file)
+	figure.clf() # release memory
+	plt.close() # release memory
 
 def plot_files(log_files, figure_file):
 	logs = []
@@ -101,23 +103,23 @@ def get_length(file):
 	return sum(1 for line in open(file))
 	
 def parse(log_fname):
-	with open(log_fname) as logfile:
-		for i, line in enumerate(logfile):
-			try:
-				splitted = line.split(' ')
-				# date_str = splitted[0] + ' ' + splitted[1]
-				# date = datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S,%f')
-				# obj = {'date': date}
-				obj = {}
-				for x in splitted[2:]:
-					x = re.sub('[\',\[\]]', '', x) # remove following chars: ',[]
-					# print(x)
-					if '=' in x:
-						key, val = x.split('=')
-						obj[key] = float(val)
-				# print (obj)
-				yield obj
-			except Exception as e:
-				print("exc %s on line %s" % (repr(e), i+1))
-				print("skipping line")
-				continue
+	logfile = open(log_fname, 'r')
+	for i, line in enumerate(logfile):
+		try:
+			splitted = line.split(' ')
+			# date_str = splitted[0] + ' ' + splitted[1]
+			# date = datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S,%f')
+			# obj = {'date': date}
+			obj = {}
+			for x in splitted[2:]:
+				x = re.sub('[\',\[\]]', '', x) # remove following chars: ',[]
+				# print(x)
+				key, val = x.split('=')
+				obj[key] = float(val)
+			# print (obj)
+			yield obj
+		except Exception as e:
+			print("exc %s on line %s" % (repr(e), i+1))
+			print("skipping line")
+			continue
+	logfile.close()
