@@ -219,7 +219,7 @@ class ModelManager(object):
 			generalized_advantage_estimator = agent_reward + flags.gamma * last_agent_value - agent_value + flags.gamma*flags.lambd*generalized_advantage_estimator
 			last_agent_value = agent_value
 
-			if self.query_partitioner(batch_size-t-1): # ok because "step" starts from 0
+			if not self.has_manager or self.query_partitioner(batch_size-t-1): # ok because "step" starts from 0
 				self.batch["discounted_cumulative_reward"][0].appendleft(discounted_cumulative_reward)
 				self.batch["generalized_advantage_estimator"][0].appendleft(generalized_advantage_estimator)
 			if self.has_manager:
