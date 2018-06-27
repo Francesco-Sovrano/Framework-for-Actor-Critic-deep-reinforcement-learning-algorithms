@@ -111,7 +111,7 @@ class ModelManager(object):
 				stats["model_{0}".format(i)] = usage_matrix[i]/total_usage if total_usage != 0 else 0
 		return stats
 		
-	def get_agentID_by_state( self, sess, state, concat=None ):
+	def get_state_partition( self, sess, state, concat=None ):
 		if self.has_manager:
 			policy, value = self.manager.run_policy_and_value( sess, state, concat )
 			id = np.random.choice(range(len(policy)), p=policy)
@@ -149,9 +149,10 @@ class ModelManager(object):
 			for key in self.batch:
 				self.batch[key].append(collections.deque())
 			self.batch["start_lstm_state"][i] = self.get_model(i).lstm_state_out				
-		self.agent_id_list = collections.deque()
-		self.agent_reward_list = collections.deque()
-		self.agent_value_list = collections.deque()
+		self.agent_id_list = []
+		self.agent_reward_list = []
+		self.agent_value_list = []
+		self.manager_value_list = []
 		self.agent_id = 0
 		self.step = 0 # start from 0
 		
@@ -165,7 +166,7 @@ class ModelManager(object):
 		if self.has_manager:
 			query_partitioner = self.query_partitioner(self.step)
 			if query_partitioner:
-				self.agent_id, manager_policy, manager_value = self.get_agentID_by_state(sess=session, state=[state], concat=[concat])
+				self.agent_id, manager_policy, manager_value = self.get_state_partition(sess=session, state=[state], concat=[concat])
 		agent = self.get_model(self.agent_id)
 		agent_policy, agent_value = agent.run_policy_and_value(sess=session, state=[state], concat=[concat])
 		
@@ -179,53 +180,59 @@ class ModelManager(object):
 		self.batch["values"][self.agent_id].append(agent_value)
 		self.batch["policies"][self.agent_id].append(agent_policy)
 		self.batch["actions"][self.agent_id].append(agent.get_action_vector(action))
-		self.agent_reward_list.appendleft(reward) # we use it to calculate the cumulative reward when out of this loop
-		self.agent_value_list.appendleft(agent_value) # we use it to calculate the GAE when out of this loop		
+		self.agent_reward_list.append(reward) # we use it to calculate the cumulative reward when out of this loop
+		self.agent_value_list.append(agent_value) # we use it to calculate the GAE when out of this loop		
+		self.agent_id_list.append(self.agent_id)
 		# Populate manager self.batch
-		if self.has_manager:
-			self.agent_id_list.appendleft(self.agent_id)
-			if query_partitioner:
-				self.batch["states"][0].append(state)
-				self.batch["actions"][0].append(self.manager.get_action_vector( self.agent_id-1 ))
-				self.batch["concat"][0].append(concat)
-				self.batch["values"][0].append(manager_value)
-				self.batch["policies"][0].append(manager_policy)
-				
+		if self.has_manager and query_partitioner:
+			self.batch["states"][0].append(state)
+			self.batch["actions"][0].append(self.manager.get_action_vector( self.agent_id-1 ))
+			self.batch["concat"][0].append(concat)
+			self.batch["values"][0].append(manager_value)
+			self.batch["policies"][0].append(manager_policy)
+			self.manager_value_list.append(manager_value)
 		self.step += 1 # exec this command last
 		return reward, terminal
 			
 	def save_batch(self, session, bootstrap):
-		discounted_cumulative_reward = 0.0
-		generalized_advantage_estimator = 0.0
+		agent_discounted_cumulative_reward = 0.0
+		agent_generalized_advantage_estimator = 0.0
+		if self.has_manager:
+			manager_discounted_cumulative_reward = 0.0
+			manager_generalized_advantage_estimator = 0.0
 		
 		if bootstrap: # bootstrap the value from the last state
 			state = self.environment.last_state
 			last_action_reward = self.environment.get_last_action_reward()
-			if self.has_manager and self.query_partitioner(self.step):
-				self.agent_id, _, _ = self.get_agentID_by_state(sess=session, state=[state], concat=[last_action_reward])
-			
+			if self.has_manager:
+				self.agent_id, _, manager_discounted_cumulative_reward = self.get_state_partition(sess=session, state=[state], concat=[last_action_reward])
 			agent = self.get_model(self.agent_id)
-			discounted_cumulative_reward = agent.run_value(sess=session, state=[state], concat=[last_action_reward])
+			agent_discounted_cumulative_reward = agent.run_value(sess=session, state=[state], concat=[last_action_reward])
 			
-		last_agent_value = discounted_cumulative_reward
+		last_agent_value = agent_discounted_cumulative_reward
+		if self.has_manager:
+			last_manager_value = manager_discounted_cumulative_reward
 		batch_reward = 0
 		batch_size = len(self.agent_reward_list)
 		for t in range(batch_size):
-			agent_reward = self.agent_reward_list[t]
-			agent_value = self.agent_value_list[t]
-			
+			agent_id = self.agent_id_list.pop()
+			agent_value = self.agent_value_list.pop()
+			agent_reward = self.agent_reward_list.pop()
 			batch_reward += agent_reward
-			discounted_cumulative_reward = agent_reward + flags.gamma * discounted_cumulative_reward
-			generalized_advantage_estimator = agent_reward + flags.gamma * last_agent_value - agent_value + flags.gamma*flags.lambd*generalized_advantage_estimator
+			
+			agent_discounted_cumulative_reward = agent_reward + flags.gamma * agent_discounted_cumulative_reward
+			agent_generalized_advantage_estimator = agent_reward + flags.gamma * last_agent_value - agent_value + flags.gamma*flags.lambd*agent_generalized_advantage_estimator
 			last_agent_value = agent_value
-
-			if not self.has_manager or self.query_partitioner(batch_size-t-1): # ok because "step" starts from 0
-				self.batch["discounted_cumulative_reward"][0].appendleft(discounted_cumulative_reward)
-				self.batch["generalized_advantage_estimator"][0].appendleft(generalized_advantage_estimator)
-			if self.has_manager:
-				agent_id = self.agent_id_list[t]
-				self.batch["discounted_cumulative_reward"][agent_id].appendleft(discounted_cumulative_reward)
-				self.batch["generalized_advantage_estimator"][agent_id].appendleft(generalized_advantage_estimator)
+			self.batch["discounted_cumulative_reward"][agent_id].appendleft(agent_discounted_cumulative_reward)
+			self.batch["generalized_advantage_estimator"][agent_id].appendleft(agent_generalized_advantage_estimator)
+			
+			if self.has_manager and self.query_partitioner(batch_size-t-1): # ok because "step" starts from 0
+				manager_value = self.manager_value_list.pop()
+				manager_discounted_cumulative_reward = agent_reward + flags.gamma * manager_discounted_cumulative_reward
+				manager_generalized_advantage_estimator = agent_reward + flags.gamma * last_manager_value - manager_value + flags.gamma*flags.lambd*manager_generalized_advantage_estimator
+				last_manager_value = manager_value
+				self.batch["discounted_cumulative_reward"][0].appendleft(manager_discounted_cumulative_reward)
+				self.batch["generalized_advantage_estimator"][0].appendleft(manager_generalized_advantage_estimator)
 		self.train(session=session, batch=self.batch)
 		# experience replay
 		if flags.replay_ratio > 0:

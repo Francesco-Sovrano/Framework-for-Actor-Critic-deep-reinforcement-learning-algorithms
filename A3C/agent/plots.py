@@ -22,9 +22,10 @@ def plot(logs, figure_file):
 		return		
 	# Get statistics keys
 	stats = sorted(next(logs[0]["data"]).keys(), key=lambda t: t[0]) # statistics keys sorted by name
+	stats_count = len(stats)
 	# Create new figure and two subplots, sharing both axes
-	ncols=3
-	nrows=math.ceil(len(stats)/ncols)
+	ncols=3 if stats_count >= 3 else stats_count
+	nrows=math.ceil(stats_count/ncols)
 	figure, plots = plt.subplots(nrows=nrows, ncols=ncols, sharey=False, sharex=False, figsize=(ncols*10,nrows*10))
 	# Populate plots
 	if min_data_length > flags.max_plot_size:		
@@ -74,7 +75,7 @@ def plot(logs, figure_file):
 			for i in range(nrows):
 				plot = plots[i][j]
 				idx = i*ncols+j
-				if idx >= len(stats):
+				if idx >= stats_count:
 					figure.delaxes(plot) # remove unused plot
 					continue
 				key = stats[idx]

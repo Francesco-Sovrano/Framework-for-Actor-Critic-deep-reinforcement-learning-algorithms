@@ -22,7 +22,7 @@ def build():
 	tf.app.flags.DEFINE_integer("partition_count", 3, "Number of partitions of the input space. Set to 1 for no partitions.")
 	# Partitioner granularity > 0 increases algorithm speed when partition_count > 0
 	tf.app.flags.DEFINE_integer("partitioner_granularity", 3, "Number of steps after which to run the partitioner.")
-	tf.app.flags.DEFINE_float("partitioner_learning_factor", 1, "Should be a number greater than 0. Usually the partitioner has an higher learning rate than the others. This factor is used to change the initial learning rate of the partitioner only.") # default is 2.0
+	tf.app.flags.DEFINE_float("partitioner_learning_factor", 2, "Should be a number greater than 0. Usually the partitioner has an higher learning rate than the others. This factor is used to change the initial learning rate of the partitioner only.") # default is 2.0
 	tf.app.flags.DEFINE_string("partitioner_optimizer", "ProximalAdagrad", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is ProximalAdagrad
 # Loss clip range
 	tf.app.flags.DEFINE_float("clip", 0.2, "PPO/PVO initial clip range") # default is 0.2, for openAI is 0.1
@@ -31,8 +31,8 @@ def build():
 	tf.app.flags.DEFINE_integer("clip_decay_steps", 10**5, "decay clip every x steps") # default is 1
 	tf.app.flags.DEFINE_float("clip_decay_rate", 0.96, "decay rate") # default is 0.5
 # Learning rate
-	tf.app.flags.DEFINE_float("alpha", 7.0e-4, "initial learning rate") # default is 7.0e-4, for openAI is 2.5e-4
-	tf.app.flags.DEFINE_boolean("alpha_decay", False, "whether to decay the learning rate") # default is False
+	tf.app.flags.DEFINE_float("alpha", 3.5e-4, "initial learning rate") # default is 7.0e-4, for openAI is 2.5e-4
+	tf.app.flags.DEFINE_boolean("alpha_decay", True, "whether to decay the learning rate") # default is False
 	tf.app.flags.DEFINE_string("alpha_annealing_function", "exponential_decay", "annealing function: exponential_decay, inverse_time_decay, natural_exp_decay")
 	tf.app.flags.DEFINE_integer("alpha_decay_steps", 10**5, "decay alpha every x steps")
 	tf.app.flags.DEFINE_float("alpha_decay_rate", 0.96, "decay rate")
@@ -44,7 +44,7 @@ def build():
 	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
 # Reward clip
 	tf.app.flags.DEFINE_boolean("clip_reward", False, "Whether to clip the reward between min_reward and max_reward") # default is False
-	tf.app.flags.DEFINE_float("min_reward", -1, "Minimum reward for clipping") # default is -1
+	tf.app.flags.DEFINE_float("min_reward", 0, "Minimum reward for clipping") # default is -1
 	tf.app.flags.DEFINE_float("max_reward", 1, "Maximum reward for clipping") # default is 1
 # Actor-Critic parameters
 	# Learning rate for Critic is half of Actor's, so multiply by 0.5 (default)
