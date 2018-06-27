@@ -98,7 +98,7 @@ class Worker(object):
 		self.local_network.reset_batch()
 			
 		step = 0
-		while step < flags.local_t_max and not self.terminal:
+		while step < flags.max_batch_size and not self.terminal:
 			reward, self.terminal = self.local_network.act(session=self.sess)
 			self.episode_reward += reward
 			step += 1

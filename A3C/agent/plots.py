@@ -73,8 +73,12 @@ def plot(logs, figure_file):
 		# Populate plots
 		for j in range(ncols):
 			for i in range(nrows):
-				plot = plots[i][j]
-				idx = i*ncols+j
+				if nrows == 1:
+					plot = plots[j]
+					idx = j
+				else:
+					plot = plots[i][j]
+					idx = i*ncols+j
 				if idx >= stats_count:
 					figure.delaxes(plot) # remove unused plot
 					continue

@@ -51,7 +51,7 @@ def build():
 	tf.app.flags.DEFINE_float("value_coefficient", 0.5, "value coefficient for tuning Critic learning rate") # default is 0.5, for openAI is 0.25
 	tf.app.flags.DEFINE_float("entropy_beta", 0.001, "entropy regularization constant") # default is 0.001, for openAI is 0.01
 	tf.app.flags.DEFINE_integer("parallel_size", 4, "parallel thread size")
-	tf.app.flags.DEFINE_integer("local_t_max", 64, "repeat step size") # default is 60, for openAI is 128
+	tf.app.flags.DEFINE_integer("max_batch_size", 64, "maximum batch size") # default is 60, for openAI is 128
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
 	tf.app.flags.DEFINE_float("gamma", 0.99, "discount factor for rewards") # default is 0.95, for openAI is 0.99
 # Generalized Advantage Estimation	
