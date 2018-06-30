@@ -24,6 +24,10 @@ from math import floor
 # ABSTRACT CLASSES
 
 class StateGenerator(ABC):
+	@staticmethod
+	def screen_shape():
+		return (24,80,1)
+		
 	def __init__(self):
 		self._set_shape()
 		self._set_situations_count()
@@ -40,14 +44,18 @@ class StateGenerator(ABC):
 		self._situations = 1 # situations are for multi-agent models
 
 	def compute_state(self, info):
-		"""Should compute the state and return it."""
-		if info.has_statusbar():
+		self.player_position = info.get_player_pos( )
+		if info.has_statusbar() and self.player_position != None:
 			value, situation = self.build_state(info)
 			return { "value" : value, "situation" : situation }
 		return { "value" : self.empty_state(), "situation" : 0 }
 		
 	@abstractmethod
 	def build_state(self, info):
+		pass
+		
+	@abstractmethod
+	def move_agent_in_all_known_walkable_positions(self, info):
 		pass
 
 	def set_positions(self, state, positions, value):
@@ -79,42 +87,22 @@ class StateGenerator(ABC):
 					return True
 		return False
 
-class M_P_D_S_StateGenerator(StateGenerator): # 1 situation
+class FullView_StateGenerator(StateGenerator): # 1 situation
 	def _set_shape(self):
-		self._shape = (4, 22, 80) # [heigth, width, channel]
-
-	def build_state(self, info):
-		state = self.empty_state()
-		# layer 0: the map
-		state = self.set_positions(state[0], info.get_list_of_walkable_positions(), 1)
-		# layer 1: the player position
-		state = self.set_positions(state[1], info.get_list_of_positions_by_tile("@"), 1)
-		# layer 2: the doors positions
-		state = self.set_positions(state[2], info.get_list_of_positions_by_tile("+"), 1)
-		# layer 3: the stairs positions
-		state = self.set_positions(state[3], info.get_list_of_positions_by_tile("%"), 1)
-		return { "value" : state, "situation" : 0 }
-
-class C1S1_FullView_StateGenerator(StateGenerator): # 1 situation
-	def _set_shape(self):
-		self._shape = (22, 80, 1) # [heigth, width, channel]
+		(screen_x,screen_y,_) = self.screen_shape()
+		self._shape = (screen_x-2, screen_y, 1) # [heigth, width, channel]
 		
-	def build_state(self, info):
-		state = self.empty_state()
-		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("@"), 2) # rogue (player)
-		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("%"), 4) # stairs
-		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("|"), 8) # walls
-		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("-"), 8) # walls
-		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("+"), 16) # doors
-		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
-		return state, 0
-
-class C1S3_FullView_StateGenerator(StateGenerator): # 3 situations
-	def _set_shape(self):
-		self._shape = (22, 80, 1) # [heigth, width, channel]
-		
-	def _set_situations_count(self):
-		self._situations = 3
+	def move_agent_in_all_known_walkable_positions(self, info):
+		player_position = info.get_player_pos()
+		if not info.has_statusbar() or player_position is None:
+			return None
+		result = []
+		list_of_walkable_positions = info.get_list_of_walkable_positions()
+		for walkable_position in list_of_walkable_positions:
+			self.player_position = walkable_position
+			state, _ = self.build_state(info)
+			result.append((state,walkable_position))
+		return result
 		
 	def build_state(self, info):
 		state = self.empty_state()
@@ -124,7 +112,15 @@ class C1S3_FullView_StateGenerator(StateGenerator): # 3 situations
 		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("+"), 16) # doors
 		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("#"), 16) # tunnel
 		# set it for last otherwise it may be overwritten by other positions!
-		state = self.set_channel(0, state, info.get_list_of_positions_by_tile("@"), 2) # rogue (player)
+		state = self.set_channel(0, state, [self.player_position], 2) # rogue (player)
+		return state, 0
+
+class C1S3_FullView_StateGenerator(FullView_StateGenerator): # 3 situations		
+	def _set_situations_count(self):
+		self._situations = 3
+		
+	def build_state(self, info):
+		state, situation = super().build_state(info)
 			
 		pixel = info.get_tile_below_player()
 		if pixel == '#': # tunnel
@@ -136,13 +132,20 @@ class C1S3_FullView_StateGenerator(StateGenerator): # 3 situations
 		return state, situation
 
 class CroppedView_StateGenerator(StateGenerator): # 6 situations
-
-	def compute_state(self, info):
-		self.player_position = info.get_player_pos( )
-		if info.has_statusbar() and self.player_position != None:
-			value, situation = self.build_state(info)
-			return { "value" : value, "situation" : situation }
-		return { "value" : self.empty_state(), "situation" : 0 }
+		
+	def move_agent_in_all_known_walkable_positions(self, info):
+		player_position = info.get_player_pos()
+		if not info.has_statusbar() or player_position is None:
+			return []
+		result = []
+		list_of_walkable_positions = info.get_list_of_walkable_positions()
+		for walkable_position in list_of_walkable_positions:
+			i, j = self._get_relative_coordinates(walkable_position, player_position, self._shape)
+			if self.is_valid_coordinate(i, j):
+				self.player_position = walkable_position
+				state, _ = self.build_state(info)
+				result.append((state,walkable_position))
+		return result
 		
 	def _get_relative_coordinates(self, tile_position, centre_position, range):
 		i, j = tile_position
@@ -151,11 +154,14 @@ class CroppedView_StateGenerator(StateGenerator): # 6 situations
 		norm_j = j-y+floor(range[1]/2)
 		return norm_i, norm_j
 		
+	def is_valid_coordinate(self, i, j):
+		return i >= 0 and j >= 0 and i < self._shape[0] and j < self._shape[1]
+		
 	def set_channel(self, channel, centre_position, state, positions, value):
 		for pos in positions:
 			if pos:
 				i, j = self._get_relative_coordinates(pos, centre_position, self._shape)
-				if i >= 0 and j >= 0 and i < self._shape[0] and j < self._shape[1]:
+				if self.is_valid_coordinate(i, j):
 					state[i][j][channel] = value
 		return state
 		

@@ -153,9 +153,10 @@ class RogueBox:
 			
 	def get_empty_screen(self):
 		screen=list()
-		for row in range(24):
+		(screen_x,screen_y,_) = self.state_generator.screen_shape()
+		for row in range(screen_x):
 			value=""
-			for col in range(80):
+			for col in range(screen_y):
 				value += " "
 			screen.append(value)
 		return screen
@@ -195,6 +196,9 @@ class RogueBox:
 	def compute_state(self, new_info):
 		"""return a numpy array representation of the current state using the function specified during init"""
 		return self.state_generator.compute_state(new_info)
+		
+	def compute_walkable_states(self):
+		return self.state_generator.move_agent_in_all_known_walkable_positions(self.frame_history[-2])
 
 	def compute_reward(self, frame_history):
 		"""return the reward for a state transition using the function specified during init"""

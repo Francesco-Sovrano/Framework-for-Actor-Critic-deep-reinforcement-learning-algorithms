@@ -54,7 +54,7 @@ def build():
 	tf.app.flags.DEFINE_integer("max_batch_size", 64, "maximum batch size") # default is 60, for openAI is 128
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
 	tf.app.flags.DEFINE_float("gamma", 0.99, "discount factor for rewards") # default is 0.95, for openAI is 0.99
-# Generalized Advantage Estimation	
+# Generalized Advantage Estimation
 	tf.app.flags.DEFINE_boolean("use_GAE", True, "whether to use Generalized Advantage Estimation (default in openAI's PPO implementation)") # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 	# Taking lambda < 1 introduces bias only when the value function is inaccurate
 	tf.app.flags.DEFINE_float("lambd", 0.95, "generalized advantage estimator decay parameter") # default is 0.95

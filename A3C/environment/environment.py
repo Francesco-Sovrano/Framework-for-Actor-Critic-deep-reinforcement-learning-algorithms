@@ -29,3 +29,12 @@ class Environment(object):
 
 	def stop(self):
 		pass
+		
+	def compute_heatmap_states(self):
+		return []
+		
+	def get_state_shape(self):
+		pass
+		
+	def get_screen_shape(self):
+		return self.get_state_shape()

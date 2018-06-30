@@ -13,12 +13,13 @@ from model.loss.policy_loss import PolicyLoss
 from model.loss.value_loss import ValueLoss
 
 class A3CModel(object):
-	def __init__(self, id, state_shape, policy_size, entropy_beta, clip, device, concat_size=0):
+	def __init__(self, session, id, state_shape, policy_size, entropy_beta, clip, device, concat_size=0):
 		# learning rate stuff
 		self.train_count = 0
 		self.entropy_beta = entropy_beta
 		self.clip = clip
 		# initialize
+		self._session = session
 		self._id = id # model id
 		self._device = device # gpu or cpu
 		self._policy_size = policy_size # the dimension of the policy vector
@@ -110,7 +111,7 @@ class A3CModel(object):
 	def reset_LSTM_state(self):
 		self.lstm_state_out = tf.contrib.rnn.LSTMStateTuple(np.zeros([1, self._lstm_units]), np.zeros([1, self._lstm_units]))
 
-	def run_policy_and_value(self, sess, state, concat=None):
+	def run_policy_and_value(self, state, concat=None):
 		# This run_policy_and_value() is used when forward propagating.
 		# so the step size is 1.
 		feed_dict = { 
@@ -120,13 +121,16 @@ class A3CModel(object):
 			}
 		if self._concat_size > 0:
 			feed_dict.update( { self._concat : concat } )
-		pi_out, v_out, self.lstm_state_out = sess.run( [self._policy, self._value, self._lstm_state], feed_dict = feed_dict )
+		pi_out, v_out, self.lstm_state_out = self._session.run( [self._policy, self._value, self._lstm_state], feed_dict = feed_dict )
 		# pi_out: (1,3), v_out: (1)
 		return (pi_out[0], v_out[0])
 		
-	def run_value(self, sess, state, concat=None):
+	def sync_with_global(self):
+		self._session.run(self.sync)
+		
+	def run_value(self, state, concat=None):
 		# This run_value() is used for calculating V for bootstrapping at the 
-		# end of max_batch_size time step sequence.
+		# end of LOCAL_T_MAX time step sequence.
 		# When next sequence starts, V will be calculated again with the same state using updated network weights,
 		# so we don't update LSTM state here.
 		feed_dict = {
@@ -136,7 +140,7 @@ class A3CModel(object):
 			}
 		if self._concat_size > 0:
 			feed_dict.update( { self._concat : concat } )
-		v_out, _ = sess.run( [self._value, self._lstm_state], feed_dict = feed_dict )
+		v_out, _ = self._session.run( [self._value, self._lstm_state], feed_dict = feed_dict )
 		return v_out[0]
 		
 	def sync_from(self, src_network, name=None):
@@ -148,7 +152,7 @@ class A3CModel(object):
 				for(src_var, dst_var) in zip(src_vars, dst_vars):
 					sync_op = tf.assign(dst_var, src_var)
 					sync_ops.append(sync_op)
-				return tf.group(*sync_ops, name=name)
+				self.sync = tf.group(*sync_ops, name=name)
 				
 	def minimize_local(self, optimizer, global_step, global_var_list):
 		"""
@@ -166,7 +170,7 @@ class A3CModel(object):
 			if flags.grad_norm_clip > 0:
 				local_gradients, _ = tf.clip_by_global_norm(local_gradients, flags.grad_norm_clip)
 			grads_and_vars = list(zip(local_gradients, global_var_list))
-			return optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+			self.apply_gradient = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 				
 	def get_vars(self):
 		return self.variables # get model variables
@@ -179,7 +183,7 @@ class A3CModel(object):
 	def _lstm_state_placeholder(self):
 		return tf.placeholder(tf.float32, [1, self._lstm_units])
 		
-	def train(self, sess, gradient, states, actions, values, policies, cumulative_rewards, generalized_advantage_estimators, start_lstm_state, concat = None):
+	def train(self, states, actions, values, policies, cumulative_rewards, generalized_advantage_estimators, start_lstm_state, concat = None):
 		values = np.reshape(values,[-1])
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 			advantages = np.reshape(generalized_advantage_estimators,[-1])
@@ -201,4 +205,4 @@ class A3CModel(object):
 		if self._concat_size > 0:
 			feed_dict.update( { self._concat : concat } )
 		self.train_count += len(states)
-		sess.run( gradient, feed_dict = feed_dict ) # Calculate gradients and copy them to global network
+		self._session.run( self.apply_gradient, feed_dict = feed_dict ) # Calculate gradients and copy them to global network

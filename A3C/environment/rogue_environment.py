@@ -23,6 +23,9 @@ class RogueEnvironment(environment.Environment):
 		
 	def get_state_shape(self):
 		return self.game.state_generator._shape
+		
+	def get_screen_shape(self):
+		return self.game.state_generator.screen_shape()
 	
 	def __init__(self, thread_index):
 		environment.Environment.__init__(self)
@@ -50,12 +53,17 @@ class RogueEnvironment(environment.Environment):
 	def _save_display(self):
 		self.screenshots.append( self.get_screen() )
 		last_frame = self.game.get_frame(-1)
-		self.screeninfo.append( "reward: {2}, passages: {0}, doors: {1}, below_player: {3}\n".format(
-			last_frame.get_tile_count("#"),
-			last_frame.get_tile_count("+"), 
-			self.game.reward,
-			last_frame.get_tile_below_player() )
+		self.screeninfo.append( 
+			"reward: {2}, passages: {0}, doors: {1}, below_player: {3}\n".format(
+				last_frame.get_tile_count("#"),
+				last_frame.get_tile_count("+"), 
+				self.game.reward,
+				last_frame.get_tile_below_player() 
+			) 
 		)
+		
+	def compute_heatmap_states(self):
+		return self.game.compute_heatmap_states()
 		
 	def print_display(self, step, reward):
 		file = open(flags.log_dir + '/screenshots/reward(' + str(reward) + ')_step(' + str(step) + ')_thread(' + str(self.thread_index) + ').log',"w") 

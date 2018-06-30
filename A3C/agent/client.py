@@ -25,7 +25,6 @@ class Worker(object):
 	def __init__(self, thread_index, session, global_network, device, train=True):
 		self.train = train
 		self.thread_index = thread_index
-		self.sess = session
 		self.global_network = global_network
 		#logs
 		if not os.path.isdir(flags.log_dir + "/performance"):
@@ -42,7 +41,10 @@ class Worker(object):
 		self.environment = Environment.create_environment(flags.env_type, self.thread_index)
 		self.device = device
 		if self.train:
-			self.local_network = ModelManager(id=self.thread_index, environment=self.environment, device=self.device, global_network=self.global_network)
+			state_shape = self.environment.get_state_shape()
+			action_size = self.environment.get_action_size()
+			concat_size = action_size+1
+			self.local_network = ModelManager(session=session, device=self.device, id=self.thread_index, action_size=action_size, concat_size=concat_size, state_shape=state_shape, global_network=self.global_network)
 		else:
 			self.local_network = self.global_network
 		self.terminal = True
@@ -94,19 +96,26 @@ class Worker(object):
 	# run simulations
 	def run_batch(self):
 		if self.train: # Copy weights from shared to local
-			self.local_network.sync_with_global(self.sess)			
+			self.local_network.sync_with_global()			
 		self.local_network.reset_batch()
 			
 		step = 0
 		while step < flags.max_batch_size and not self.terminal:
-			reward, self.terminal = self.local_network.act(session=self.sess)
+			policy, value = self.local_network.compute_policy_value(state=self.environment.last_state, concat=self.environment.get_last_action_reward())
+			action = self.environment.choose_action(policy)
+			_, reward, self.terminal = self.environment.process(action)
+			self.local_network.save_action_reward(action, reward)
+			
 			self.episode_reward += reward
 			step += 1
 		if self.terminal: # an episode has terminated
 			self.terminated_episodes += 1
 			
 		if self.train: # train using batch
-			self.local_network.save_batch(session=self.sess, bootstrap=not self.terminal)
+			if self.terminal: # no bootstrap
+				self.local_network.save_batch()
+			else: # bootstrap
+				self.local_network.save_batch(state=self.environment.last_state, concat=self.environment.get_last_action_reward())
 		return step
 
 	def process(self, global_t = 0):
@@ -121,3 +130,15 @@ class Worker(object):
 			traceback.print_exc()
 			self.terminal = True
 			return 0
+			
+	def build_value_map(self):
+		self.prepare()
+		while not self.terminal:
+			self.process()
+		(screen_x,screen_y,_) = self.environment.get_screen_shape()
+		value_map = np.zeros((screen_x, screen_y))
+		walkable_states = self.environment.compute_heatmap_states()
+		for (state,(x,y)) in walkable_states:
+			_, value = self.local_network.compute_policy_value(state=state, concat=self.environment.get_last_action_reward())
+			value_map[x][y] = value
+		return value_map

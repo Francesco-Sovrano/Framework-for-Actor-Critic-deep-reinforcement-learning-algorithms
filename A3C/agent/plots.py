@@ -6,6 +6,7 @@ import re
 import matplotlib
 matplotlib.use('Agg') # non-interactive backend
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 # get command line args
 import options
@@ -128,3 +129,9 @@ def parse(log_fname):
 			print("skipping line")
 			continue
 	logfile.close()
+	
+def heatmap(map, figure_file):
+	ax = sns.heatmap(map)
+	plt.show()
+	plt.savefig(figure_file)
+	plt.close()

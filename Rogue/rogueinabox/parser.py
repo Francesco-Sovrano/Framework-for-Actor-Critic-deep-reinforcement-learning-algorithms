@@ -4,6 +4,7 @@ import itertools
 import copy
 
 from rogueinabox.frame_info import RogueFrameInfo
+from rogueinabox.states import StateGenerator
 
 class RogueParser:
 
@@ -36,10 +37,11 @@ class RogueParser:
 		
 	@staticmethod
 	def empty_environment_map():
+		(screen_x,screen_y,_) = StateGenerator.screen_shape()
 		env = []
-		for x in range(22):
+		for x in range(screen_x-2):
 			row = []
-			for y in range(80):
+			for y in range(screen_y):
 				row.append(" ")
 			env.append(row)
 		return env
@@ -92,7 +94,8 @@ class RogueParser:
 		if not new_statusbar["is_empty"]:
 			# populate the info dictionary
 			# file = open( '/public/francesco_sovrano/parser_debug_info.log',"w") 
-			for x, j in itertools.product(range(1, 23), range(80)):
+			(screen_x,screen_y,_) = StateGenerator.screen_shape()
+			for x, j in itertools.product(range(1, screen_x-1), range(screen_y)):
 				pixel = screen[x][j]
 				i = x-1 # The internal map has a different size and it is 22x80, on the other hand the screen is 24x80. The first and the last screen line contains useless metadata
 				if pixel in self.rogue_dict["environment"]: # immobile environment

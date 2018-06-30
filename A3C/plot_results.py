@@ -3,7 +3,7 @@ import agent.plots as plt
 import argparse
 
 parser = argparse.ArgumentParser(description='draw plots')
-parser.add_argument('figure_file', nargs='+', help='the file in which to save the plots')
+parser.add_argument('figure_file', help='the file in which to save the plots')
 parser.add_argument('log_files', nargs='+', help='log files used to build the plot')
 ARGS = parser.parse_args()
 print("ARGS:", ARGS)
