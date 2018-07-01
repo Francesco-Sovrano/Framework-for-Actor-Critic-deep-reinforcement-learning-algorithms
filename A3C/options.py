@@ -64,8 +64,13 @@ def build():
 	tf.app.flags.DEFINE_string("checkpoint_dir", "./checkpoint", "checkpoint directory")
 	tf.app.flags.DEFINE_string("event_dir", "./events", "events directory")
 	tf.app.flags.DEFINE_string("log_dir", "./log", "events directory")
-	tf.app.flags.DEFINE_boolean("show_best_screenshots", True, "whether to save best matches")
-	tf.app.flags.DEFINE_boolean("show_all_screenshots", False, "whether to save all the matches")
+	tf.app.flags.DEFINE_boolean("show_best_episodes", True, "whether to save best matches")
+	tf.app.flags.DEFINE_boolean("show_all_episodes", False, "whether to save all the matches")
+	# save_episode_heatmap = True slows down the algorithm
+	tf.app.flags.DEFINE_boolean("save_episode_heatmap", True, "whether to save episode heatmap")
+	# save_episode_gif = True slows down the algorithm
+	tf.app.flags.DEFINE_boolean("save_episode_gif", True, "whether to save episode gif")
+	tf.app.flags.DEFINE_float("gif_speed", 0.25, "gif speed in seconds")
 # Plot
 	tf.app.flags.DEFINE_boolean("compute_plot_when_saving", True, "Whether to compute the plot when saving checkpoints")
 	tf.app.flags.DEFINE_integer("max_plot_size", 1000, "Maximum number of points in the plot. The smaller it is, the less RAM is required. If the log file has more than max_plot_size points, then max_plot_size means of slices are used instead.")

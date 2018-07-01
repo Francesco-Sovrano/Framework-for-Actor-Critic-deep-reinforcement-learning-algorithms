@@ -130,7 +130,7 @@ class A3CModel(object):
 		
 	def run_value(self, state, concat=None):
 		# This run_value() is used for calculating V for bootstrapping at the 
-		# end of LOCAL_T_MAX time step sequence.
+		# end of MAX_BATCH_SIZE time step sequence.
 		# When next sequence starts, V will be calculated again with the same state using updated network weights,
 		# so we don't update LSTM state here.
 		feed_dict = {

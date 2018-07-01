@@ -86,12 +86,6 @@ class Application(object):
 			file.write(str([key + "=" + str(value) for key, value in sorted(info.items(), key=lambda t: t[0])]))
 		print('End testing')
 		print('Test result saved in ' + flags.log_dir + '/test_results.log')
-		
-	def print_value_heatmap(self, figure_file):
-		print('Building value heatmap..')
-		tester = Worker(thread_index=0, session=self.sess, global_network=self.global_network, device=self.device, train=False)
-		plt.heatmap(map=tester.build_value_map(), figure_file=figure_file)
-		print('Value heatmap saved in ' + figure_file)
 
 	def train_function(self, parallel_index):
 		""" Train each environment. """

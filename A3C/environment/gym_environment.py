@@ -24,9 +24,6 @@ class GymEnvironment(environment.Environment):
 		self.episodes = collections.deque()
 
 	def reset(self):
-		if flags.show_best_screenshots or flags.show_all_screenshots:
-			self.screenshots = list()
-			self.screeninfo = list()
 		self.stop()
 		self.last_state = np.copy(self.game.reset())
 		self.last_state = self.normalize(self.last_state)
@@ -52,9 +49,6 @@ class GymEnvironment(environment.Environment):
 	def stop(self):
 		self.game.close()
 		
-	def get_screen(self):
-		return self.last_state
-		
 	def get_statistics(self):
 		result = {}
 		result["avg_reward"] = 0
@@ -68,18 +62,22 @@ class GymEnvironment(environment.Environment):
 			result["avg_reward"] /= count
 		return result
 		
-	def _save_display(self):
-		self.screenshots.append(self.get_screen())
-		self.screeninfo.append("reward: {0}\n".format(self.cumulative_reward))
+	def get_screen(self):
+		return self.last_state
 		
-	def print_display(self, step, reward):
-		file = open(flags.log_dir + '/screenshots/reward(' + str(reward) + ')_step(' + str(step) + ')_thread(' + str(self.thread_index) + ').log',"w") 
-		for i in range(len(self.screenshots)):
-			file.write( self.screeninfo[i] )
-			screen = self.screenshots[i]
-			for line in screen:
-				file.write( str(line) + '\n' )
-		file.close()
+	def get_frame_info(self, value_estimator_network):
+		screen_info = {
+			"reward": self.last_reward,
+			"action": self.last_action,
+		}
+		augmented_screen = ["{0}={1}".format(key,value) for key, value in screen_info.items()] + self.get_screen()
+		return { "screen": '\n'.join(augmented_screen), "heatmap": value_map }
+		
+	def get_last_action_reward(self):
+		action_reward = np.zeros(self.get_action_size()+1, dtype=np.uint8)
+		action_reward[self.last_action]=1
+		action_reward[-1] = self.last_reward
+		return action_reward
 		
 	def process(self, action):
 		action = action%self.get_action_size()
@@ -93,16 +91,8 @@ class GymEnvironment(environment.Environment):
 		self.last_reward = reward
 		self.cumulative_reward += reward
 		self.step += 1
-		if flags.show_best_screenshots or flags.show_all_screenshots:
-			self._save_display()
 		if done: # add to statistics
 			self.episodes.append( {"reward":self.cumulative_reward, "step":self.step} )
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
 		return new_state, reward, done
-
-	def get_last_action_reward(self):
-		action_reward = np.zeros(self.get_action_size()+1, dtype=np.uint8)
-		action_reward[self.last_action]=1
-		action_reward[-1] = self.last_reward
-		return action_reward

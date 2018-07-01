@@ -10,6 +10,9 @@ import logging
 import numpy as np
 import time
 
+import imageio # for making gifs
+import agent.plots as plt
+
 from environment.environment import Environment
 from model.model_manager import ModelManager
 
@@ -29,6 +32,8 @@ class Worker(object):
 		#logs
 		if not os.path.isdir(flags.log_dir + "/performance"):
 			os.mkdir(flags.log_dir + "/performance")
+		if not os.path.isdir(flags.log_dir + "/episodes"):
+			os.mkdir(flags.log_dir + "/episodes")
 		formatter = logging.Formatter('%(asctime)s %(message)s')
 		# reward logger
 		self.reward_logger = logging.getLogger('reward_' + str(thread_index))
@@ -60,85 +65,127 @@ class Worker(object):
 	def prepare(self): # initialize a new episode
 		self.terminal = False
 		self.episode_reward = 0
+		self.frame_info_list = []
 		self.environment.reset()
-		self.local_network.reset()
+		self.local_network.reset_LSTM()
 
 	def stop(self): # stop current episode
 		self.environment.stop()
 		
 	def set_start_time(self, start_time):
 		self.start_time = start_time
-
-	def _print_log(self, global_t, step):
+		
+	def print_speed(self, global_t, step):
 		self.local_t += step
 		if (self.thread_index == 1) and (self.local_t - self.prev_local_t >= PERFORMANCE_LOG_INTERVAL):
 			self.prev_local_t += PERFORMANCE_LOG_INTERVAL
 			elapsed_time = time.time() - self.start_time
 			steps_per_sec = global_t / elapsed_time
 			print("### Performance : {} STEPS in {:.0f} sec. {:.0f} STEPS/sec. {:.2f}M STEPS/hour".format( global_t, elapsed_time, steps_per_sec, steps_per_sec * 3600 / 1000000.))
-		# print statistics
-		if self.terminal:
-			self._print_statistics(global_t)
 		
-	def _print_statistics(self, global_t):
+	def print_statistics(self):
 		# Update statistics
 		self.update_statistics()
 		# Print statistics
 		self.reward_logger.info( str(["{0}={1}".format(key,value) for key, value in self.stats.items()]) )
-		# show episodes insides
-		if flags.show_all_screenshots:
-			self.environment.print_display(global_t, self.episode_reward)
-		elif flags.show_best_screenshots:
-			if self.episode_reward >= self.max_reward:
-				self.max_reward = self.episode_reward
-				self.environment.print_display(global_t, self.episode_reward)
+		
+	def print_frames(self, global_step):
+		frames_count = len(self.frame_info_list)
+		if frames_count == 0:
+			return
+		episode_directory = flags.log_dir + '/episodes/reward(' + str(self.episode_reward) + ')_step(' + str(global_step) + ')_thread(' + str(self.thread_index) + ')'
+		os.mkdir(episode_directory)
+		# Screen
+		os.mkdir(episode_directory+'/screens')
+		screen_filenames = []
+		with open(episode_directory + '/screen.log',"w") as screen_file:
+			for i in range(frames_count):
+				frame_info = self.frame_info_list[i]
+				screen_file.write(frame_info["screen"])
+				if flags.save_episode_gif:
+					filename = episode_directory+'/screens/frame'+str(i)+'.jpg'
+					plt.ascii_image(frame_info["screen"], filename)
+					screen_filenames.append(filename)
+		# Heatmap
+		if flags.save_episode_heatmap:
+			os.mkdir(episode_directory+'/heatmaps')
+			heatmap_filenames = []
+			for i in range(frames_count):
+				frame_info = self.frame_info_list[i]
+				if "heatmap" in frame_info:
+					filename = episode_directory+'/heatmaps/frame'+str(i)+'.jpg'
+					plt.heatmap(heatmap=frame_info["heatmap"], figure_file=filename)
+					heatmap_filenames.append(filename)
+			# Combine Heatmap and Screen
+			os.mkdir(episode_directory+'/heatmap-screens')
+			heatmap_screen_filenames = []
+			i = 0
+			for (heatmap_filename, screen_filename) in zip(heatmap_filenames, screen_filenames):
+				filename = episode_directory+'/heatmap-screens/frame'+str(i)+'.jpg'
+				plt.combine_images(images_list=[heatmap_filename, screen_filename], file_name=filename)
+				heatmap_screen_filenames.append(filename)
+				i+=1
+		# Gif
+		if flags.save_episode_gif:
+			gif_frames_directory = episode_directory + ('/heatmap-screens.gif' if flags.save_episode_heatmap else '/screen.gif')
+			filenames = heatmap_screen_filenames if flags.save_episode_heatmap else screen_filenames
+			with imageio.get_writer(gif_frames_directory, mode='I', duration=flags.gif_speed) as writer:
+				for filename in filenames:
+					image = imageio.imread(filename)
+					writer.append_data(image)
+		
+	def log(self, global_t, step):
+		# Speed
+		self.print_speed(global_t, step)
+
+		if self.terminal:
+			# Statistics
+			self.print_statistics()
+			# Frames
+			if flags.show_all_episodes:
+				self.print_frames(global_t)
+			elif flags.show_best_episodes:
+				if self.episode_reward >= self.max_reward:
+					self.max_reward = self.episode_reward
+					self.print_frames(global_t)
 				
 	# run simulations
 	def run_batch(self):
 		if self.train: # Copy weights from shared to local
-			self.local_network.sync_with_global()			
+			self.local_network.sync_with_global()
 		self.local_network.reset_batch()
 			
 		step = 0
 		while step < flags.max_batch_size and not self.terminal:
-			policy, value = self.local_network.compute_policy_value(state=self.environment.last_state, concat=self.environment.get_last_action_reward())
-			action = self.environment.choose_action(policy)
-			_, reward, self.terminal = self.environment.process(action)
-			self.local_network.save_action_reward(action, reward)
-			
-			self.episode_reward += reward
 			step += 1
+			policy, value, action, reward, self.terminal = self.local_network.act( 
+				policy_to_action_function=self.environment.choose_action, 
+				act_function=self.environment.process, 
+				state=self.environment.last_state, 
+				concat=self.environment.get_last_action_reward() 
+			)
+			self.episode_reward += reward
+			
+			if flags.show_best_episodes or flags.show_all_episodes:
+				self.frame_info_list.append( self.environment.get_frame_info(value_estimator_network=self.local_network) )
+			
 		if self.terminal: # an episode has terminated
 			self.terminated_episodes += 1
 			
 		if self.train: # train using batch
-			if self.terminal: # no bootstrap
-				self.local_network.save_batch()
-			else: # bootstrap
-				self.local_network.save_batch(state=self.environment.last_state, concat=self.environment.get_last_action_reward())
+			state = self.environment.last_state if not self.terminal else None # bootstrap
+			concat = self.environment.get_last_action_reward() if not self.terminal else None
+			self.local_network.save_batch(state=state, concat=concat)
 		return step
 
-	def process(self, global_t = 0):
+	def process(self, global_t=0):
 		try:
 			if self.terminal:
 				self.prepare()
 			step = self.run_batch()
-			# print log
-			self._print_log(global_t, step)
+			self.log(global_t, step)			
 			return step
 		except:
 			traceback.print_exc()
 			self.terminal = True
 			return 0
-			
-	def build_value_map(self):
-		self.prepare()
-		while not self.terminal:
-			self.process()
-		(screen_x,screen_y,_) = self.environment.get_screen_shape()
-		value_map = np.zeros((screen_x, screen_y))
-		walkable_states = self.environment.compute_heatmap_states()
-		for (state,(x,y)) in walkable_states:
-			_, value = self.local_network.compute_policy_value(state=state, concat=self.environment.get_last_action_reward())
-			value_map[x][y] = value
-		return value_map

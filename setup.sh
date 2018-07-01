@@ -18,7 +18,7 @@ cd ./baselines
 pip install -e .
 cd ../..
 
-pip install tensorflow matplotlib numpy scipy scikit-image pyte vtk sklearn
+pip install tensorflow matplotlib seaborn numpy scipy scikit-image pyte vtk sklearn
 pip install gym[all]
 pip install pytest
 pytest

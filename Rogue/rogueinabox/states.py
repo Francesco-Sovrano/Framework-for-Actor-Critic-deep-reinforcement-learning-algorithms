@@ -140,11 +140,9 @@ class CroppedView_StateGenerator(StateGenerator): # 6 situations
 		result = []
 		list_of_walkable_positions = info.get_list_of_walkable_positions()
 		for walkable_position in list_of_walkable_positions:
-			i, j = self._get_relative_coordinates(walkable_position, player_position, self._shape)
-			if self.is_valid_coordinate(i, j):
-				self.player_position = walkable_position
-				state, _ = self.build_state(info)
-				result.append((state,walkable_position))
+			self.player_position = walkable_position
+			state, _ = self.build_state(info)
+			result.append((state,walkable_position))
 		return result
 		
 	def _get_relative_coordinates(self, tile_position, centre_position, range):

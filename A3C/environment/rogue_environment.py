@@ -23,9 +23,6 @@ class RogueEnvironment(environment.Environment):
 		
 	def get_state_shape(self):
 		return self.game.state_generator._shape
-		
-	def get_screen_shape(self):
-		return self.game.state_generator.screen_shape()
 	
 	def __init__(self, thread_index):
 		environment.Environment.__init__(self)
@@ -34,9 +31,6 @@ class RogueEnvironment(environment.Environment):
 		self.game = RogueBox(flags.env_path, flags.state_generator, flags.reward_generator, flags.steps_per_episode, flags.match_count_for_evaluation)
 
 	def reset(self):
-		if flags.show_best_screenshots or flags.show_all_screenshots:
-			self.screenshots = list()
-			self.screeninfo = list()
 		self.last_action, status = self.game.reset()
 		self.last_reward, new_state, _, _ = status
 		self.last_state = new_state["value"]
@@ -44,35 +38,41 @@ class RogueEnvironment(environment.Environment):
 	def stop(self):
 		self.game.stop()
 		
-	def get_screen(self):
-		return self.game.get_screen()
-		
 	def get_statistics(self):
 		return self.game.evaluator.statistics()
 		
-	def _save_display(self):
-		self.screenshots.append( self.get_screen() )
-		last_frame = self.game.get_frame(-1)
-		self.screeninfo.append( 
-			"reward: {2}, passages: {0}, doors: {1}, below_player: {3}\n".format(
-				last_frame.get_tile_count("#"),
-				last_frame.get_tile_count("+"), 
-				self.game.reward,
-				last_frame.get_tile_below_player() 
-			) 
-		)
+	def get_screen_shape(self):
+		return self.game.state_generator.screen_shape()
 		
-	def compute_heatmap_states(self):
-		return self.game.compute_heatmap_states()
+	def get_screen(self):
+		return self.game.get_screen()
 		
-	def print_display(self, step, reward):
-		file = open(flags.log_dir + '/screenshots/reward(' + str(reward) + ')_step(' + str(step) + ')_thread(' + str(self.thread_index) + ').log',"w") 
-		for i in range(len(self.screenshots)):
-			file.write( self.screeninfo[i] )
-			screen = self.screenshots[i]
-			for line in screen:
-				file.write( str(line) + '\n' )
-		file.close()
+	def get_frame_info(self, value_estimator_network):
+		# Screen
+		last_frame = self.game.get_frame(-1)	
+		screen_info = {
+			"reward": self.last_reward,
+			"passages": last_frame.get_tile_count("#"),
+			"doors": last_frame.get_tile_count("+"),
+			"below_player": last_frame.get_tile_below_player(),
+		}
+		augmented_screen = [str(["{0}={1}".format(key,value) for key, value in screen_info.items()]) + '\n'] + self.get_screen()
+		# Heatmap
+		if flags.save_episode_heatmap:
+			heatmap_states = self.game.compute_walkable_states()
+			(screen_x,screen_y,_) = self.get_screen_shape()
+			value_map = np.zeros((screen_x, screen_y))
+			concat=self.get_last_action_reward()
+			for (heatmap_state,(x,y)) in heatmap_states:
+				value_map[x][y] = value_estimator_network.estimate_value(state=heatmap_state, concat=concat)
+			return { "screen": '\n'.join(augmented_screen), "heatmap": value_map }
+		return { "screen": '\n'.join(augmented_screen) }
+
+	def get_last_action_reward(self):
+		action_reward = np.zeros(len(self.real_actions)+1, dtype=np.uint8)
+		action_reward[self.last_action]=1
+		action_reward[-1] = self.last_reward
+		return action_reward
 		
 	def process(self, action):
 		action = action%len(self.real_actions)
@@ -83,12 +83,4 @@ class RogueEnvironment(environment.Environment):
 		self.last_state = new_state
 		self.last_action = action
 		self.last_reward = reward
-		if flags.show_best_screenshots or flags.show_all_screenshots:
-			self._save_display()
 		return new_state, reward, (win or lose)
-
-	def get_last_action_reward(self):
-		action_reward = np.zeros(len(self.real_actions)+1, dtype=np.uint8)
-		action_reward[self.last_action]=1
-		action_reward[-1] = self.last_reward
-		return action_reward

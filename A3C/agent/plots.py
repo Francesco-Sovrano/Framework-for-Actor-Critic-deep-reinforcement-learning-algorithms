@@ -2,11 +2,14 @@ import sys
 import math
 import datetime
 import re
+import numpy as np
 
 import matplotlib
 matplotlib.use('Agg') # non-interactive backend
 import matplotlib.pyplot as plt
-import seaborn as sns
+import seaborn as sns # heatmap
+
+from PIL import Image, ImageFont, ImageDraw, ImageEnhance
 
 # get command line args
 import options
@@ -130,8 +133,56 @@ def parse(log_fname):
 			continue
 	logfile.close()
 	
-def heatmap(map, figure_file):
-	ax = sns.heatmap(map)
-	plt.show()
-	plt.savefig(figure_file)
-	plt.close()
+def heatmap(heatmap, figure_file):
+	figure, ax = plt.subplots(nrows=1, ncols=1)
+	sns.heatmap(data=heatmap, ax=ax)
+	figure.savefig(figure_file)
+	figure.clf() # release memory
+	plt.close() # release memory
+	
+def heatmap_list(heatmap_list, figure_file): # very slow
+	ncols=3 if stats_count >= 3 else stats_count
+	nrows=math.ceil(len(heatmap_list)/ncols)
+	figure, axs = plt.subplots(nrows=nrows, ncols=ncols, sharey=False, sharex=False, figsize=(ncols*10,nrows*10))
+	# Populate heatmaps
+	for j in range(ncols):
+		for i in range(nrows):
+			if nrows == 1:
+				ax = axs[j]
+				idx = j
+			else:
+				ax = axs[i][j]
+				idx = i*ncols+j
+			if idx >= len(heatmap_list):
+				figure.delaxes(ax) # remove unused ax
+				continue
+			sns.heatmap(data=heatmap_list[idx], ax=ax)
+	figure.savefig(figure_file)
+	figure.clf() # release memory
+	plt.close() # release memory
+	
+def ascii_image(string, file_name):
+	# find image size
+	font = ImageFont.load_default()
+	splitlines = string.splitlines()
+	text_width = 0
+	text_height = 0
+	for line in splitlines:
+		text_size = font.getsize(line) # for efficiency's sake, split only on the first newline, discard the rest
+		text_width = max(text_width,text_size[0])
+		text_height += text_size[1]+5
+	text_width += 10
+	# create image
+	source_img = Image.new('RGB', (text_width,text_height), "black")
+	draw = ImageDraw.Draw(source_img)
+	draw.text((5, 5), string, font=font)
+	source_img.save(file_name, "JPEG")
+	
+def combine_images(images_list, file_name):
+	imgs = [ Image.open(i) for i in images_list ]
+	# pick the image which is the smallest, and resize the others to match it (can be arbitrary image shape here)
+	min_shape = sorted( [(np.sum(i.size), i.size ) for i in imgs])[0][1]
+	imgs_comb = np.hstack( (np.asarray( i.resize(min_shape) ) for i in imgs ) )
+	# save the picture
+	imgs_comb = Image.fromarray( imgs_comb )
+	imgs_comb.save( file_name )

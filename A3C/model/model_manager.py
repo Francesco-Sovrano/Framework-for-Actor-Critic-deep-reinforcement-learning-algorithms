@@ -125,7 +125,7 @@ class ModelManager(object):
 			vars = set().union(agent.get_vars(),vars)
 		return list(vars)
 		
-	def reset(self):
+	def reset_LSTM(self):
 		for agent in self.model_list:
 			agent.reset_LSTM_state() # reset LSTM state
 			
@@ -153,33 +153,41 @@ class ModelManager(object):
 	def query_partitioner(self, step):
 		return step%flags.partitioner_granularity==0
 		
-	def compute_policy_value(self, state, concat=None):
+	def estimate_value(self, state, concat=None):
+		agent = self.get_model(self.agent_id)
+		return agent.run_value(state=[state], concat=[concat])
+		
+	def act(self, policy_to_action_function, act_function, state, concat=None):
 		if self.has_manager and self.query_partitioner(self.step):
 			self.agent_id, manager_policy, manager_value = self.get_state_partition(state=[state], concat=[concat])
-			self.manager_value_list.append(manager_value)
+			
 			self.batch["values"][0].append(manager_value)
 			self.batch["policies"][0].append(manager_policy)
 			self.batch["states"][0].append(state)
 			self.batch["concat"][0].append(concat)
 			self.batch["actions"][0].append(self.manager.get_action_vector( self.agent_id-1 ))
+			
+			self.manager_value_list.append(manager_value)
 				
 		agent = self.get_model(self.agent_id)
 		agent_policy, agent_value = agent.run_policy_and_value(state=[state], concat=[concat])
-		self.agent_id_list.append(self.agent_id)
-		self.agent_value_list.append(agent_value) # we use it to calculate the GAE when out of this loop		
+		action = policy_to_action_function(agent_policy)
+		_, reward, terminal = act_function(action)
+		if flags.clip_reward:
+			reward = np.clip(reward, flags.min_reward, flags.max_reward)
+		
 		self.batch["states"][self.agent_id].append(state)
 		self.batch["concat"][self.agent_id].append(concat)
 		self.batch["values"][self.agent_id].append(agent_value)
 		self.batch["policies"][self.agent_id].append(agent_policy)
-		return agent_policy, agent_value
-		
-	def save_action_reward(self, action, reward):
-		if flags.clip_reward:
-			reward = np.clip(reward, flags.min_reward, flags.max_reward)
-		agent = self.get_model(self.agent_id)
 		self.batch["actions"][self.agent_id].append(agent.get_action_vector(action))
+		
+		self.agent_id_list.append(self.agent_id)
+		self.agent_value_list.append(agent_value) # we use it to calculate the GAE when out of this loop		
 		self.agent_reward_list.append(reward) # we use it to calculate the cumulative reward when out of this loop
+		
 		self.step += 1 # exec this command last
+		return agent_policy, agent_value, action, reward, terminal
 			
 	def save_batch(self, state=None, concat=None):
 		agent_discounted_cumulative_reward = 0.0
