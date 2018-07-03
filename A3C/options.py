@@ -19,7 +19,7 @@ def build():
 	tf.app.flags.DEFINE_string("value_loss", "vanilla", "value loss function: vanilla, PVO, averagePVO") # usually averagePVO works with GAE
 # Partitioner parameters
 	# Partition count > 0 reduces algorithm speed, because also a partitioner is trained
-	tf.app.flags.DEFINE_integer("partition_count", 3, "Number of partitions of the input space. Set to 1 for no partitions.")
+	tf.app.flags.DEFINE_integer("partition_count", 1, "Number of partitions of the input space. Set to 1 for no partitions.")
 	# Partitioner granularity > 0 increases algorithm speed when partition_count > 0
 	tf.app.flags.DEFINE_integer("partitioner_granularity", 3, "Number of steps after which to run the partitioner.")
 	tf.app.flags.DEFINE_float("partitioner_learning_factor", 2, "Should be a number greater than 0. Usually the partitioner has an higher learning rate than the others. This factor is used to change the initial learning rate of the partitioner only.") # default is 2.0
@@ -67,10 +67,10 @@ def build():
 	tf.app.flags.DEFINE_boolean("show_best_episodes", True, "whether to save best matches")
 	tf.app.flags.DEFINE_boolean("show_all_episodes", False, "whether to save all the matches")
 	# save_episode_heatmap = True slows down the algorithm
-	tf.app.flags.DEFINE_boolean("save_episode_heatmap", True, "whether to save episode heatmap")
+	tf.app.flags.DEFINE_boolean("save_episode_heatmap", False, "whether to save episode heatmap")
 	# save_episode_gif = True slows down the algorithm
-	tf.app.flags.DEFINE_boolean("save_episode_gif", True, "whether to save episode gif")
-	tf.app.flags.DEFINE_float("gif_speed", 0.25, "gif speed in seconds")
+	tf.app.flags.DEFINE_boolean("save_episode_gif", False, "whether to save episode gif")
+	tf.app.flags.DEFINE_float("gif_speed", 0.2, "gif speed in seconds")
 # Plot
 	tf.app.flags.DEFINE_boolean("compute_plot_when_saving", True, "Whether to compute the plot when saving checkpoints")
 	tf.app.flags.DEFINE_integer("max_plot_size", 1000, "Maximum number of points in the plot. The smaller it is, the less RAM is required. If the log file has more than max_plot_size points, then max_plot_size means of slices are used instead.")

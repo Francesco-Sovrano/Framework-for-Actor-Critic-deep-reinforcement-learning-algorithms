@@ -26,7 +26,7 @@ class A3CModel(object):
 		self._concat_size = concat_size # the size of the vector concatenated with the CNN output before entering the LSTM
 		self._state_shape = state_shape # the shape of the input
 		# lstm units
-		self._lstm_units = 256 # the number of units of the LSTM
+		self._lstm_units = 64 # the number of units of the LSTM
 		# create the whole A3C network
 		self._create_network()
 	
@@ -51,7 +51,7 @@ class A3CModel(object):
 			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=16, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.relu) # xavier initializer
 			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=32, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.relu) # xavier initializer
 			input = tf.layers.conv2d( inputs=input, filters=16, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
-			input = tf.layers.conv2d( inputs=input, filters=32, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
+			input = tf.layers.conv2d( inputs=input, filters=8, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
 			return input
 	
 	def _lstm_layers(self, input, reuse=False):
