@@ -25,7 +25,8 @@ class GymEnvironment(environment.Environment):
 
 	def reset(self):
 		self.stop()
-		self.last_state = np.copy(self.game.reset())
+		self.last_state = self.game.reset()
+		# self.last_state = np.copy(self.last_state)
 		self.last_state = self.normalize(self.last_state)
 		self.last_action = 0
 		self.last_reward = 0
@@ -66,12 +67,12 @@ class GymEnvironment(environment.Environment):
 		return self.last_state
 		
 	def get_frame_info(self, value_estimator_network):
-		screen_info = {
-			"reward": self.last_reward,
-			"action": self.last_action,
-		}
-		augmented_screen = ["{0}={1}".format(key,value) for key, value in screen_info.items()] + self.get_screen()
-		return { "screen": '\n'.join(augmented_screen), "heatmap": value_map }
+		# screen_info = {
+			# "reward": self.last_reward,
+			# "action": self.last_action,
+		# }
+		# screen = str(["{0}={1}".format(key,value) for key, value in screen_info.items()])
+		return { "rgb": self.get_screen() }
 		
 	def get_last_action_reward(self):
 		action_reward = np.zeros(self.get_action_size()+1, dtype=np.uint8)
@@ -83,7 +84,7 @@ class GymEnvironment(environment.Environment):
 		action = action%self.get_action_size()
 		# self.game.render(mode='rgb_array')
 		new_state, reward, done, info = self.game.step(action)
-		new_state = np.copy(new_state)
+		# new_state = np.copy(new_state)
 		new_state = self.normalize(new_state)
 		
 		self.last_state = new_state

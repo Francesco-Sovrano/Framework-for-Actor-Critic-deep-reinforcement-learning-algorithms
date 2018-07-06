@@ -69,8 +69,8 @@ def build():
 	# save_episode_heatmap = True slows down the algorithm
 	tf.app.flags.DEFINE_boolean("save_episode_heatmap", False, "whether to save episode heatmap")
 	# save_episode_gif = True slows down the algorithm
-	tf.app.flags.DEFINE_boolean("save_episode_gif", False, "whether to save episode gif")
-	tf.app.flags.DEFINE_float("gif_speed", 0.2, "gif speed in seconds")
+	tf.app.flags.DEFINE_boolean("save_episode_gif", True, "whether to save episode gif")
+	tf.app.flags.DEFINE_float("gif_speed", 0.1, "gif speed in seconds")
 # Plot
 	tf.app.flags.DEFINE_boolean("compute_plot_when_saving", True, "Whether to compute the plot when saving checkpoints")
 	tf.app.flags.DEFINE_integer("max_plot_size", 1000, "Maximum number of points in the plot. The smaller it is, the less RAM is required. If the log file has more than max_plot_size points, then max_plot_size means of slices are used instead.")

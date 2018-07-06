@@ -186,3 +186,7 @@ def combine_images(images_list, file_name):
 	# save the picture
 	imgs_comb = Image.fromarray( imgs_comb )
 	imgs_comb.save( file_name )
+	
+def rgb_array_image(array, file_name):
+	img = Image.fromarray(array, 'RGB')
+	img.save(file_name)

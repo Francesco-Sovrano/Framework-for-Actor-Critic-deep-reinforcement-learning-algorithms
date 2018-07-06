@@ -101,10 +101,15 @@ class Worker(object):
 		with open(episode_directory + '/screen.log',"w") as screen_file:
 			for i in range(frames_count):
 				frame_info = self.frame_info_list[i]
-				screen_file.write(frame_info["screen"])
-				if flags.save_episode_gif:
+				if "screen" in frame_info:
+					screen_file.write(frame_info["screen"])
+					if flags.save_episode_gif:
+						filename = episode_directory+'/screens/frame'+str(i)+'.jpg'
+						plt.ascii_image(frame_info["screen"], filename)
+						screen_filenames.append(filename)
+				elif "rgb" in frame_info:
 					filename = episode_directory+'/screens/frame'+str(i)+'.jpg'
-					plt.ascii_image(frame_info["screen"], filename)
+					plt.rgb_array_image(frame_info["rgb"], filename)
 					screen_filenames.append(filename)
 		# Heatmap
 		if flags.save_episode_heatmap:
@@ -145,7 +150,7 @@ class Worker(object):
 			if flags.show_all_episodes:
 				self.print_frames(global_t)
 			elif flags.show_best_episodes:
-				if self.episode_reward >= self.max_reward:
+				if self.episode_reward > self.max_reward:
 					self.max_reward = self.episode_reward
 					self.print_frames(global_t)
 				
