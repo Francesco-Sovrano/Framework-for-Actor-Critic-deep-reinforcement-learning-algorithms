@@ -57,6 +57,7 @@ class RogueEnvironment(environment.Environment):
 			"below_player": last_frame.get_tile_below_player(),
 		}
 		augmented_screen = [str(["{0}={1}".format(key,value) for key, value in screen_info.items()]) + '\n'] + self.get_screen()
+		frame_dict = { "screen": '\n'.join(augmented_screen) }
 		# Heatmap
 		if flags.save_episode_heatmap:
 			heatmap_states = self.game.compute_walkable_states()
@@ -65,8 +66,9 @@ class RogueEnvironment(environment.Environment):
 			concat=self.get_last_action_reward()
 			for (heatmap_state,(x,y)) in heatmap_states:
 				value_map[x][y] = value_estimator_network.estimate_value(state=heatmap_state, concat=concat)
-			return { "screen": '\n'.join(augmented_screen), "heatmap": value_map }
-		return { "screen": '\n'.join(augmented_screen) }
+			frame_dict.update( { "heatmap": value_map } )
+		# return
+		return frame_dict
 
 	def get_last_action_reward(self):
 		action_reward = np.zeros(len(self.real_actions)+1, dtype=np.uint8)

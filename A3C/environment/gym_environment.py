@@ -67,12 +67,15 @@ class GymEnvironment(environment.Environment):
 		return self.last_state
 		
 	def get_frame_info(self, value_estimator_network):
-		# screen_info = {
-			# "reward": self.last_reward,
-			# "action": self.last_action,
-		# }
-		# screen = str(["{0}={1}".format(key,value) for key, value in screen_info.items()])
-		return { "rgb": self.get_screen() }
+		if self.game._obs_type == 'image': # rgb image
+			return { "rgb": self.get_screen() }
+		else: # ram
+			screen_info = {
+				"reward": self.last_reward,
+				"action": self.last_action,
+			}
+			augmented_screen = [str(["{0}={1}".format(key,value) for key, value in screen_info.items()]) + '\n'] + self.get_screen()
+			return { "screen": '\n'.join(augmented_screen) }
 		
 	def get_last_action_reward(self):
 		action_reward = np.zeros(self.get_action_size()+1, dtype=np.uint8)
