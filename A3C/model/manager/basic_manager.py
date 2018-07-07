@@ -90,8 +90,8 @@ class BasicManager(object):
 				usage_matrix[u] = 0
 			usage_matrix[u] += 1
 			total_usage += 1
-		# for i in range(self.model_size):
-			# stats["model_{0}".format(i)] = 0
+		for i in range(self.model_size):
+			stats["model_{0}".format(i)] = 0
 		for key, value in usage_matrix.items():
 			stats["model_{0}".format(key)] = value/total_usage if total_usage != 0 else 0
 		return stats

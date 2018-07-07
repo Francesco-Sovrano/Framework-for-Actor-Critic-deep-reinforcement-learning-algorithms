@@ -10,7 +10,7 @@ def build():
 	tf.app.flags.DEFINE_boolean("use_gpu", False, "whether to use the GPU")
 	tf.app.flags.DEFINE_integer("max_time_step", 10**8, "max time steps")
 # Environment
-	# tf.app.flags.DEFINE_string("env_type", "MontezumaRevenge-ram-v0", "environment types: rogue, or environments from https://gym.openai.com/envs")
+	# tf.app.flags.DEFINE_string("env_type", "MontezumaRevenge-ram-v4", "environment types: rogue, or environments from https://gym.openai.com/envs")
 	tf.app.flags.DEFINE_string("env_type", "rogue", "environment types: rogue, or environments from https://gym.openai.com/envs")
 # Gradient optimization parameters
 	tf.app.flags.DEFINE_string("optimizer", "Adam", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is Adam, for vanilla A3C is RMSProp

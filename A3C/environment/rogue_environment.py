@@ -49,16 +49,16 @@ class RogueEnvironment(environment.Environment):
 		
 	def get_frame_info(self, value_estimator_network):
 		# Screen
-		last_frame = self.game.get_frame(-1)	
-		screen_info = {
-			"reward": self.last_reward,
-			"passages": last_frame.get_tile_count("#"),
-			"doors": last_frame.get_tile_count("+"),
-			"below_player": last_frame.get_tile_below_player(),
-			"agent": value_estimator_network.agent_id,
-		}
-		augmented_screen = [str(["{0}={1}".format(key,value) for key, value in screen_info.items()]) + '\n'] + self.get_screen()
-		frame_dict = { "screen": '\n'.join(augmented_screen) }
+		last_frame = self.game.get_frame(-2)	
+		screen_info = "reward={}, passages={}, doors={}, below_player={}, agent={}, action={}".format( 
+			self.last_reward, 
+			last_frame.get_tile_count("#"), 
+			last_frame.get_tile_count("+"), 
+			last_frame.get_tile_below_player(), 
+			value_estimator_network.agent_id,
+			self.last_action
+		)
+		frame_dict = { "screen": [screen_info] + last_frame.screen }
 		# Heatmap
 		if flags.save_episode_heatmap:
 			heatmap_states = self.game.compute_walkable_states()

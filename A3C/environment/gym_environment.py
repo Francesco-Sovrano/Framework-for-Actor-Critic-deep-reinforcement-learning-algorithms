@@ -29,6 +29,7 @@ class GymEnvironment(environment.Environment):
 		self.last_state = self.game.reset()
 		# self.last_state = np.copy(self.last_state)
 		self.last_state = self.normalize(self.last_state)
+		self.last_last_state = self.last_state
 		self.last_action = 0
 		self.last_reward = 0
 		self.cumulative_reward = 0
@@ -69,13 +70,8 @@ class GymEnvironment(environment.Environment):
 		
 	def get_frame_info(self, value_estimator_network):
 		if self.use_ram: # ram
-			screen_info = {
-				"reward": self.last_reward,
-				"action": self.last_action,
-				"agent": value_estimator_network.agent_id,
-			}
-			augmented_screen = [str(["{0}={1}".format(key,value) for key, value in screen_info.items()]) + '\n'] + [np.array_str(self.get_screen().flatten())]
-			return { "screen": '\n'.join(augmented_screen) }
+			screen_info = "reward={}, action={}, agent{}".format( self.last_reward, self.last_action, value_estimator_network.agent_id )
+			return { "screen": [screen_info, np.array_str(self.get_screen().flatten())] }
 		else: # rgb image
 			return { "rgb": self.get_screen() }
 		
@@ -92,6 +88,7 @@ class GymEnvironment(environment.Environment):
 		# new_state = np.copy(new_state)
 		new_state = self.normalize(new_state)
 		
+		self.last_last_state = self.last_state
 		self.last_state = new_state
 		self.last_action = action
 		self.last_reward = reward

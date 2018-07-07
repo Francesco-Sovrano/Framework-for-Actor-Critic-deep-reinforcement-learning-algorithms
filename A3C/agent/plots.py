@@ -27,7 +27,7 @@ def plot(logs, figure_file):
 		print("Not enough data for a reasonable plot")
 		return		
 	# Get statistics keys
-	stats = sorted(next(logs[-1]["data"]).keys(), key=lambda t: t[0]) # statistics keys sorted by name
+	stats = sorted(next(logs[0]["data"]).keys(), key=lambda t: t[0]) # statistics keys sorted by name
 	stats_count = len(stats)
 	# Create new figure and two subplots, sharing both axes
 	ncols=3 if stats_count >= 3 else stats_count

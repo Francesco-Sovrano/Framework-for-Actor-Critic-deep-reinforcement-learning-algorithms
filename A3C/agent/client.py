@@ -106,10 +106,11 @@ class Worker(object):
 			for i in range(frames_count):
 				frame_info = self.frame_info_list[i]
 				if "screen" in frame_info:
-					screen_file.write(frame_info["screen"])
+					screen = '\n'.join(frame_info["screen"])
+					screen_file.write(screen)
 					if flags.save_episode_gif:
 						filename = episode_directory+'/screens/frame'+str(i)+'.jpg'
-						plt.ascii_image(frame_info["screen"], filename)
+						plt.ascii_image(screen, filename)
 						screen_filenames.append(filename)
 				elif "rgb" in frame_info:
 					filename = episode_directory+'/screens/frame'+str(i)+'.jpg'
