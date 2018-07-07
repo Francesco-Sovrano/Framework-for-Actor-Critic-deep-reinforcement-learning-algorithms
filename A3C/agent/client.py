@@ -10,11 +10,10 @@ import logging
 import numpy as np
 import time
 
-import imageio # for making gifs
 import agent.plots as plt
 
 from environment.environment import Environment
-from model.model_manager import ModelManager
+from model.manager import *
 
 # get command line args
 import options
@@ -25,6 +24,11 @@ PERFORMANCE_LOG_INTERVAL = 1000
 
 
 class Worker(object):
+	def get_model_manager(self):
+		if flags.partition_count < 2:
+			return "BasicManager"
+		return flags.partitioner_type + "Partitioner"
+			
 	def __init__(self, thread_index, session, global_network, device, train=True):
 		self.train = train
 		self.thread_index = thread_index
@@ -48,8 +52,8 @@ class Worker(object):
 		if self.train:
 			state_shape = self.environment.get_state_shape()
 			action_size = self.environment.get_action_size()
-			concat_size = action_size+1
-			self.local_network = ModelManager(session=session, device=self.device, id=self.thread_index, action_size=action_size, concat_size=concat_size, state_shape=state_shape, global_network=self.global_network)
+			concat_size = action_size+1			
+			self.local_network = eval(self.get_model_manager())(session=session, device=self.device, id=self.thread_index, action_size=action_size, concat_size=concat_size, state_shape=state_shape, global_network=self.global_network)
 		else:
 			self.local_network = self.global_network
 		self.terminal = True
@@ -93,7 +97,7 @@ class Worker(object):
 		frames_count = len(self.frame_info_list)
 		if frames_count == 0:
 			return
-		episode_directory = flags.log_dir + '/episodes/reward(' + str(self.episode_reward) + ')_step(' + str(global_step) + ')_thread(' + str(self.thread_index) + ')'
+		episode_directory = "{0}/episodes/reward({1})_step({2})_thread({3})".format(flags.log_dir, self.episode_reward, global_step, self.thread_index)
 		os.mkdir(episode_directory)
 		# Screen
 		os.mkdir(episode_directory+'/screens')
@@ -132,12 +136,8 @@ class Worker(object):
 				i+=1
 		# Gif
 		if flags.save_episode_gif:
-			gif_frames_directory = episode_directory + ('/heatmap-screens.gif' if flags.save_episode_heatmap else '/screen.gif')
 			filenames = heatmap_screen_filenames if flags.save_episode_heatmap else screen_filenames
-			with imageio.get_writer(gif_frames_directory, mode='I', duration=flags.gif_speed) as writer:
-				for filename in filenames:
-					image = imageio.imread(filename)
-					writer.append_data(image)
+			plt.make_gif(file_list=filenames, gif_path=episode_directory + ('/heatmap-screens.gif' if flags.save_episode_heatmap else '/screen.gif'))
 		
 	def log(self, global_t, step):
 		# Speed
@@ -157,7 +157,7 @@ class Worker(object):
 	# run simulations
 	def run_batch(self):
 		if self.train: # Copy weights from shared to local
-			self.local_network.sync_with_global()
+			self.local_network.sync()
 		self.local_network.reset_batch()
 			
 		step = 0
@@ -180,7 +180,8 @@ class Worker(object):
 		if self.train: # train using batch
 			state = self.environment.last_state if not self.terminal else None # bootstrap
 			concat = self.environment.get_last_action_reward() if not self.terminal else None
-			self.local_network.save_batch(state=state, concat=concat)
+			self.local_network.compute_cumulative_reward(state=state, concat=concat)
+			self.local_network.process_batch()
 		return step
 
 	def process(self, global_t=0):

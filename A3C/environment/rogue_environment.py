@@ -55,6 +55,7 @@ class RogueEnvironment(environment.Environment):
 			"passages": last_frame.get_tile_count("#"),
 			"doors": last_frame.get_tile_count("+"),
 			"below_player": last_frame.get_tile_below_player(),
+			"agent": value_estimator_network.agent_id,
 		}
 		augmented_screen = [str(["{0}={1}".format(key,value) for key, value in screen_info.items()]) + '\n'] + self.get_screen()
 		frame_dict = { "screen": '\n'.join(augmented_screen) }

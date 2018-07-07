@@ -19,9 +19,14 @@ def build():
 	tf.app.flags.DEFINE_string("value_loss", "vanilla", "value loss function: vanilla, PVO, averagePVO") # usually averagePVO works with GAE
 # Partitioner parameters
 	# Partition count > 0 reduces algorithm speed, because also a partitioner is trained
-	tf.app.flags.DEFINE_integer("partition_count", 1, "Number of partitions of the input space. Set to 1 for no partitions.")
+	tf.app.flags.DEFINE_integer("partition_count", 3, "Number of partitions of the input space. Set to 1 for no partitions.")
 	# Partitioner granularity > 0 increases algorithm speed when partition_count > 0
-	tf.app.flags.DEFINE_integer("partitioner_granularity", 3, "Number of steps after which to run the partitioner.")
+	tf.app.flags.DEFINE_integer("partitioner_granularity", 1, "Number of steps after which to run the partitioner.")
+	
+	tf.app.flags.DEFINE_string("partitioner_type", "KMeans", "Partitioner types: ReinforcementLearning, KMeans")
+	# Flags for partitioner_type == KMeans
+	tf.app.flags.DEFINE_integer("partitioner_training_set_size", 10**5, "Should be a number greater than 0")
+	# Flags for partitioner_type == ReinforcementLearning
 	tf.app.flags.DEFINE_float("partitioner_learning_factor", 2, "Should be a number greater than 0. Usually the partitioner has an higher learning rate than the others. This factor is used to change the initial learning rate of the partitioner only.") # default is 2.0
 	tf.app.flags.DEFINE_string("partitioner_optimizer", "ProximalAdagrad", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is ProximalAdagrad
 # Loss clip range

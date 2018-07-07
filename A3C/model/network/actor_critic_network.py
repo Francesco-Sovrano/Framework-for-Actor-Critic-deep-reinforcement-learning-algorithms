@@ -12,7 +12,7 @@ flags = options.get()
 from model.loss.policy_loss import PolicyLoss
 from model.loss.value_loss import ValueLoss
 
-class A3CModel(object):
+class ActorCriticNetwork(object):
 	def __init__(self, session, id, state_shape, policy_size, entropy_beta, clip, device, concat_size=0):
 		# learning rate stuff
 		self.train_count = 0
@@ -125,8 +125,8 @@ class A3CModel(object):
 		# pi_out: (1,3), v_out: (1)
 		return (pi_out[0], v_out[0])
 		
-	def sync_with_global(self):
-		self._session.run(self.sync)
+	def sync(self, sync):
+		self._session.run(sync)
 		
 	def run_value(self, state, concat=None):
 		# This run_value() is used for calculating V for bootstrapping at the 
@@ -143,7 +143,7 @@ class A3CModel(object):
 		v_out, _ = self._session.run( [self._value, self._lstm_state], feed_dict = feed_dict )
 		return v_out[0]
 		
-	def sync_from(self, src_network, name=None):
+	def bind_sync(self, src_network, name=None):
 		src_vars = src_network.get_vars()
 		dst_vars = self.get_vars()
 		sync_ops = []
@@ -152,7 +152,7 @@ class A3CModel(object):
 				for(src_var, dst_var) in zip(src_vars, dst_vars):
 					sync_op = tf.assign(dst_var, src_var)
 					sync_ops.append(sync_op)
-				self.sync = tf.group(*sync_ops, name=name)
+				return tf.group(*sync_ops, name=name)
 				
 	def minimize_local(self, optimizer, global_step, global_var_list):
 		"""

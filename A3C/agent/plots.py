@@ -9,6 +9,8 @@ matplotlib.use('Agg') # non-interactive backend
 import matplotlib.pyplot as plt
 import seaborn as sns # heatmap
 
+import imageio # for making gifs
+
 from PIL import Image, ImageFont, ImageDraw, ImageEnhance
 
 # get command line args
@@ -25,7 +27,7 @@ def plot(logs, figure_file):
 		print("Not enough data for a reasonable plot")
 		return		
 	# Get statistics keys
-	stats = sorted(next(logs[0]["data"]).keys(), key=lambda t: t[0]) # statistics keys sorted by name
+	stats = sorted(next(logs[-1]["data"]).keys(), key=lambda t: t[0]) # statistics keys sorted by name
 	stats_count = len(stats)
 	# Create new figure and two subplots, sharing both axes
 	ncols=3 if stats_count >= 3 else stats_count
@@ -190,3 +192,9 @@ def combine_images(images_list, file_name):
 def rgb_array_image(array, file_name):
 	img = Image.fromarray(array, 'RGB')
 	img.save(file_name)
+	
+def make_gif(gif_path, file_list):
+	with imageio.get_writer(gif_path, mode='I', duration=flags.gif_speed) as writer:
+		for filename in file_list:
+			image = imageio.imread(filename)
+			writer.append_data(image)

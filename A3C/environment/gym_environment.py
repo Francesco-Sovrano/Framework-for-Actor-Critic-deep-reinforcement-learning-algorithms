@@ -73,6 +73,7 @@ class GymEnvironment(environment.Environment):
 			screen_info = {
 				"reward": self.last_reward,
 				"action": self.last_action,
+				"agent": value_estimator_network.agent_id,
 			}
 			augmented_screen = [str(["{0}={1}".format(key,value) for key, value in screen_info.items()]) + '\n'] + self.get_screen()
 			return { "screen": '\n'.join(augmented_screen) }

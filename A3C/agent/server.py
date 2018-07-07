@@ -126,7 +126,7 @@ class Application(object):
 				unused_clients += 1
 				continue
 			for key in client.stats:
-				if not info.get(key):
+				if key not in info:
 					info[key] = 0
 				info[key] += client.stats[key]
 		if unused_clients < len(clients):
