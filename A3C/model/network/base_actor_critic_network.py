@@ -9,15 +9,19 @@ import numpy as np
 import options
 flags = options.get()
 
+from model.experience_buffer import Buffer
 from model.loss.policy_loss import PolicyLoss
 from model.loss.value_loss import ValueLoss
 
-class ActorCriticNetwork(object):
-	def __init__(self, session, id, state_shape, policy_size, entropy_beta, clip, device, concat_size=0):
+class BaseAC_Network(object):
+	def __init__(self, session, id, state_shape, policy_size, entropy_beta, clip, device, predict_reward, concat_size=0):
 		# learning rate stuff
 		self.train_count = 0
 		self.entropy_beta = entropy_beta
 		self.clip = clip
+		self.predict_reward = predict_reward
+		if self.predict_reward:
+			self.reward_prediction_buffer = Buffer(size=flags.reward_prediction_buffer_size)
 		# initialize
 		self._session = session
 		self._id = id # model id
@@ -33,18 +37,30 @@ class ActorCriticNetwork(object):
 	def _create_network(self):
 		scope_name = "net_{0}".format(self._id)
 		with tf.device(self._device), tf.variable_scope(scope_name) as scope:
-			self._input = tf.placeholder(tf.float32, np.concatenate([[None], self._state_shape], 0))
-			self._concat = tf.placeholder(tf.float32, [None, self._concat_size])
-			# Convolutive layers
-			conv_output = self._convolutive_layers(self._input)
-			# LSTM layers
-			self._lstm_outputs, self._lstm_state = self._lstm_layers(conv_output)
-			# Policy layers
-			self._policy = self._policy_layers(self._lstm_outputs)
-			# Value layers
-			self._value	= self._value_layers(self._lstm_outputs)
+			self._build_base()
+			if self.predict_reward:
+				self._build_reward_prediction()
 			
 		self.variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope_name)
+		
+	def _build_reward_prediction(self):
+		self._reward_prediction_states = tf.placeholder(tf.float32, np.concatenate([[None], self._state_shape], 0))
+		output = self._convolutive_layers(self._reward_prediction_states, reuse=True)
+		output = tf.layers.flatten(output)
+		output = tf.layers.dense(inputs=output, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
+		self._reward_prediction = tf.nn.softmax(output)
+		
+	def _build_base(self):
+		self._input = tf.placeholder(tf.float32, np.concatenate([[None], self._state_shape], 0))
+		self._concat = tf.placeholder(tf.float32, [None, self._concat_size])
+		# Convolutive layers
+		conv_output = self._convolutive_layers(self._input)
+		# LSTM layers
+		self._lstm_outputs, self._lstm_state = self._lstm_layers(conv_output)
+		# Policy layers
+		self._policy = self._policy_layers(self._lstm_outputs)
+		# Value layers
+		self._value	= self._value_layers(self._lstm_outputs)
 		
 	def _convolutive_layers(self, input, reuse=False):
 		with tf.variable_scope("base_conv{0}".format(self._id), reuse=reuse) as scope:
@@ -58,7 +74,7 @@ class ActorCriticNetwork(object):
 		self._initial_lstm_state0 = tf.placeholder(tf.float32, [1, self._lstm_units])
 		self._initial_lstm_state1 = tf.placeholder(tf.float32, [1, self._lstm_units])
 		self._initial_lstm_state = tf.contrib.rnn.LSTMStateTuple(self._initial_lstm_state0, self._initial_lstm_state1)
-		self.reset_LSTM_state()
+		self.reset()
 		with tf.variable_scope("base_lstm{0}".format(self._id), reuse=reuse) as scope:
 		
 			input = tf.layers.flatten(input) # input shape: (batch,w*h*depth)
@@ -101,14 +117,24 @@ class ActorCriticNetwork(object):
 			# Advantage (R-V) (input for policy)
 			self.advantage_batch = tf.placeholder(tf.float32, [None])
 			# R (input for value target)
-			self.reward_batch = tf.placeholder(tf.float32, [None])
+			self.cumulative_reward_batch = tf.placeholder(tf.float32, [None])
 			# Loss
-			self.policy_loss = PolicyLoss(self.clip, self._policy, self.old_policy_batch, self._value, self.old_value_batch, self.action_batch, self.advantage_batch, self.reward_batch, self.entropy_beta)
-			self.value_loss = ValueLoss(self.clip, self._policy, self.old_policy_batch, self._value, self.old_value_batch, self.action_batch, self.advantage_batch, self.reward_batch, self.entropy_beta)
+			self.policy_loss = PolicyLoss(self.clip, self._policy, self.old_policy_batch, self._value, self.old_value_batch, self.action_batch, self.advantage_batch, self.cumulative_reward_batch, self.entropy_beta)
+			self.value_loss = ValueLoss(self.clip, self._policy, self.old_policy_batch, self._value, self.old_value_batch, self.action_batch, self.advantage_batch, self.cumulative_reward_batch, self.entropy_beta)
 			
 			self.total_loss = self.policy_loss.get() + flags.value_coefficient*self.value_loss.get()
+			if self.predict_reward:
+				self.total_loss += self.reward_prediction_loss()
+			
+	def reward_prediction_loss(self):
+		# reward prediction target. one hot vector
+		self.reward_prediction_target = tf.placeholder("float", [1,3])
+		# Reward prediction loss (output)
+		clipped_rp = tf.clip_by_value(self._reward_prediction, 1e-20, 1.0)
+		return -tf.reduce_sum(self.reward_prediction_target * tf.log(clipped_rp))
 
-	def reset_LSTM_state(self):
+	def reset(self):
+		# reset lstm state output
 		self.lstm_state_out = tf.contrib.rnn.LSTMStateTuple(np.zeros([1, self._lstm_units]), np.zeros([1, self._lstm_units]))
 
 	def run_policy_and_value(self, state, concat=None):
@@ -182,27 +208,57 @@ class ActorCriticNetwork(object):
 		
 	def _lstm_state_placeholder(self):
 		return tf.placeholder(tf.float32, [1, self._lstm_units])
+				
+	def state_target_reward_prediction(self, states, rewards):
+		if len(states) == 1:
+			states = states + states
+			rewards = rewards + rewards
+		length = min(3, len(states)-1)
+			
+		start_idx = np.random.randint(len(states)-length)
+		reward_prediction_states = [states[start_idx+i] for i in range(length)]
+		reward_prediction_target = [0.0, 0.0, 0.0]
 		
-	def train(self, states, actions, values, policies, cumulative_rewards, generalized_advantage_estimators, lstm_states, concat=None):
+		r = rewards[start_idx+length]
+		if r == 0:
+			reward_prediction_target[0] = 1.0 # zero
+		elif r > 0:
+			reward_prediction_target[1] = 1.0 # positive
+		else:
+			reward_prediction_target[2] = 1.0 # negative
+		return reward_prediction_states, [reward_prediction_target]
+		
+	def build_feed(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_states, concat):
 		values = np.reshape(values,[-1])
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 			advantages = np.reshape(generalized_advantage_estimators,[-1])
-			rewards = advantages + values
+			cumulative_rewards = advantages + values
 			# advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8) # batch normalization
 		else:
-			rewards = np.reshape(cumulative_rewards,[-1])
-			advantages = rewards - values
-		
+			cumulative_rewards = np.reshape(discounted_cumulative_rewards,[-1])
+			advantages = cumulative_rewards - values			
 		feed_dict={
 					self._input: states,
 					self.action_batch: actions,
-					self.reward_batch: rewards,
+					self.cumulative_reward_batch: cumulative_rewards,
 					self.advantage_batch: advantages,
 					self.old_value_batch: values,
 					self.old_policy_batch: policies,
 					self._initial_lstm_state: lstm_states[0]
 				}
 		if self._concat_size > 0:
-			feed_dict.update( { self._concat : concat } )
+			feed_dict.update( {self._concat : concat} )
+		if self.predict_reward:
+			self.reward_prediction_buffer.put(batch={"states":states, "rewards":rewards}, type=1 if sum(rewards) != 0 else 0)
+			(rpb,_) = self.reward_prediction_buffer.get()
+			reward_prediction_states, reward_prediction_target = self.state_target_reward_prediction(rpb["states"], rpb["rewards"])
+			feed_dict.update( {
+				self._reward_prediction_states: reward_prediction_states,
+				self.reward_prediction_target: reward_prediction_target
+			} )
+		return feed_dict
+				
+	def train(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_states, concat=None):
 		self.train_count += len(states)
-		self._session.run( self.apply_gradient, feed_dict = feed_dict ) # Calculate gradients and copy them to global network
+		feed_dict = self.build_feed(states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_states, concat)
+		self._session.run(self.apply_gradient, feed_dict) # Calculate gradients and copy them to global network

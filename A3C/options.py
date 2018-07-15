@@ -8,11 +8,12 @@ import tensorflow as tf
 options_built = False
 def build():
 	tf.app.flags.DEFINE_boolean("use_gpu", False, "whether to use the GPU")
-	tf.app.flags.DEFINE_integer("max_time_step", 10**8, "max time steps")
+	tf.app.flags.DEFINE_integer("max_time_step", 2*10**8, "max time steps")
 # Environment
-	# tf.app.flags.DEFINE_string("env_type", "MontezumaRevenge-ram-v4", "environment types: rogue, or environments from https://gym.openai.com/envs")
+	# tf.app.flags.DEFINE_string("env_type", "MontezumaRevenge-ram-v0", "environment types: rogue, or environments from https://gym.openai.com/envs")
 	tf.app.flags.DEFINE_string("env_type", "rogue", "environment types: rogue, or environments from https://gym.openai.com/envs")
 # Gradient optimization parameters
+	tf.app.flags.DEFINE_string("network", "BaseAC", "neural network: BaseAC") # default is Adam, for vanilla A3C is RMSProp
 	tf.app.flags.DEFINE_string("optimizer", "Adam", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is Adam, for vanilla A3C is RMSProp
 	tf.app.flags.DEFINE_float("grad_norm_clip", 0, "gradient norm clipping (0 for none)") # default is 40.0, for openAI is 0.5
 	tf.app.flags.DEFINE_string("policy_loss", "PPO", "policy loss function: vanilla, PPO, averagePPO, openaiPPO") # usually averagePPO works with GAE
@@ -21,7 +22,7 @@ def build():
 	# Partition count > 0 reduces algorithm speed, because also a partitioner is trained
 	tf.app.flags.DEFINE_integer("partition_count", 5, "Number of partitions of the input space. Set to 1 for no partitions.")
 	# Partitioner granularity > 0 increases algorithm speed when partition_count > 0
-	tf.app.flags.DEFINE_integer("partitioner_granularity", 5, "Number of steps after which to run the partitioner.")
+	tf.app.flags.DEFINE_integer("partitioner_granularity", 8, "Number of steps after which to run the partitioner.")
 	
 	tf.app.flags.DEFINE_string("partitioner_type", "ReinforcementLearning", "Partitioner types: ReinforcementLearning, KMeans")
 	# Flags for partitioner_type == KMeans
@@ -41,6 +42,9 @@ def build():
 	tf.app.flags.DEFINE_string("alpha_annealing_function", "exponential_decay", "annealing function: exponential_decay, inverse_time_decay, natural_exp_decay")
 	tf.app.flags.DEFINE_integer("alpha_decay_steps", 10**5, "decay alpha every x steps")
 	tf.app.flags.DEFINE_float("alpha_decay_rate", 0.96, "decay rate")
+# Reward Prediction: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
+	tf.app.flags.DEFINE_boolean("predict_reward", True, "Whether to predict rewards. This is useful with sparse rewards.")
+	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 1000, "Maximum size of the reward prediction buffer") # default is 25000
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
 	tf.app.flags.DEFINE_float("replay_ratio", 0, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4
@@ -56,7 +60,7 @@ def build():
 	tf.app.flags.DEFINE_float("value_coefficient", 0.5, "value coefficient for tuning Critic learning rate") # default is 0.5, for openAI is 0.25
 	tf.app.flags.DEFINE_float("entropy_beta", 0.001, "entropy regularization constant") # default is 0.001, for openAI is 0.01
 	tf.app.flags.DEFINE_integer("parallel_size", 4, "parallel thread size")
-	tf.app.flags.DEFINE_integer("max_batch_size", 64, "maximum batch size") # default is 60, for openAI is 128
+	tf.app.flags.DEFINE_integer("max_batch_size", 8, "maximum batch size") # default is 60, for openAI is 128
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
 	tf.app.flags.DEFINE_float("gamma", 0.99, "discount factor for rewards") # default is 0.95, for openAI is 0.99
 # Generalized Advantage Estimation
@@ -81,8 +85,8 @@ def build():
 	tf.app.flags.DEFINE_integer("max_plot_size", 1000, "Maximum number of points in the plot. The smaller it is, the less RAM is required. If the log file has more than max_plot_size points, then max_plot_size means of slices are used instead.")
 # Rogue stuff
 	tf.app.flags.DEFINE_string("state_generator", "Channel6_Complete_CroppedView_StateGenerator", "the state generator must be a classname from rogueinabox/states.py")
-	tf.app.flags.DEFINE_string("reward_generator", "Improved_ENSS_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
-	# tf.app.flags.DEFINE_string("reward_generator", "Stair_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
+	# tf.app.flags.DEFINE_string("reward_generator", "Improved_ENSS_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
+	tf.app.flags.DEFINE_string("reward_generator", "Stair_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
 	tf.app.flags.DEFINE_integer("steps_per_episode", 500, "number of maximum actions execution per episode")
 	tf.app.flags.DEFINE_string("env_path", "./Rogue/rogue5.4.4-ant-r1.1.4_monsters/rogue", "the path where to find the game")
 	tf.app.flags.DEFINE_string("rogueinabox_path", "./Rogue", "where to find the package") # to remove!

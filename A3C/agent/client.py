@@ -71,7 +71,7 @@ class Worker(object):
 		self.episode_reward = 0
 		self.frame_info_list = []
 		self.environment.reset()
-		self.local_network.reset_LSTM()
+		self.local_network.reset()
 
 	def stop(self): # stop current episode
 		self.environment.stop()

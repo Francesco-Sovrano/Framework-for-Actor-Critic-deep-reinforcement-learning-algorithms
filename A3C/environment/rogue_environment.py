@@ -63,7 +63,7 @@ class RogueEnvironment(environment.Environment):
 		# observation_info = "observation={}".format(np.array_str(observation.flatten()))
 		frame_dict = {}
 		frame_dict["log"] = state_info + policy_info + '\n'.join(last_frame.screen)+'\n'
-		frame_info["screen"] = { "value": frame_info["log"], "type": 'ASCII' }
+		frame_dict["screen"] = { "value": frame_dict["log"], "type": 'ASCII' }
 		# Heatmap
 		if flags.save_episode_heatmap:
 			heatmap_states = self.game.compute_walkable_states()

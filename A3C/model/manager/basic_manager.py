@@ -6,7 +6,7 @@ from __future__ import print_function
 import collections
 import tensorflow as tf
 import numpy as np
-from model.network.actor_critic_network import ActorCriticNetwork
+from model.network import *
 from model.experience_buffer import Buffer
 
 import options
@@ -42,7 +42,17 @@ class BasicManager(object):
 		self.model_size = 1
 			
 	def build_agents(self, state_shape, action_size, concat_size):
-		agent=ActorCriticNetwork(session=self.session, id="{0}_{1}".format(self.id, 0), state_shape=state_shape, policy_size=action_size, entropy_beta=flags.entropy_beta, clip=self.clip[0], device=self.device, concat_size=concat_size)
+		agent=eval(flags.network + "_Network")(
+			session=self.session,
+			id="{0}_{1}".format(self.id, 0),
+			device=self.device,
+			state_shape=state_shape,
+			policy_size=action_size,
+			entropy_beta=flags.entropy_beta,
+			clip=self.clip[0],
+			concat_size=concat_size,
+			predict_reward=flags.predict_reward
+		)
 		self.model_list.append(agent)
 			
 	def sync(self):
@@ -107,20 +117,21 @@ class BasicManager(object):
 			vars += agent.get_vars()
 		return vars
 		
-	def reset_LSTM(self):
+	def reset(self):
 		for agent in self.model_list:
-			agent.reset_LSTM_state() # reset LSTM state
+			agent.reset()
 			
 	def reset_batch(self):
 		self.batch = {}
 		self.batch["states"] = []
 		self.batch["actions"] = []
-		self.batch["concat"] = []
-		self.batch["discounted_cumulative_reward"] = []
-		self.batch["generalized_advantage_estimator"] = []
+		self.batch["concats"] = []
+		self.batch["rewards"] = []
+		self.batch["discounted_cumulative_rewards"] = []
+		self.batch["generalized_advantage_estimators"] = []
 		self.batch["values"] = []
 		self.batch["policies"] = []
-		self.batch["lstm_state"] = []
+		self.batch["lstm_states"] = []
 		
 		for i in range(self.model_size):
 			for key in self.batch:
@@ -140,9 +151,9 @@ class BasicManager(object):
 	def act(self, policy_to_action_function, act_function, state, concat=None):
 		agent = self.get_model(self.agent_id)
 		
-		self.batch["lstm_state"][self.agent_id].append(agent.lstm_state_out) # do it before agent.run_policy_and_value
+		self.batch["lstm_states"][self.agent_id].append(agent.lstm_state_out) # do it before agent.run_policy_and_value
 		self.batch["states"][self.agent_id].append(state)
-		self.batch["concat"][self.agent_id].append(concat)
+		self.batch["concats"][self.agent_id].append(concat)
 		
 		policy, value = agent.run_policy_and_value(state=[state], concat=[concat])
 		action = policy_to_action_function(policy)
@@ -151,6 +162,7 @@ class BasicManager(object):
 			reward = np.clip(reward, flags.min_reward, flags.max_reward)
 		self.batch_reward += reward
 		
+		self.batch["rewards"][self.agent_id].append(reward)
 		self.batch["values"][self.agent_id].append(value)
 		self.batch["policies"][self.agent_id].append(policy)
 		self.batch["actions"][self.agent_id].append(agent.get_action_vector(action))
@@ -181,18 +193,19 @@ class BasicManager(object):
 			discounted_cumulative_reward = reward + flags.gamma * discounted_cumulative_reward
 			generalized_advantage_estimator = reward + flags.gamma * last_value - value + flags.gamma*flags.lambd*generalized_advantage_estimator
 			last_value = value
-			self.batch["discounted_cumulative_reward"][agent_id].appendleft(discounted_cumulative_reward)
-			self.batch["generalized_advantage_estimator"][agent_id].appendleft(generalized_advantage_estimator)
+			self.batch["discounted_cumulative_rewards"][agent_id].appendleft(discounted_cumulative_reward)
+			self.batch["generalized_advantage_estimators"][agent_id].appendleft(generalized_advantage_estimator)
 		
 	def train(self, batch):
 		state=batch["states"]
 		action=batch["actions"]
 		value=batch["values"]
 		policy=batch["policies"]
-		reward=batch["discounted_cumulative_reward"]
-		gae=batch["generalized_advantage_estimator"]
-		lstm_state=batch["lstm_state"]
-		concat=batch["concat"]
+		reward=batch["rewards"]
+		dcr=batch["discounted_cumulative_rewards"]
+		gae=batch["generalized_advantage_estimators"]
+		lstm_state=batch["lstm_states"]
+		concat=batch["concats"]
 		# assert self.global_network is not None, 'you are trying to train the global network'
 		for i in range(self.model_size):
 			batch_size = len(state[i])
@@ -202,8 +215,9 @@ class BasicManager(object):
 					actions=action[i],
 					values=value[i],
 					policies=policy[i],
-					cumulative_rewards=reward[i],
+					discounted_cumulative_rewards=dcr[i],
 					generalized_advantage_estimators=gae[i],
+					rewards=reward[i],
 					lstm_states=lstm_state[i],
 					concat=concat[i]
 				)
@@ -215,6 +229,7 @@ class BasicManager(object):
 			if self.experience_buffer.has_atleast(flags.replay_start):
 				n = np.random.poisson(flags.replay_ratio)
 				for _ in range(n):
-					self.train(batch=self.experience_buffer.get())
+					(batch,type) = self.experience_buffer.get()
+					self.train(batch)
 			if self.batch_reward != 0 or not flags.save_only_batches_with_reward:
-				self.experience_buffer.put(batch=self.batch)
+				self.experience_buffer.put(batch=self.batch, type=1 if self.batch_reward != 0 else 0)

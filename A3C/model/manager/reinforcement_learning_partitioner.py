@@ -5,7 +5,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import numpy as np
-from model.network.actor_critic_network import ActorCriticNetwork
+from model.network import *
 from model.manager import BasicManager
 
 import options
@@ -20,11 +20,31 @@ class ReinforcementLearningPartitioner(BasicManager):
 	def build_agents(self, state_shape, action_size, concat_size):
 		agents_count = self.model_size-1
 		# the manager
-		self.manager = ActorCriticNetwork(session=self.session, id="{0}_{1}".format(self.id, 0), state_shape=state_shape, policy_size=agents_count, entropy_beta=flags.entropy_beta, clip=self.clip[0], device=self.device, concat_size=concat_size)
+		self.manager = eval(flags.network + "_Network")(
+			session=self.session, 
+			id="{0}_{1}".format(self.id, 0), 
+			state_shape=state_shape, 
+			policy_size=agents_count, 
+			entropy_beta=flags.entropy_beta, 
+			clip=self.clip[0], 
+			device=self.device, 
+			concat_size=concat_size,
+			predict_reward=flags.predict_reward
+		)
 		self.model_list.append(self.manager)
 		# the agents
 		for i in range(agents_count):
-			agent = ActorCriticNetwork(session=self.session, id="{0}_{1}".format(self.id, i+1), state_shape=state_shape, policy_size=action_size, entropy_beta=flags.entropy_beta*(i+1), clip=self.clip[i+1], device=self.device, concat_size=concat_size)
+			agent = eval(flags.network + "_Network")(
+				session=self.session, 
+				id="{0}_{1}".format(self.id, i+1), 
+				state_shape=state_shape, 
+				policy_size=action_size, 
+				entropy_beta=flags.entropy_beta*(i+1), 
+				clip=self.clip[i+1], 
+				device=self.device, 
+				concat_size=concat_size,
+				predict_reward=flags.predict_reward
+			)
 			self.model_list.append(agent)
 			
 	def initialize_gradient_optimizer(self):
@@ -49,15 +69,22 @@ class ReinforcementLearningPartitioner(BasicManager):
 		
 	def act(self, policy_to_action_function, act_function, state, concat=None):
 		if self.query_partitioner(self.step):
-			self.batch["lstm_state"][0].append(self.manager.lstm_state_out) # do it before manager.get_state_partition
+			self.batch["lstm_states"][0].append(self.manager.lstm_state_out) # do it before manager.get_state_partition
 			self.agent_id, manager_policy, manager_value = self.get_state_partition(state=[state], concat=[concat])
 			self.batch["values"][0].append(manager_value)
 			self.batch["policies"][0].append(manager_policy)
 			self.batch["states"][0].append(state)
-			self.batch["concat"][0].append(concat)
-			self.batch["actions"][0].append(self.manager.get_action_vector( self.agent_id-1 ))
-			self.manager_value_list.append(manager_value)			
-		return super().act(policy_to_action_function, act_function, state, concat)
+			self.batch["concats"][0].append(concat)
+			self.batch["actions"][0].append(self.manager.get_action_vector(self.agent_id-1))
+			self.manager_value_list.append(manager_value)
+			has_queried_partitioner = True
+		else:
+			has_queried_partitioner = False
+			
+		policy, value, action, reward, terminal = super().act(policy_to_action_function, act_function, state, concat)
+		if has_queried_partitioner:
+			self.batch["rewards"][0].append(reward)
+		return policy, value, action, reward, terminal
 			
 	def compute_cumulative_reward(self, state=None, concat=None):
 		manager_discounted_cumulative_reward = 0.0
@@ -80,6 +107,6 @@ class ReinforcementLearningPartitioner(BasicManager):
 				manager_discounted_cumulative_reward = query_reward + flags.gamma * manager_discounted_cumulative_reward
 				manager_generalized_advantage_estimator = query_reward + flags.gamma * last_manager_value - manager_value + flags.gamma*flags.lambd*manager_generalized_advantage_estimator
 				last_manager_value = manager_value
-				self.batch["discounted_cumulative_reward"][0].appendleft(manager_discounted_cumulative_reward)
-				self.batch["generalized_advantage_estimator"][0].appendleft(manager_generalized_advantage_estimator)
+				self.batch["discounted_cumulative_rewards"][0].appendleft(manager_discounted_cumulative_reward)
+				self.batch["generalized_advantage_estimators"][0].appendleft(manager_generalized_advantage_estimator)
 				query_reward = 0
