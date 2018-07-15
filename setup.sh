@@ -19,9 +19,9 @@ pip install -e .
 cd ../..
 
 pip install tensorflow matplotlib seaborn numpy scipy scikit-image pyte vtk sklearn
-pip install gym[all]
-pip install pytest
-pytest
+pip install gym[atari]
+# pip install pytest
+# pytest
 
 bash ./Rogue/build_with_no_monsters.sh
 bash ./Rogue/build_with_monsters.sh

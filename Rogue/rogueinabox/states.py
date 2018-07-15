@@ -42,6 +42,12 @@ class StateGenerator(ABC):
 		
 	def _set_situations_count(self):
 		self._situations = 1 # situations are for multi-agent models
+		
+	def get_status_size(self):
+		return 9
+		
+	def empty_status(self):
+		return np.zeros(self.get_status_size(), dtype=np.uint8)
 
 	def compute_state(self, info):
 		self.player_position = info.get_player_pos( )
@@ -266,12 +272,6 @@ class Complete_CroppedView_StateGenerator(CroppedView_StateGenerator):
 	def _set_shape(self):
 		self._shape = (17, 17, 4) # [heigth, width, channel]
 		
-	def get_status_size(self):
-		return 9
-		
-	def empty_status(self):
-		return np.zeros(self.get_status_size(), dtype=np.uint8)
-		
 	def compute_state(self, info):
 		self.player_position = info.get_player_pos()
 		if info.has_statusbar() and self.player_position != None:
@@ -313,6 +313,11 @@ class Channel6_Complete_CroppedView_StateGenerator(Complete_CroppedView_StateGen
 		
 	def build_state(self, info):
 		map = self.empty_state()
+		map = self.set_channel(3, self.player_position, map, info.get_list_of_positions_by_tile("%"), 1) # stairs
+		map = self.set_channel(2, self.player_position, map, info.get_list_of_positions_by_tile("|"), 1) # walls
+		map = self.set_channel(2, self.player_position, map, info.get_list_of_positions_by_tile("-"), 1) # walls
+		map = self.set_channel(1, self.player_position, map, info.get_list_of_positions_by_tile("+"), 1) # doors
+		map = self.set_channel(0, self.player_position, map, info.get_list_of_positions_by_tile("#"), 1) # tunnel
 		index = 0
 		for item in info.pixel["items"]: # items
 			index+=1
@@ -321,11 +326,40 @@ class Channel6_Complete_CroppedView_StateGenerator(Complete_CroppedView_StateGen
 		for monster in info.pixel["monsters"]: # monsters
 			index+=1
 			map = self.set_channel(4, self.player_position, map, info.pixel["monsters"][monster], index)
-		map = self.set_channel(3, self.player_position, map, info.get_list_of_positions_by_tile("%"), 1) # stairs
-		map = self.set_channel(2, self.player_position, map, info.get_list_of_positions_by_tile("|"), 1) # walls
-		map = self.set_channel(2, self.player_position, map, info.get_list_of_positions_by_tile("-"), 1) # walls
-		map = self.set_channel(1, self.player_position, map, info.get_list_of_positions_by_tile("+"), 1) # doors
-		map = self.set_channel(0, self.player_position, map, info.get_list_of_positions_by_tile("#"), 1) # tunnel
+		
+		status = self.empty_status()
+		status[0] = info.statusbar["gold"]
+		status[1] = info.statusbar["current_hp"]
+		status[2] = info.statusbar["max_hp"]
+		status[3] = info.statusbar["current_strength"]
+		status[4] = info.statusbar["max_strength"]
+		status[5] = info.statusbar["armor"]
+		status[6] = info.statusbar["tot_exp"]
+		status[7] = info.statusbar["exp_level"]
+		status[8] = info.statusbar["command_count"]
+		return map, status
+		
+class Complete_FullView_StateGenerator(FullView_StateGenerator):
+	def compute_state(self, info):
+		self.player_position = info.get_player_pos()
+		if info.has_statusbar() and self.player_position != None:
+			value, status = self.build_state(info)
+			return { "value" : value, "status" : status }
+		return { "value" : self.empty_state(), "status" : self.empty_status() }
+		
+	def build_state(self, info):
+		map = self.empty_state()
+		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("%"), ord("%")) # stairs
+		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("|"), ord("|")) # walls
+		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("-"), ord("-")) # walls
+		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("+"), ord("+")) # doors
+		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("#"), ord("#")) # tunnel
+		for item in info.pixel["items"]: # items
+			map = self.set_channel(0, map, info.pixel["items"][item], ord(item))
+		for monster in info.pixel["monsters"]: # monsters
+			map = self.set_channel(0, map, info.pixel["monsters"][monster], ord(monster))
+		# set it for last otherwise it may be overwritten by other positions!
+		map = self.set_channel(0, map, [self.player_position], ord("@")) # rogue (player)
 		
 		status = self.empty_status()
 		status[0] = info.statusbar["gold"]

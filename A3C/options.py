@@ -19,11 +19,11 @@ def build():
 	tf.app.flags.DEFINE_string("value_loss", "vanilla", "value loss function: vanilla, PVO, averagePVO") # usually averagePVO works with GAE
 # Partitioner parameters
 	# Partition count > 0 reduces algorithm speed, because also a partitioner is trained
-	tf.app.flags.DEFINE_integer("partition_count", 3, "Number of partitions of the input space. Set to 1 for no partitions.")
+	tf.app.flags.DEFINE_integer("partition_count", 5, "Number of partitions of the input space. Set to 1 for no partitions.")
 	# Partitioner granularity > 0 increases algorithm speed when partition_count > 0
-	tf.app.flags.DEFINE_integer("partitioner_granularity", 1, "Number of steps after which to run the partitioner.")
+	tf.app.flags.DEFINE_integer("partitioner_granularity", 5, "Number of steps after which to run the partitioner.")
 	
-	tf.app.flags.DEFINE_string("partitioner_type", "KMeans", "Partitioner types: ReinforcementLearning, KMeans")
+	tf.app.flags.DEFINE_string("partitioner_type", "ReinforcementLearning", "Partitioner types: ReinforcementLearning, KMeans")
 	# Flags for partitioner_type == KMeans
 	tf.app.flags.DEFINE_integer("partitioner_training_set_size", 10**5, "Should be a number greater than 0")
 	# Flags for partitioner_type == ReinforcementLearning
@@ -44,8 +44,8 @@ def build():
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
 	tf.app.flags.DEFINE_float("replay_ratio", 0, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4
-	tf.app.flags.DEFINE_integer("replay_size", 25000, "Maximum size of the experience replay buffer") # default is 25000
-	tf.app.flags.DEFINE_integer("replay_start", 5000, "Should be greater than 0 and lower than replay_size. Train on x batches before using experience replay") # default is 5000
+	tf.app.flags.DEFINE_integer("replay_size", 500, "Maximum size of the experience replay buffer") # default is 25000
+	tf.app.flags.DEFINE_integer("replay_start", 1, "Should be greater than 0 and lower than replay_size. Train on x batches before using experience replay") # default is 5000
 	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
 # Reward clip
 	tf.app.flags.DEFINE_boolean("clip_reward", False, "Whether to clip the reward between min_reward and max_reward") # default is False

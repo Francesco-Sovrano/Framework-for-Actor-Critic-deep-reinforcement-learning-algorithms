@@ -47,18 +47,23 @@ class RogueEnvironment(environment.Environment):
 	def get_screen(self):
 		return self.game.get_screen()
 		
-	def get_frame_info(self, value_estimator_network):
+	def get_frame_info(self, value_estimator_network, observation, policy, value, action, reward):
 		# Screen
 		last_frame = self.game.get_frame(-2)	
-		screen_info = "reward={}, passages={}, doors={}, below_player={}, agent={}, action={}".format( 
-			self.last_reward, 
+		state_info = "reward={}, passages={}, doors={}, below_player={}, agent={}, action={}, value={}\n".format( 
+			reward,
 			last_frame.get_tile_count("#"), 
-			last_frame.get_tile_count("+"), 
-			last_frame.get_tile_below_player(), 
+			last_frame.get_tile_count("+"),
+			last_frame.get_tile_below_player(),
 			value_estimator_network.agent_id,
-			self.last_action
+			action,
+			value
 		)
-		frame_dict = { "screen": [screen_info] + last_frame.screen }
+		policy_info = "policy={}\n".format(policy)
+		# observation_info = "observation={}".format(np.array_str(observation.flatten()))
+		frame_dict = {}
+		frame_dict["log"] = state_info + policy_info + '\n'.join(last_frame.screen)+'\n'
+		frame_info["screen"] = { "value": frame_info["log"], "type": 'ASCII' }
 		# Heatmap
 		if flags.save_episode_heatmap:
 			heatmap_states = self.game.compute_walkable_states()
@@ -67,8 +72,8 @@ class RogueEnvironment(environment.Environment):
 			concat=self.get_last_action_reward()
 			for (heatmap_state,(x,y)) in heatmap_states:
 				value_map[x][y] = value_estimator_network.estimate_value(state=heatmap_state, concat=concat)
-			frame_dict.update( { "heatmap": value_map } )
-		# return
+			frame_dict["heatmap"] = value_map
+			
 		return frame_dict
 
 	def get_last_action_reward(self):

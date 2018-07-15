@@ -183,7 +183,7 @@ class ActorCriticNetwork(object):
 	def _lstm_state_placeholder(self):
 		return tf.placeholder(tf.float32, [1, self._lstm_units])
 		
-	def train(self, states, actions, values, policies, cumulative_rewards, generalized_advantage_estimators, start_lstm_state, concat = None):
+	def train(self, states, actions, values, policies, cumulative_rewards, generalized_advantage_estimators, lstm_states, concat=None):
 		values = np.reshape(values,[-1])
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 			advantages = np.reshape(generalized_advantage_estimators,[-1])
@@ -200,7 +200,7 @@ class ActorCriticNetwork(object):
 					self.advantage_batch: advantages,
 					self.old_value_batch: values,
 					self.old_policy_batch: policies,
-					self._initial_lstm_state: start_lstm_state
+					self._initial_lstm_state: lstm_states[0]
 				}
 		if self._concat_size > 0:
 			feed_dict.update( { self._concat : concat } )

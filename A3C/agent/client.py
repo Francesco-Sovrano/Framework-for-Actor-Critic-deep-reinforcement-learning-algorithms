@@ -97,36 +97,49 @@ class Worker(object):
 		frames_count = len(self.frame_info_list)
 		if frames_count == 0:
 			return
-		episode_directory = "{0}/episodes/reward({1})_step({2})_thread({3})".format(flags.log_dir, self.episode_reward, global_step, self.thread_index)
+		episode_directory = "{}/episodes/reward({})_step({})_thread({})".format(flags.log_dir, self.episode_reward, global_step, self.thread_index)
 		os.mkdir(episode_directory)
+		
+		first_frame = self.frame_info_list[0]
+		has_log = "log" in first_frame
+		has_screen = "screen" in first_frame
+		has_heatmap = "heatmap" in first_frame
+		
+		gif_filenames = []
+		# Log
+		if has_log:
+			with open(episode_directory + '/episode.log',"w") as screen_file:
+				for i in range(frames_count):
+					frame_info = self.frame_info_list[i]
+					screen_file.write(frame_info["log"])
 		# Screen
-		os.mkdir(episode_directory+'/screens')
-		screen_filenames = []
-		with open(episode_directory + '/screen.log',"w") as screen_file:
+		if has_screen:
+			os.mkdir(episode_directory+'/screens')
+			screen_filenames = []
 			for i in range(frames_count):
+				filename = episode_directory+'/screens/frame'+str(i)+'.jpg'
+				
 				frame_info = self.frame_info_list[i]
-				if "screen" in frame_info:
-					screen = '\n'.join(frame_info["screen"])
-					screen_file.write(screen)
-					if flags.save_episode_gif:
-						filename = episode_directory+'/screens/frame'+str(i)+'.jpg'
-						plt.ascii_image(screen, filename)
-						screen_filenames.append(filename)
-				elif "rgb" in frame_info:
-					filename = episode_directory+'/screens/frame'+str(i)+'.jpg'
-					plt.rgb_array_image(frame_info["rgb"], filename)
-					screen_filenames.append(filename)
+				screen_type = frame_info["screen"]["type"]
+				screen_value = frame_info["screen"]["value"]
+				if screen_type == 'ASCII':
+					plt.ascii_image(screen_value, filename)
+				elif screen_type == 'RGB':
+					plt.rgb_array_image(screen_value, filename)
+				screen_filenames.append(filename)
+			gif_filenames = screen_filenames
 		# Heatmap
-		if flags.save_episode_heatmap:
+		if has_heatmap:
 			os.mkdir(episode_directory+'/heatmaps')
 			heatmap_filenames = []
 			for i in range(frames_count):
 				frame_info = self.frame_info_list[i]
-				if "heatmap" in frame_info:
-					filename = episode_directory+'/heatmaps/frame'+str(i)+'.jpg'
-					plt.heatmap(heatmap=frame_info["heatmap"], figure_file=filename)
-					heatmap_filenames.append(filename)
-			# Combine Heatmap and Screen
+				filename = episode_directory+'/heatmaps/frame'+str(i)+'.jpg'
+				plt.heatmap(heatmap=frame_info["heatmap"], figure_file=filename)
+				heatmap_filenames.append(filename)
+			gif_filenames = heatmap_filenames
+		# Combine Heatmap and Screen
+		if has_heatmap and has_screen:
 			os.mkdir(episode_directory+'/heatmap-screens')
 			heatmap_screen_filenames = []
 			i = 0
@@ -135,10 +148,10 @@ class Worker(object):
 				plt.combine_images(images_list=[heatmap_filename, screen_filename], file_name=filename)
 				heatmap_screen_filenames.append(filename)
 				i+=1
+			gif_filenames = heatmap_screen_filenames
 		# Gif
-		if flags.save_episode_gif:
-			filenames = heatmap_screen_filenames if flags.save_episode_heatmap else screen_filenames
-			plt.make_gif(file_list=filenames, gif_path=episode_directory + ('/heatmap-screens.gif' if flags.save_episode_heatmap else '/screen.gif'))
+		if flags.save_episode_gif and len(gif_filenames) > 0:
+			plt.make_gif(file_list=gif_filenames, gif_path=episode_directory+'/episode.gif')
 		
 	def log(self, global_t, step):
 		# Speed
@@ -164,16 +177,17 @@ class Worker(object):
 		step = 0
 		while step < flags.max_batch_size and not self.terminal:
 			step += 1
+			state=self.environment.last_state
 			policy, value, action, reward, self.terminal = self.local_network.act( 
 				policy_to_action_function=self.environment.choose_action, 
 				act_function=self.environment.process, 
-				state=self.environment.last_state, 
+				state=state, 
 				concat=self.environment.get_last_action_reward() 
 			)
 			self.episode_reward += reward
 			
 			if flags.show_best_episodes or flags.show_all_episodes:
-				self.frame_info_list.append( self.environment.get_frame_info(value_estimator_network=self.local_network) )
+				self.frame_info_list.append( self.environment.get_frame_info(value_estimator_network=self.local_network, observation=state, policy=policy, value=value, action=action, reward=reward) )
 			
 		if self.terminal: # an episode has terminated
 			self.terminated_episodes += 1
@@ -190,7 +204,7 @@ class Worker(object):
 			if self.terminal:
 				self.prepare()
 			step = self.run_batch()
-			self.log(global_t, step)			
+			self.log(global_t, step)
 			return step
 		except:
 			traceback.print_exc()

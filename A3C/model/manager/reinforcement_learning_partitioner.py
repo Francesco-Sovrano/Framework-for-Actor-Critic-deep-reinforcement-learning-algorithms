@@ -24,7 +24,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		self.model_list.append(self.manager)
 		# the agents
 		for i in range(agents_count):
-			agent=ActorCriticNetwork(session=self.session, id="{0}_{1}".format(self.id, i+1), state_shape=state_shape, policy_size=action_size, entropy_beta=flags.entropy_beta*(i+1), clip=self.clip[i+1], device=self.device, concat_size=concat_size)
+			agent = ActorCriticNetwork(session=self.session, id="{0}_{1}".format(self.id, i+1), state_shape=state_shape, policy_size=action_size, entropy_beta=flags.entropy_beta*(i+1), clip=self.clip[i+1], device=self.device, concat_size=concat_size)
 			self.model_list.append(agent)
 			
 	def initialize_gradient_optimizer(self):
@@ -49,6 +49,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		
 	def act(self, policy_to_action_function, act_function, state, concat=None):
 		if self.query_partitioner(self.step):
+			self.batch["lstm_state"][0].append(self.manager.lstm_state_out) # do it before manager.get_state_partition
 			self.agent_id, manager_policy, manager_value = self.get_state_partition(state=[state], concat=[concat])
 			self.batch["values"][0].append(manager_value)
 			self.batch["policies"][0].append(manager_policy)

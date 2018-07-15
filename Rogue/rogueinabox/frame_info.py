@@ -42,7 +42,8 @@ class RogueFrameInfo:
 		doors = self.get_list_of_positions_by_tile("+")
 		floors = self.get_list_of_positions_by_tile(".")
 		items = self.get_list_of_positions_by_type("items")
-		return passages + doors + floors + items
+		stairs = self.get_list_of_positions_by_tile("%")
+		return passages + doors + floors + items + stairs
 
 	def get_tile_count( self, tile ):
 		return len( self.get_list_of_positions_by_tile(tile) )

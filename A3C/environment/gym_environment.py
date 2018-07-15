@@ -29,7 +29,6 @@ class GymEnvironment(environment.Environment):
 		self.last_state = self.game.reset()
 		# self.last_state = np.copy(self.last_state)
 		self.last_state = self.normalize(self.last_state)
-		self.last_last_state = self.last_state
 		self.last_action = 0
 		self.last_reward = 0
 		self.cumulative_reward = 0
@@ -68,12 +67,17 @@ class GymEnvironment(environment.Environment):
 	def get_screen(self):
 		return self.last_state
 		
-	def get_frame_info(self, value_estimator_network):
+	def get_frame_info(self, value_estimator_network, observation, policy, value, action, reward):
+		state_info = "reward={}, action={}, agent={}, value={}\n".format(reward, action, value_estimator_network.agent_id, value)
+		policy_info = "policy={}\n".format(policy)
+		frame_info = { "log": state_info + policy_info }
 		if self.use_ram: # ram
-			screen_info = "reward={}, action={}, agent{}".format( self.last_reward, self.last_action, value_estimator_network.agent_id )
-			return { "screen": [screen_info, np.array_str(self.get_screen().flatten())] }
+			observation_info = "observation={}\n".format(np.array_str(observation.flatten()))
+			frame_info["log"] += observation_info
+			frame_info["screen"] = { "value": frame_info["log"], "type": 'ASCII' }
 		else: # rgb image
-			return { "rgb": self.get_screen() }
+			frame_info["screen"] = { "value": observation, "type": 'RGB' }
+		return frame_info
 		
 	def get_last_action_reward(self):
 		action_reward = np.zeros(self.get_action_size()+1, dtype=np.uint8)
@@ -88,7 +92,6 @@ class GymEnvironment(environment.Environment):
 		# new_state = np.copy(new_state)
 		new_state = self.normalize(new_state)
 		
-		self.last_last_state = self.last_state
 		self.last_state = new_state
 		self.last_action = action
 		self.last_reward = reward

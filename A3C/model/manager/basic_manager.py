@@ -120,11 +120,12 @@ class BasicManager(object):
 		self.batch["generalized_advantage_estimator"] = []
 		self.batch["values"] = []
 		self.batch["policies"] = []
-		self.batch["start_lstm_state"] = []
+		self.batch["lstm_state"] = []
+		
 		for i in range(self.model_size):
 			for key in self.batch:
 				self.batch[key].append(collections.deque())
-			self.batch["start_lstm_state"][i] = self.get_model(i).lstm_state_out
+				
 		self.agent_id_list = []
 		self.reward_list = []
 		self.value_list = []
@@ -138,6 +139,11 @@ class BasicManager(object):
 		
 	def act(self, policy_to_action_function, act_function, state, concat=None):
 		agent = self.get_model(self.agent_id)
+		
+		self.batch["lstm_state"][self.agent_id].append(agent.lstm_state_out) # do it before agent.run_policy_and_value
+		self.batch["states"][self.agent_id].append(state)
+		self.batch["concat"][self.agent_id].append(concat)
+		
 		policy, value = agent.run_policy_and_value(state=[state], concat=[concat])
 		action = policy_to_action_function(policy)
 		_, reward, terminal = act_function(action)
@@ -145,8 +151,6 @@ class BasicManager(object):
 			reward = np.clip(reward, flags.min_reward, flags.max_reward)
 		self.batch_reward += reward
 		
-		self.batch["states"][self.agent_id].append(state)
-		self.batch["concat"][self.agent_id].append(concat)
 		self.batch["values"][self.agent_id].append(value)
 		self.batch["policies"][self.agent_id].append(policy)
 		self.batch["actions"][self.agent_id].append(agent.get_action_vector(action))
@@ -187,12 +191,22 @@ class BasicManager(object):
 		policy=batch["policies"]
 		reward=batch["discounted_cumulative_reward"]
 		gae=batch["generalized_advantage_estimator"]
-		lstm_state=batch["start_lstm_state"]
+		lstm_state=batch["lstm_state"]
 		concat=batch["concat"]
 		# assert self.global_network is not None, 'you are trying to train the global network'
 		for i in range(self.model_size):
-			if len(state[i]) > 0:
-				self.get_model(i).train(state[i], action[i], value[i], policy[i], reward[i], gae[i], lstm_state[i], concat[i])
+			batch_size = len(state[i])
+			if batch_size > 0:
+				self.get_model(i).train(
+					states=state[i],
+					actions=action[i],
+					values=value[i],
+					policies=policy[i],
+					cumulative_rewards=reward[i],
+					generalized_advantage_estimators=gae[i],
+					lstm_states=lstm_state[i],
+					concat=concat[i]
+				)
 				
 	def process_batch(self):
 		self.train(batch=self.batch)
