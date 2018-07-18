@@ -52,8 +52,16 @@ class Worker(object):
 		if self.train:
 			state_shape = self.environment.get_state_shape()
 			action_size = self.environment.get_action_size()
-			concat_size = action_size+1			
-			self.local_network = eval(self.get_model_manager())(session=session, device=self.device, id=self.thread_index, action_size=action_size, concat_size=concat_size, state_shape=state_shape, global_network=self.global_network)
+			concat_size = action_size+1 if flags.concat_last_action_reward else 0
+			self.local_network = eval(self.get_model_manager())(
+				session=session, 
+				device=self.device, 
+				id=self.thread_index, 
+				action_size=action_size, 
+				concat_size=concat_size,
+				state_shape=state_shape, 
+				global_network=self.global_network
+			)
 		else:
 			self.local_network = self.global_network
 		self.terminal = True
@@ -172,30 +180,29 @@ class Worker(object):
 	def run_batch(self):
 		if self.train: # Copy weights from shared to local
 			self.local_network.sync()
-		self.local_network.reset_batch()
 			
 		step = 0
+		self.local_network.initialize_new_batch()
 		while step < flags.max_batch_size and not self.terminal:
 			step += 1
 			state=self.environment.last_state
-			policy, value, action, reward, self.terminal = self.local_network.act( 
+			new_state, policy, value, action, reward, self.terminal = self.local_network.act( 
 				policy_to_action_function=self.environment.choose_action, 
 				act_function=self.environment.process, 
-				state=state, 
-				concat=self.environment.get_last_action_reward() 
+				state=state,
+				concat=self.environment.get_last_action_reward() if flags.concat_last_action_reward else None
 			)
 			self.episode_reward += reward
 			
 			if flags.show_best_episodes or flags.show_all_episodes:
-				self.frame_info_list.append( self.environment.get_frame_info(value_estimator_network=self.local_network, observation=state, policy=policy, value=value, action=action, reward=reward) )
+				self.frame_info_list.append( self.environment.get_frame_info(network=self.local_network, observation=state, policy=policy, value=value, action=action, reward=reward) )
 			
 		if self.terminal: # an episode has terminated
 			self.terminated_episodes += 1
 			
 		if self.train: # train using batch
-			state = self.environment.last_state if not self.terminal else None # bootstrap
-			concat = self.environment.get_last_action_reward() if not self.terminal else None
-			self.local_network.compute_cumulative_reward(state=state, concat=concat)
+			if not self.terminal:
+				self.local_network.bootstrap(state=new_state, concat=self.environment.get_last_action_reward() if flags.concat_last_action_reward else None)
 			self.local_network.process_batch()
 		return step
 

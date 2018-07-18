@@ -36,10 +36,10 @@ class KMeansPartitioner(BasicManager):
 				id="{0}_{1}".format(self.id, i), 
 				state_shape=state_shape, 
 				policy_size=action_size, 
+				concat_size=concat_size,
 				entropy_beta=flags.entropy_beta, 
 				clip=self.clip[i], 
 				device=self.device, 
-				concat_size=concat_size,
 				predict_reward=flags.predict_reward
 			)
 			self.model_list.append(agent)
@@ -69,19 +69,19 @@ class KMeansPartitioner(BasicManager):
 		return self.partitioner_trained and step%flags.partitioner_granularity==0
 		
 	def act(self, policy_to_action_function, act_function, state, concat=None):
-		if self.query_partitioner(self.step):
+		if self.query_partitioner(self.batch["size"]):
 			self.agent_id = self.get_state_partition(state)
 		return super().act(policy_to_action_function, act_function, state, concat)
 		
 	def populate_partitioner(self, states):
 		# assert self.is_global_network(), 'only global network can populate partitioner'
 		with self.lock:
-			for i in range(len(states)//flags.partitioner_granularity):
-				state = states[i*flags.partitioner_granularity]
+			for i in range(0,len(states),flags.partitioner_granularity):
+				state = states[i]
 				self.buffer.put(batch=state.flatten())
 				if self.buffer.is_full():
 					print ("Buffer is full, starting partitioner training")
-					self.partitioner.fit( self.buffer.batches )
+					self.partitioner.fit( [batch for (batch,type) in self.buffer.batches] )
 					print ("Partitioner trained")
 					self.partitioner_trained = True
 					print ("Syncing with training net")
@@ -89,16 +89,17 @@ class KMeansPartitioner(BasicManager):
 					print ("Cleaning buffer")
 					self.buffer.clean()
 			
-	def compute_cumulative_reward(self, state=None, concat=None):
-		# Bootstrap partitioner
-		bootstrap = state is not None
-		if bootstrap and self.query_partitioner(self.step): # bootstrap the value from the last state
+	def bootstrap(self, state, concat=None):
+		if self.query_partitioner(self.batch["size"]):
 			self.agent_id = self.get_state_partition(state)
-		# Compute agents' cumulative_reward
-		super().compute_cumulative_reward(state, concat)
+		super().bootstrap(state, concat)
+			
+	def compute_cumulative_reward(self, batch):
+		batch = super().compute_cumulative_reward(batch)
 		# populate partitioner training set
 		if not self.partitioner_trained and not self.is_global_network():
-			self.global_network.populate_partitioner(states=self.batch["states"][self.agent_id])
+			self.global_network.populate_partitioner(states=batch["states"][self.agent_id]) # if the partitioner is not trained, al the states are associated to the current agent
 			self.partitioner_trained = self.global_network.partitioner_trained
 			if self.partitioner_trained:
 				self.partitioner = copy.deepcopy(self.global_network.partitioner)
+		return batch

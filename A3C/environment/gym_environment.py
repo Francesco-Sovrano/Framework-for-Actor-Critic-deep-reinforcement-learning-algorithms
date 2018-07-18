@@ -27,7 +27,6 @@ class GymEnvironment(environment.Environment):
 	def reset(self):
 		self.stop()
 		self.last_state = self.game.reset()
-		# self.last_state = np.copy(self.last_state)
 		self.last_state = self.normalize(self.last_state)
 		self.last_action = 0
 		self.last_reward = 0
@@ -67,8 +66,8 @@ class GymEnvironment(environment.Environment):
 	def get_screen(self):
 		return self.last_state
 		
-	def get_frame_info(self, value_estimator_network, observation, policy, value, action, reward):
-		state_info = "reward={}, action={}, agent={}, value={}\n".format(reward, action, value_estimator_network.agent_id, value)
+	def get_frame_info(self, network, observation, policy, value, action, reward):
+		state_info = "reward={}, action={}, agent={}, value={}\n".format(reward, action, network.agent_id, value)
 		policy_info = "policy={}\n".format(policy)
 		frame_info = { "log": state_info + policy_info }
 		if self.use_ram: # ram
@@ -79,26 +78,18 @@ class GymEnvironment(environment.Environment):
 			frame_info["screen"] = { "value": observation, "type": 'RGB' }
 		return frame_info
 		
-	def get_last_action_reward(self):
-		action_reward = np.zeros(self.get_action_size()+1, dtype=np.uint8)
-		action_reward[self.last_action]=1
-		action_reward[-1] = self.last_reward
-		return action_reward
-		
 	def process(self, action):
 		action = action%self.get_action_size()
 		# self.game.render(mode='rgb_array')
-		new_state, reward, done, info = self.game.step(action)
-		# new_state = np.copy(new_state)
-		new_state = self.normalize(new_state)
-		
-		self.last_state = new_state
+		self.last_state, reward, done, info = self.game.step(action)
+		self.last_state = self.normalize(self.last_state)
 		self.last_action = action
 		self.last_reward = reward
+		
 		self.cumulative_reward += reward
 		self.step += 1
 		if done: # add to statistics
 			self.episodes.append( {"reward":self.cumulative_reward, "step":self.step} )
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
-		return new_state, reward, done
+		return self.last_state, reward, done

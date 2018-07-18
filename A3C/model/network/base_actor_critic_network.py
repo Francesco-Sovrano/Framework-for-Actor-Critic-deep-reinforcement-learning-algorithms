@@ -44,15 +44,15 @@ class BaseAC_Network(object):
 		self.variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope_name)
 		
 	def _build_reward_prediction(self):
-		self._reward_prediction_states = tf.placeholder(tf.float32, np.concatenate([[None], self._state_shape], 0))
+		self._reward_prediction_states = self._state_placeholder()
 		output = self._convolutive_layers(self._reward_prediction_states, reuse=True)
 		output = tf.layers.flatten(output)
 		output = tf.layers.dense(inputs=output, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 		self._reward_prediction = tf.nn.softmax(output)
 		
 	def _build_base(self):
-		self._input = tf.placeholder(tf.float32, np.concatenate([[None], self._state_shape], 0))
-		self._concat = tf.placeholder(tf.float32, [None, self._concat_size])
+		self._input = self._state_placeholder()
+		self._concat = self._concat_placeholder()
 		# Convolutive layers
 		conv_output = self._convolutive_layers(self._input)
 		# LSTM layers
@@ -137,35 +137,31 @@ class BaseAC_Network(object):
 		# reset lstm state output
 		self.lstm_state_out = tf.contrib.rnn.LSTMStateTuple(np.zeros([1, self._lstm_units]), np.zeros([1, self._lstm_units]))
 
-	def run_policy_and_value(self, state, concat=None):
-		# This run_policy_and_value() is used when forward propagating.
-		# so the step size is 1.
+	def run_policy_and_value(self, states, concats=None, initial_lstm_state=None):
+		# This run_policy_and_value() is used when forward propagating so the step size is 1.
+		if initial_lstm_state is None:
+			initial_lstm_state = self.lstm_state_out
 		feed_dict = { 
-				self._input : state, 
-				self._initial_lstm_state0 : self.lstm_state_out[0], 
-				self._initial_lstm_state1 : self.lstm_state_out[1]
+				self._input : states, 
+				self._initial_lstm_state0 : initial_lstm_state[0], 
+				self._initial_lstm_state1 : initial_lstm_state[1]
 			}
 		if self._concat_size > 0:
-			feed_dict.update( { self._concat : concat } )
+			feed_dict.update( { self._concat : concats } )
 		pi_out, v_out, self.lstm_state_out = self._session.run( [self._policy, self._value, self._lstm_state], feed_dict = feed_dict )
 		# pi_out: (1,3), v_out: (1)
 		return (pi_out[0], v_out[0])
 		
-	def sync(self, sync):
-		self._session.run(sync)
-		
-	def run_value(self, state, concat=None):
-		# This run_value() is used for calculating V for bootstrapping at the 
-		# end of MAX_BATCH_SIZE time step sequence.
-		# When next sequence starts, V will be calculated again with the same state using updated network weights,
-		# so we don't update LSTM state here.
-		feed_dict = {
-				self._input : state, 
-				self._initial_lstm_state0 : self.lstm_state_out[0], 
-				self._initial_lstm_state1 : self.lstm_state_out[1] 
+	def run_value(self, states, concats=None, initial_lstm_state=None):
+		if initial_lstm_state is None:
+			initial_lstm_state = self.lstm_state_out
+		feed_dict = { 
+				self._input : states, 
+				self._initial_lstm_state0 : initial_lstm_state[0], 
+				self._initial_lstm_state1 : initial_lstm_state[1] 
 			}
 		if self._concat_size > 0:
-			feed_dict.update( { self._concat : concat } )
+			feed_dict.update( { self._concat : concats } )
 		v_out, _ = self._session.run( [self._value, self._lstm_state], feed_dict = feed_dict )
 		return v_out[0]
 		
@@ -179,6 +175,9 @@ class BaseAC_Network(object):
 					sync_op = tf.assign(dst_var, src_var)
 					sync_ops.append(sync_op)
 				return tf.group(*sync_ops, name=name)
+				
+	def sync(self, sync):
+		self._session.run(sync)
 				
 	def minimize_local(self, optimizer, global_step, global_var_list):
 		"""
@@ -201,13 +200,20 @@ class BaseAC_Network(object):
 	def get_vars(self):
 		return self.variables # get model variables
 		
-	def get_action_vector(self, action): # transform action into a 1-hot-vector
+	def get_action_vector(self, action=None): # transform action into a 1-hot-vector
 		hot_vector = np.zeros([self._policy_size])
-		hot_vector[action] = 1.0
+		if action is not None:
+			hot_vector[action] = 1.0
 		return hot_vector
 		
 	def _lstm_state_placeholder(self):
 		return tf.placeholder(tf.float32, [1, self._lstm_units])
+		
+	def _state_placeholder(self):
+		return tf.placeholder(tf.float32, np.concatenate([[None], self._state_shape], 0))
+		
+	def _concat_placeholder(self):
+		return tf.placeholder(tf.float32, [None, self._concat_size])
 				
 	def state_target_reward_prediction(self, states, rewards):
 		if len(states) == 1:
@@ -258,7 +264,7 @@ class BaseAC_Network(object):
 			} )
 		return feed_dict
 				
-	def train(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_states, concat=None):
+	def train(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_states, concats=None):
 		self.train_count += len(states)
-		feed_dict = self.build_feed(states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_states, concat)
+		feed_dict = self.build_feed(states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_states, concats)
 		self._session.run(self.apply_gradient, feed_dict) # Calculate gradients and copy them to global network

@@ -31,8 +31,7 @@ class RogueEnvironment(environment.Environment):
 		self.game = RogueBox(flags.env_path, flags.state_generator, flags.reward_generator, flags.steps_per_episode, flags.match_count_for_evaluation)
 
 	def reset(self):
-		self.last_action, status = self.game.reset()
-		self.last_reward, new_state, _, _ = status
+		(self.last_action, (self.last_reward, new_state, _, _)) = self.game.reset()
 		self.last_state = new_state["value"]
 		
 	def stop(self):
@@ -47,7 +46,7 @@ class RogueEnvironment(environment.Environment):
 	def get_screen(self):
 		return self.game.get_screen()
 		
-	def get_frame_info(self, value_estimator_network, observation, policy, value, action, reward):
+	def get_frame_info(self, network, observation, policy, value, action, reward):
 		# Screen
 		last_frame = self.game.get_frame(-2)	
 		state_info = "reward={}, passages={}, doors={}, below_player={}, agent={}, action={}, value={}\n".format( 
@@ -55,7 +54,7 @@ class RogueEnvironment(environment.Environment):
 			last_frame.get_tile_count("#"), 
 			last_frame.get_tile_count("+"),
 			last_frame.get_tile_below_player(),
-			value_estimator_network.agent_id,
+			network.agent_id,
 			action,
 			value
 		)
@@ -71,24 +70,17 @@ class RogueEnvironment(environment.Environment):
 			value_map = np.zeros((screen_x, screen_y))
 			concat=self.get_last_action_reward()
 			for (heatmap_state,(x,y)) in heatmap_states:
-				value_map[x][y] = value_estimator_network.estimate_value(state=heatmap_state, concat=concat)
+				value_map[x][y] = network.estimate_value(state=heatmap_state, concat=concat)
 			frame_dict["heatmap"] = value_map
 			
 		return frame_dict
-
-	def get_last_action_reward(self):
-		action_reward = np.zeros(len(self.real_actions)+1, dtype=np.uint8)
-		action_reward[self.last_action]=1
-		action_reward[-1] = self.last_reward
-		return action_reward
 		
 	def process(self, action):
 		action = action%len(self.real_actions)
 		real_action = self.real_actions[action]
 		reward, new_state, win, lose = self.game.send_command(real_action)
-		new_state = new_state["value"]
 		
-		self.last_state = new_state
+		self.last_state = new_state["value"]
 		self.last_action = action
 		self.last_reward = reward
-		return new_state, reward, (win or lose)
+		return self.last_state, reward, (win or lose)

@@ -47,6 +47,7 @@ class Application(object):
 		self.stop_requested = False
 		self.terminate_reqested = False
 		self.build_network()
+		self.lock = threading.Lock()
 			
 	def build_network(self):
 		# global network
@@ -109,14 +110,15 @@ class Application(object):
 				self.save()
 	
 			diff_global_t = trainer.process(self.global_t)
-			self.global_t += diff_global_t
-			
-			# print global statistics
-			if trainer.terminal:
-				info = self.get_global_statistics(clients=self.trainers)
-				if info:
-					self.training_logger.info( str([key + "=" + str(value) for key, value in sorted(info.items(), key=lambda t: t[0])]) ) # Print statistics
-				sys.stdout.flush() # force print immediately what is in output buffer
+			with self.lock:
+				self.global_t += diff_global_t			
+				# print global statistics
+				if trainer.terminal:
+					info = self.get_global_statistics(clients=self.trainers)
+					if info:
+						info_str = "<{}> {}".format(self.global_t, ["{}={}".format(key,value) for key, value in sorted(info.items(), key=lambda t: t[0])])
+						self.training_logger.info(info_str) # Print statistics
+					sys.stdout.flush() # force print immediately what is in output buffer
 				
 	def get_global_statistics(self, clients):
 		info = {}

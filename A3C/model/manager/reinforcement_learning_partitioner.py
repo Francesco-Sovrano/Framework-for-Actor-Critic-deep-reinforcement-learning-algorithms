@@ -13,7 +13,7 @@ flags = options.get()
 
 class ReinforcementLearningPartitioner(BasicManager):
 	def set_model_size(self):
-		self.model_size = flags.partition_count # manager output size
+		self.model_size = flags.partition_count+1 # manager output size
 		if self.model_size < 2:
 			self.model_size = 2
 			
@@ -28,7 +28,6 @@ class ReinforcementLearningPartitioner(BasicManager):
 			entropy_beta=flags.entropy_beta, 
 			clip=self.clip[0], 
 			device=self.device, 
-			concat_size=concat_size,
 			predict_reward=flags.predict_reward
 		)
 		self.model_list.append(self.manager)
@@ -39,10 +38,10 @@ class ReinforcementLearningPartitioner(BasicManager):
 				id="{0}_{1}".format(self.id, i+1), 
 				state_shape=state_shape, 
 				policy_size=action_size, 
+				concat_size=concat_size,
 				entropy_beta=flags.entropy_beta*(i+1), 
 				clip=self.clip[i+1], 
 				device=self.device, 
-				concat_size=concat_size,
 				predict_reward=flags.predict_reward
 			)
 			self.model_list.append(agent)
@@ -53,60 +52,77 @@ class ReinforcementLearningPartitioner(BasicManager):
 		self.learning_rate[0] = eval('tf.train.'+flags.alpha_annealing_function)(learning_rate=initial_learning_rate, global_step=self.global_step[0], decay_steps=flags.alpha_decay_steps, decay_rate=flags.alpha_decay_rate) if flags.alpha_decay else initial_learning_rate
 		self.gradient_optimizer[0] = eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True)
 		
-	def get_state_partition( self, state, concat=None ):
-		policy, value = self.manager.run_policy_and_value( state, concat )
-		id = np.random.choice(range(len(policy)), p=policy)
+	def get_state_partition(self, states, lstm_state=None):
+		policy, value = self.manager.run_policy_and_value(states=states, initial_lstm_state=lstm_state)
+		id = np.random.choice(range(len(policy)), p=policy) + 1 # the first agent is the manager
 		self.add_to_statistics(id)
-		id = id + 1 # the first agent is the manager
 		return id, policy, value
 		
 	def query_partitioner(self, step):
 		return step%flags.partitioner_granularity==0
 		
-	def reset_batch(self):
-		super().reset_batch()
-		self.manager_value_list = []
+	def initialize_new_batch(self):
+		super().initialize_new_batch()
+		self.batch["manager_value_list"] = []
 		
 	def act(self, policy_to_action_function, act_function, state, concat=None):
-		if self.query_partitioner(self.step):
-			self.batch["lstm_states"][0].append(self.manager.lstm_state_out) # do it before manager.get_state_partition
-			self.agent_id, manager_policy, manager_value = self.get_state_partition(state=[state], concat=[concat])
+		if self.query_partitioner(self.batch["size"]):
+			self.batch["lstm_states"][0].append(self.manager.lstm_state_out) # do it BEFORE manager.get_state_partition
+			self.agent_id, manager_policy, manager_value = self.get_state_partition(states=[state])
+			
 			self.batch["values"][0].append(manager_value)
 			self.batch["policies"][0].append(manager_policy)
 			self.batch["states"][0].append(state)
-			self.batch["concats"][0].append(concat)
+			self.batch["concats"][0].append(None)
 			self.batch["actions"][0].append(self.manager.get_action_vector(self.agent_id-1))
-			self.manager_value_list.append(manager_value)
+			self.batch["manager_value_list"].append(manager_value)
 			has_queried_partitioner = True
 		else:
 			has_queried_partitioner = False
 			
-		policy, value, action, reward, terminal = super().act(policy_to_action_function, act_function, state, concat)
+		new_state, policy, value, action, reward, terminal = super().act(policy_to_action_function, act_function, state, concat)
 		if has_queried_partitioner:
 			self.batch["rewards"][0].append(reward)
-		return policy, value, action, reward, terminal
+		return new_state, policy, value, action, reward, terminal
+		
+	def bootstrap(self, state, concat=None):
+		agent_id, _, value = self.get_state_partition(states=[state])
+		if self.query_partitioner(self.batch["size"]):
+			self.agent_id = agent_id
+		super().bootstrap(state, concat)
+		self.batch["bootstrap"]["manager_value"] = value
+		
+	def replay_value(self, batch):
+		if "bootstrap" in batch:
+			bootstrap = batch["bootstrap"]
+			_, _, bootstrap["manager_value"] = self.get_state_partition(states=[bootstrap["state"]], lstm_state=bootstrap["lstm_states"])
+		return super().replay_value(batch)
 			
-	def compute_cumulative_reward(self, state=None, concat=None):
+	def compute_cumulative_reward(self, batch):
 		manager_discounted_cumulative_reward = 0.0
 		manager_generalized_advantage_estimator = 0.0
 		# Bootstrap partitioner
-		bootstrap = state is not None
-		if bootstrap: # bootstrap the value from the last state
-			self.agent_id, _, manager_discounted_cumulative_reward = self.get_state_partition(state=[state], concat=[concat])
-		# Compute agents' cumulative_reward	
-		super().compute_cumulative_reward(state, concat)
+		if "bootstrap" in batch:
+			manager_discounted_cumulative_reward = batch["bootstrap"]["manager_value"]
+		# Compute agents' cumulative_reward
+		batch = super().compute_cumulative_reward(batch)
 		# Compute partitioner's cumulative_reward
 		last_manager_value = manager_discounted_cumulative_reward
-		batch_size = len(self.reward_list)
+		batch_size = batch["size"]
 		query_reward = 0
+		manager_value_list_idx = -1
 		for t in range(batch_size):
 			index = batch_size-t-1
-			query_reward += self.reward_list[index]
+			frame = self.get_frame(batch=batch, index=index, keys=["rewards"])
+			query_reward += frame["rewards"]
 			if self.query_partitioner(index): # ok because "step" starts from 0
-				manager_value = self.manager_value_list.pop()
+				manager_value = batch["manager_value_list"][manager_value_list_idx]
+				manager_value_list_idx -= 1
+				
 				manager_discounted_cumulative_reward = query_reward + flags.gamma * manager_discounted_cumulative_reward
 				manager_generalized_advantage_estimator = query_reward + flags.gamma * last_manager_value - manager_value + flags.gamma*flags.lambd*manager_generalized_advantage_estimator
 				last_manager_value = manager_value
-				self.batch["discounted_cumulative_rewards"][0].appendleft(manager_discounted_cumulative_reward)
-				self.batch["generalized_advantage_estimators"][0].appendleft(manager_generalized_advantage_estimator)
+				batch["discounted_cumulative_rewards"][0].appendleft(manager_discounted_cumulative_reward)
+				batch["generalized_advantage_estimators"][0].appendleft(manager_generalized_advantage_estimator)
 				query_reward = 0
+		return batch

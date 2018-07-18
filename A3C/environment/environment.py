@@ -17,6 +17,12 @@ class Environment(object):
 			
 	def choose_action(self, pi_values):
 		return np.random.choice(range(len(pi_values)), p=pi_values)
+		
+	def get_last_action_reward(self):
+		action_reward = np.zeros(self.get_action_size()+1)
+		action_reward[self.last_action]=1
+		action_reward[-1] = self.last_reward
+		return action_reward
 
 	def __init__(self):
 		pass

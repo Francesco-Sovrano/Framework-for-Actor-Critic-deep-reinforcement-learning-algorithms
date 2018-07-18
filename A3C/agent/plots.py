@@ -27,7 +27,8 @@ def plot(logs, figure_file):
 		print("Not enough data for a reasonable plot")
 		return		
 	# Get statistics keys
-	stats = sorted(next(logs[0]["data"]).keys(), key=lambda t: t[0]) # statistics keys sorted by name
+	(step, obj) = next(logs[0]["data"])
+	stats = sorted(obj.keys(), key=lambda t: t[0]) # statistics keys sorted by name
 	stats_count = len(stats)
 	# Create new figure and two subplots, sharing both axes
 	ncols=3 if stats_count >= 3 else stats_count
@@ -41,15 +42,17 @@ def plot(logs, figure_file):
 		plot_size = min_data_length
 		data_per_plotpoint = 1
 		
+	unused_plots = set()
 	for log in logs:
 		name = log["name"]
 		data = log["data"]
 		# Build x
-		x = [i*data_per_plotpoint for i in range(plot_size)]
+		x = {}
 		# Build y
 		y = {}
 		for key in stats: # foreach statistic
 			y[key] = {"min":float("+inf"), "max":float("-inf"), "data":[]}
+			x[key] = []
 		for _ in range(plot_size):
 			value_sum = {}
 			# initialize
@@ -59,7 +62,7 @@ def plot(logs, figure_file):
 			bad_obj_count = 0
 			for _ in range(data_per_plotpoint):
 				try:
-					obj = next(data)
+					(step, obj) = next(data)
 				except Exception as e:
 					bad_obj_count += 1
 					continue # try with next obj
@@ -70,12 +73,11 @@ def plot(logs, figure_file):
 						y[key]["max"] = v
 					if v < y[key]["min"]:
 						y[key]["min"] = v
-			if bad_obj_count == data_per_plotpoint:
-				x.pop() # remove an element from x
-			else:
+			if bad_obj_count < data_per_plotpoint:
 				# add average to data for plotting
 				for key in stats: # foreach statistic
 					y[key]["data"].append(value_sum[key]/(data_per_plotpoint-bad_obj_count))
+					x[key].append(step)
 		# Populate plots
 		for j in range(ncols):
 			for i in range(nrows):
@@ -86,19 +88,22 @@ def plot(logs, figure_file):
 					plot = plots[i][j]
 					idx = i*ncols+j
 				if idx >= stats_count:
-					figure.delaxes(plot) # remove unused plot
+					unused_plots.add(plot)
 					continue
 				key = stats[idx]
 				# print stats
 				print(y[key]["min"], " < ", key, " < ", y[key]["max"])
 				# plot
 				plot.set_ylabel(key)
+				plot.set_xlabel('step')
 				# plot.plot(x, y, linewidth=linewidth, markersize=markersize)
-				plot.plot(x, y[key]["data"])
+				plot.plot(x[key], y[key]["data"])
 				plot.grid(True)
-
+	# remove unused plot
+	for plot in unused_plots:
+		figure.delaxes(plot)
+		
 	plt.legend([log["name"] for log in logs], markerscale=30, loc='upper center', bbox_to_anchor=[0.5, -0.05])
-	plt.xlabel('Episodes')
 	figure.savefig(figure_file)
 	print("Plot figure saved in ", figure_file)
 	figure.clf() # release memory
@@ -121,14 +126,23 @@ def parse(log_fname):
 			# date_str = splitted[0] + ' ' + splitted[1]
 			# date = datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S,%f')
 			# obj = {'date': date}
+			# Get step
+			if '<' in splitted[2]:
+				step = re.sub('[<>]', '', splitted[2]) # remove following chars: <>
+				step = int(step)
+				xs = splitted[3:]
+			else:
+				step = i
+				xs = splitted[2:]
+			# Get objects
 			obj = {}
-			for x in splitted[2:]:
+			for x in xs:
 				x = re.sub('[\',\[\]]', '', x) # remove following chars: ',[]
 				# print(x)
 				key, val = x.split('=')
 				obj[key] = float(val)
 			# print (obj)
-			yield obj
+			yield (step, obj)
 		except Exception as e:
 			print("exc %s on line %s" % (repr(e), i+1))
 			print("skipping line")

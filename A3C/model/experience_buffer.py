@@ -26,7 +26,7 @@ class Buffer(object):
 	def is_empty(self):
 		return not self.has_atleast(1)
 
-	def put(self, batch, type):
+	def put(self, batch, type=0):
 		# remove old id
 		if self.is_full():
 			(_, type) = self.batches[self.next_idx]
