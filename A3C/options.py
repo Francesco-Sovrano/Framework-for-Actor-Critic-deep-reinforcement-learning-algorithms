@@ -102,6 +102,3 @@ def get():
 	if not options_built:
 		build()
 	return tf.app.flags.FLAGS
-	
-if __name__ == '__main__':
-	tf.app.run()

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import tensorflow as tf
 import agent.plots as plt
 import argparse
 

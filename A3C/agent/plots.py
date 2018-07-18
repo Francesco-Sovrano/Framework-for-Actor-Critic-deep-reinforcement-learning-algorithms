@@ -18,45 +18,55 @@ import options
 flags = options.get()
 
 def plot(logs, figure_file):
-	# Find the smallest log file, its length is the maximum length of each plot of each log
-	min_data_length = sys.maxsize # max int
-	for log in logs:
-		if log["length"] < min_data_length:
-			min_data_length = log["length"]
-	if min_data_length < 2:
+	# Get plot types
+	stats = {}
+	key_ids = {}
+	for i in range(len(logs)):
+		log = logs[i]
+		# Get statistics keys
+		if log["length"] < 2:
+			continue
+		(step, obj) = next(log["data"])
+		log_keys = sorted(obj.keys(), key=lambda t: t[0]) # statistics keys sorted by name
+		for key in log_keys:
+			if key not in key_ids:
+				key_ids[key] = len(key_ids)
+		stats[i] = log_keys
+	max_stats_count = len(key_ids)
+	if max_stats_count <= 0:
 		print("Not enough data for a reasonable plot")
-		return		
-	# Get statistics keys
-	(step, obj) = next(logs[0]["data"])
-	stats = sorted(obj.keys(), key=lambda t: t[0]) # statistics keys sorted by name
-	stats_count = len(stats)
+		return
 	# Create new figure and two subplots, sharing both axes
-	ncols=3 if stats_count >= 3 else stats_count
-	nrows=math.ceil(stats_count/ncols)
+	ncols=3 if max_stats_count >= 3 else max_stats_count
+	nrows=math.ceil(max_stats_count/ncols)
 	figure, plots = plt.subplots(nrows=nrows, ncols=ncols, sharey=False, sharex=False, figsize=(ncols*10,nrows*10))
+	
 	# Populate plots
-	if min_data_length > flags.max_plot_size:		
-		plot_size = flags.max_plot_size
-		data_per_plotpoint = min_data_length//plot_size
-	else:
-		plot_size = min_data_length
-		data_per_plotpoint = 1
-		
-	unused_plots = set()
-	for log in logs:
+	for log_id in range(len(logs)):
+		log = logs[log_id]
+		stat = stats[log_id]
 		name = log["name"]
 		data = log["data"]
-		# Build x
+		length = log["length"]
+		if length < 2:
+			print(name, " has not enough data for a reasonable plot")
+			continue
+		if length > flags.max_plot_size:
+			plot_size = flags.max_plot_size
+			data_per_plotpoint = length//plot_size
+		else:
+			plot_size = length
+			data_per_plotpoint = 1
+		# Build x, y
 		x = {}
-		# Build y
 		y = {}
-		for key in stats: # foreach statistic
+		for key in stat: # foreach statistic
 			y[key] = {"min":float("+inf"), "max":float("-inf"), "data":[]}
 			x[key] = []
 		for _ in range(plot_size):
 			value_sum = {}
 			# initialize
-			for key in stats: # foreach statistic
+			for key in stat: # foreach statistic
 				value_sum[key] = 0
 			# compute value_sum foreach key
 			bad_obj_count = 0
@@ -66,7 +76,7 @@ def plot(logs, figure_file):
 				except Exception as e:
 					bad_obj_count += 1
 					continue # try with next obj
-				for key in stats: # foreach statistic
+				for key in stat: # foreach statistic
 					v = obj[key]
 					value_sum[key] += v
 					if v > y[key]["max"]:
@@ -75,35 +85,33 @@ def plot(logs, figure_file):
 						y[key]["min"] = v
 			if bad_obj_count < data_per_plotpoint:
 				# add average to data for plotting
-				for key in stats: # foreach statistic
+				for key in stat: # foreach statistic
 					y[key]["data"].append(value_sum[key]/(data_per_plotpoint-bad_obj_count))
 					x[key].append(step)
 		# Populate plots
+		print(name)
 		for j in range(ncols):
 			for i in range(nrows):
-				if nrows == 1:
-					plot = plots[j]
-					idx = j
-				else:
-					plot = plots[i][j]
-					idx = i*ncols+j
-				if idx >= stats_count:
-					unused_plots.add(plot)
+				idx = j if nrows == 1 else i*ncols+j
+				if idx >= len(stat):
 					continue
-				key = stats[idx]
+				key = stat[idx]
+				plot_id = key_ids[key]
+				plot = plots[plot_id] if nrows == 1 else plots[plot_id//ncols][plot_id%ncols]
 				# print stats
-				print(y[key]["min"], " < ", key, " < ", y[key]["max"])
+				print("    ", y[key]["min"], " < ", key, " < ", y[key]["max"])
 				# plot
 				plot.set_ylabel(key)
 				plot.set_xlabel('step')
 				# plot.plot(x, y, linewidth=linewidth, markersize=markersize)
-				plot.plot(x[key], y[key]["data"])
+				plot.plot(x[key], y[key]["data"], label=name)
+				plot.legend()
 				plot.grid(True)
 	# remove unused plot
-	for plot in unused_plots:
+	for plot_id in range(len(key_ids), nrows*ncols):
+		plot = plots[plot_id] if nrows == 1 else plots[plot_id//ncols][plot_id%ncols]
 		figure.delaxes(plot)
 		
-	plt.legend([log["name"] for log in logs], markerscale=30, loc='upper center', bbox_to_anchor=[0.5, -0.05])
 	figure.savefig(figure_file)
 	print("Plot figure saved in ", figure_file)
 	figure.clf() # release memory
@@ -152,27 +160,6 @@ def parse(log_fname):
 def heatmap(heatmap, figure_file):
 	figure, ax = plt.subplots(nrows=1, ncols=1)
 	sns.heatmap(data=heatmap, ax=ax)
-	figure.savefig(figure_file)
-	figure.clf() # release memory
-	plt.close() # release memory
-	
-def heatmap_list(heatmap_list, figure_file): # very slow
-	ncols=3 if stats_count >= 3 else stats_count
-	nrows=math.ceil(len(heatmap_list)/ncols)
-	figure, axs = plt.subplots(nrows=nrows, ncols=ncols, sharey=False, sharex=False, figsize=(ncols*10,nrows*10))
-	# Populate heatmaps
-	for j in range(ncols):
-		for i in range(nrows):
-			if nrows == 1:
-				ax = axs[j]
-				idx = j
-			else:
-				ax = axs[i][j]
-				idx = i*ncols+j
-			if idx >= len(heatmap_list):
-				figure.delaxes(ax) # remove unused ax
-				continue
-			sns.heatmap(data=heatmap_list[idx], ax=ax)
 	figure.savefig(figure_file)
 	figure.clf() # release memory
 	plt.close() # release memory
