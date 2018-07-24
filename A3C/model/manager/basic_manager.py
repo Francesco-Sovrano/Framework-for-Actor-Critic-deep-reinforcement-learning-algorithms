@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 from collections import deque
 import tensorflow as tf
 import numpy as np
@@ -30,7 +31,9 @@ class BasicManager(object):
 		self.build_agents(state_shape=state_shape, action_size=action_size, concat_size=concat_size)
 	# Build experience buffer
 		if flags.replay_ratio > 0:
-			self.experience_buffer = Buffer(size=flags.replay_size)
+			self.experience_buffer = Buffer(size=flags.replay_buffer_size, types=2 if not flags.save_only_batches_with_reward else 1)
+		if flags.predict_reward:
+			self.reward_prediction_buffer = Buffer(size=flags.reward_prediction_buffer_size, types=2)
 	# Bind optimizer to global
 		if not self.is_global_network():
 			self.bind_to_global(self.global_network)
@@ -84,7 +87,7 @@ class BasicManager(object):
 			global_agent = global_network.get_model(i)
 			local_agent.prepare_loss()
 			local_agent.minimize_local(optimizer=global_network.gradient_optimizer[i], global_step=global_network.global_step[i], global_var_list=global_agent.get_vars())
-			self.sync_list.append(local_agent.bind_sync(global_agent)) # for synching local network with global one
+			self.sync_list.append(local_agent.bind_sync(global_agent)) # for syncing local network with global one
 
 	def get_model(self, id):
 		return self.model_list[id]
@@ -119,8 +122,7 @@ class BasicManager(object):
 		
 	def reset(self):
 		self.agent_id = 0
-		for agent in self.model_list:
-			agent.reset()
+		self.lstm_state = None
 			
 	def initialize_new_batch(self):
 		self.batch = {}
@@ -143,18 +145,7 @@ class BasicManager(object):
 		self.batch["is_terminal"] = False
 		
 	def estimate_value(self, agent_id, states, concats=None, lstm_state=None):
-		return self.get_model(agent_id).run_value(states=states, concats=concats, initial_lstm_state=lstm_state)
-		
-	def bootstrap(self, state, concat=None):
-		agent_id = self.agent_id
-		agent = self.get_model(agent_id)
-		self.batch["bootstrap"] = {}
-		self.batch["bootstrap"]["lstm_states"] = agent.lstm_state_out # do it BEFORE agent.run_policy_and_value
-		value = agent.run_value(states=[state], concats=[concat])
-		self.batch["bootstrap"]["agent_id"] = agent_id
-		self.batch["bootstrap"]["state"] = state
-		self.batch["bootstrap"]["concat"] = concat
-		self.batch["bootstrap"]["value"] = value
+		return self.get_model(agent_id).run_value(states=states, concats=concats, lstm_state=lstm_state)
 		
 	def act(self, policy_to_action_function, act_function, state, concat=None):
 		agent_id = self.agent_id
@@ -162,8 +153,10 @@ class BasicManager(object):
 		self.batch["states"][agent_id].append(state)
 		self.batch["concats"][agent_id].append(concat)
 		
-		self.batch["lstm_states"][agent_id].append(agent.lstm_state_out) # do it BEFORE agent.run_policy_and_value
-		policy, value = agent.run_policy_and_value(states=[state], concats=[concat])
+		self.batch["lstm_states"][agent_id].append(self.lstm_state) # do it before running policy and value
+		policies, values, self.lstm_state = agent.run_policy_and_value(states=[state], concats=[concat], lstm_state=self.lstm_state)
+		policy = policies[0]
+		value = values[0]
 		
 		action = policy_to_action_function(policy)
 		new_state, reward, terminal = act_function(action)
@@ -187,16 +180,12 @@ class BasicManager(object):
 			return None
 		agent_id, batch_pos = batch["agent-position_list"][index]
 		frame = {}
+		frame["agent_id"] = agent_id
+		frame["batch_pos"] = batch_pos
 		if keys is None:
-			frame["agent_id"] = agent_id
-			for key in batch:
-				frame[key] = batch[key][agent_id][batch_pos]
-		else:
-			for key in keys:
-				if key == "agent_id":
-					frame["agent_id"] = agent_id
-				else:
-					frame[key] = batch[key][agent_id][batch_pos]
+			keys = ["states","concats","actions","rewards","values","policies","lstm_states","discounted_cumulative_rewards","generalized_advantage_estimators"]
+		for key in keys:
+			frame[key] = batch[key][agent_id][batch_pos]
 		return frame
 					
 	def compute_cumulative_reward(self, batch):
@@ -213,7 +202,7 @@ class BasicManager(object):
 		last_value = discounted_cumulative_reward
 		batch_size = batch["size"]
 		for t in range(batch_size):
-			frame = self.get_frame(batch=batch, index=-t-1, keys=["agent_id","values","rewards"])
+			frame = self.get_frame(batch=batch, index=-t-1, keys=["values","rewards"])
 			agent_id = frame["agent_id"]
 			value = frame["values"]
 			reward = frame["rewards"]
@@ -225,64 +214,104 @@ class BasicManager(object):
 		return batch
 		
 	def train(self, batch):
-		state=batch["states"]
-		concat=batch["concats"]
-		action=batch["actions"]
-		value=batch["values"]
-		policy=batch["policies"]
-		reward=batch["rewards"]
-		dcr=batch["discounted_cumulative_rewards"]
-		gae=batch["generalized_advantage_estimators"]
-		lstm_state=batch["lstm_states"]
 		# assert self.global_network is not None, 'you are trying to train the global network'
+		states = batch["states"]
+		concats = batch["concats"]
+		actions = batch["actions"]
+		values = batch["values"]
+		policies = batch["policies"]
+		rewards = batch["rewards"]
+		dcr = batch["discounted_cumulative_rewards"]
+		gae = batch["generalized_advantage_estimators"]
+		lstm_states = batch["lstm_states"]
 		for i in range(self.model_size):
-			batch_size = len(state[i])
+			batch_size = len(states[i])
 			if batch_size > 0:
-				self.get_model(i).train(
-					states=state[i],
-					concats=concat[i],
-					actions=action[i],
-					values=value[i],
-					policies=policy[i],
+				model = self.get_model(i)
+				# reward prediction
+				if model.predict_reward:
+					rp_states, rp_target = self.get_state_target_for_reward_prediction(self.reward_prediction_buffer.get())
+				else:
+					rp_states = None
+					rp_target = None
+				# train
+				model.train(
+					states=states[i],
+					concats=concats[i],
+					actions=actions[i],
+					values=values[i],
+					policies=policies[i],
 					discounted_cumulative_rewards=dcr[i],
 					generalized_advantage_estimators=gae[i],
-					rewards=reward[i],
-					lstm_states=lstm_state[i]
+					rewards=rewards[i],
+					lstm_state=lstm_states[i][0],
+					reward_prediction_states=rp_states,
+					reward_prediction_target=rp_target
 				)
 				
-	def replay_value(self, batch):
-		for i in range(self.model_size):
-			states = batch["states"][i]
-			concats = batch["concats"][i]
-			values = batch["values"][i]
-			lstm_states = batch["lstm_states"][i]
-			for j in range(len(states)):
-				values[j] = self.estimate_value(
-					agent_id=i, 
-					states=[states[j]], 
-					concats=[concats[j]], 
-					lstm_state=lstm_states[j]
-				)
+	def bootstrap(self, state, concat=None):
+		values, _ = self.estimate_value(agent_id=self.agent_id, states=[state], concats=[concat], lstm_state=self.lstm_state)
+		self.batch["bootstrap"] = {}
+		self.batch["bootstrap"]["agent_id"] = self.agent_id
+		self.batch["bootstrap"]["state"] = state
+		self.batch["bootstrap"]["concat"] = concat
+		self.batch["bootstrap"]["value"] = values[0]
+				
+	def replay_value(self, batch): # replay values, lstm states
+		lstm_state = self.get_frame(batch=batch, index=0, keys=["lstm_states"])["lstm_states"]
+		for i in range(batch["size"]):
+			frame = self.get_frame(batch=batch, index=i, keys=["concats","states"])
+			agent_id = frame["agent_id"]
+			new_values, lstm_state = self.estimate_value(agent_id=agent_id, states=[frame["states"]], concats=[frame["concats"]], lstm_state=lstm_state)
+			batch["values"][agent_id][frame["batch_pos"]] = new_values[0]
 		if "bootstrap" in batch:
 			bootstrap = batch["bootstrap"]
-			bootstrap["value"] = self.estimate_value(
-				agent_id=bootstrap["agent_id"], 
-				states=[bootstrap["state"]], 
-				concats=[bootstrap["concat"]],
-				lstm_state=bootstrap["lstm_states"]
-			)
+			values, _ = self.estimate_value(agent_id=bootstrap["agent_id"], states=[bootstrap["state"]], concats=[bootstrap["concat"]], lstm_state=lstm_state)
+			bootstrap["value"] = values[0]
 		return self.compute_cumulative_reward(batch)
-
+		
+	def get_state_target_for_reward_prediction(self, batch):
+		states = batch["states"]
+		rewards = batch["rewards"]
+		if len(states) == 1:
+			states = states + states
+			rewards = rewards + rewards
+		length = min(3, len(states)-1)
+			
+		start_idx = np.random.randint(len(states)-length)
+		reward_prediction_states = [states[start_idx+i] for i in range(length)]
+		reward_prediction_target = [0.0, 0.0, 0.0]
+		
+		r = rewards[start_idx+length]
+		if r == 0:
+			reward_prediction_target[0] = 1.0 # zero
+		elif r > 0:
+			reward_prediction_target[1] = 1.0 # positive
+		else:
+			reward_prediction_target[2] = 1.0 # negative
+		return reward_prediction_states, [reward_prediction_target]
+		
 	def process_batch(self):
 		batch = self.compute_cumulative_reward(self.batch)
+		# reward prediction -> before training, this way there will be at least one batch in the reward_prediction_buffer
+		if flags.predict_reward:
+			def flatten(a):
+				return list(itertools.chain.from_iterable(a))
+			reward_prediction_batch = {
+				"states": flatten(batch["states"]),
+				"rewards": flatten(batch["rewards"])
+			}
+			self.reward_prediction_buffer.put(batch=reward_prediction_batch, type=1 if batch["total_reward"] != 0 else 0)
+		# train
 		self.train(batch)
 		# experience replay
 		if flags.replay_ratio > 0:
 			if self.experience_buffer.has_atleast(flags.replay_start):
 				n = np.random.poisson(flags.replay_ratio)
 				for _ in range(n):
-					(old_batch,_) = self.experience_buffer.get()
+					old_batch = self.experience_buffer.get()
 					self.train( self.replay_value(old_batch) if flags.replay_value else old_batch )
 			batch_reward = batch["total_reward"]
 			if batch_reward != 0 or not flags.save_only_batches_with_reward:
-				self.experience_buffer.put(batch=batch, type=1 if batch_reward != 0 else 0)
+				# batch["lstm_states"] = None # remove lstm state from batch
+				self.experience_buffer.put(batch=batch, type=0 if batch_reward != 0 else 1)

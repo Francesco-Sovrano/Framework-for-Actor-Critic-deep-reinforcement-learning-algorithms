@@ -46,13 +46,13 @@ def build():
 	tf.app.flags.DEFINE_boolean("concat_last_action_reward", True, "Whether to concatenate the last action-reward vector in the network.")
 # Reward Prediction: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
 	tf.app.flags.DEFINE_boolean("predict_reward", True, "Whether to predict rewards. This is useful with sparse rewards.")
-	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 1000, "Maximum size of the reward prediction buffer") # default is 25000
+	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 128, "Maximum number of batches stored in the reward prediction buffer")
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
-	tf.app.flags.DEFINE_float("replay_ratio", 0, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4
+	tf.app.flags.DEFINE_float("replay_ratio", 1, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4
 	tf.app.flags.DEFINE_boolean("replay_value", True, "Whether to recompute values, advantages and discounted cumulative rewards") # default is True
-	tf.app.flags.DEFINE_integer("replay_size", 500, "Maximum size of the experience replay buffer") # default is 25000
-	tf.app.flags.DEFINE_integer("replay_start", 1, "Should be greater than 0 and lower than replay_size. Train on x batches before using experience replay") # default is 5000
+	tf.app.flags.DEFINE_integer("replay_buffer_size", 64, "Maximum number of batches stored in the experience replay buffer")
+	tf.app.flags.DEFINE_integer("replay_start", 1, "Should be greater than 0 and lower than replay_buffer_size. Train on x batches before using experience replay") # default is 5000
 	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
 # Reward clip
 	tf.app.flags.DEFINE_boolean("clip_reward", False, "Whether to clip the reward between min_reward and max_reward") # default is False

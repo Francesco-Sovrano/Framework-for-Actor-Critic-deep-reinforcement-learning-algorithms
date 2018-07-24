@@ -9,7 +9,6 @@ import numpy as np
 import options
 flags = options.get()
 
-from model.experience_buffer import Buffer
 from model.loss.policy_loss import PolicyLoss
 from model.loss.value_loss import ValueLoss
 
@@ -20,8 +19,6 @@ class BaseAC_Network(object):
 		self.entropy_beta = entropy_beta
 		self.clip = clip
 		self.predict_reward = predict_reward
-		if self.predict_reward:
-			self.reward_prediction_buffer = Buffer(size=flags.reward_prediction_buffer_size)
 		# initialize
 		self._session = session
 		self._id = id # model id
@@ -33,6 +30,15 @@ class BaseAC_Network(object):
 		self._lstm_units = 64 # the number of units of the LSTM
 		# create the whole A3C network
 		self._create_network()
+		
+	def _lstm_state_placeholder(self):
+		return tf.placeholder(tf.float32, [1, self._lstm_units])
+		
+	def _state_placeholder(self):
+		return tf.placeholder(tf.float32, np.concatenate([[None], self._state_shape], 0))
+		
+	def _concat_placeholder(self):
+		return tf.placeholder(tf.float32, [None, self._concat_size])
 	
 	def _create_network(self):
 		scope_name = "net_{0}".format(self._id)
@@ -51,16 +57,25 @@ class BaseAC_Network(object):
 		self._reward_prediction = tf.nn.softmax(output)
 		
 	def _build_base(self):
+		print( "Building network {}".format(self._id) )
+		# [Input]
 		self._input = self._state_placeholder()
+		print( "    [{}]Input shape: {}".format(self._id, self._input.get_shape()) )
+		# [Concatenation]
 		self._concat = self._concat_placeholder()
-		# Convolutive layers
-		conv_output = self._convolutive_layers(self._input)
-		# LSTM layers
-		self._lstm_outputs, self._lstm_state = self._lstm_layers(conv_output)
-		# Policy layers
-		self._policy = self._policy_layers(self._lstm_outputs)
-		# Value layers
-		self._value	= self._value_layers(self._lstm_outputs)
+		print( "    [{}]Concatenation shape: {}".format(self._id, self._concat.get_shape()) )
+		# [CNN tower]
+		tower = self._convolutive_layers(self._input)
+		print( "    [{}]Tower shape: {}".format(self._id, tower.get_shape()) )
+		# [LSTM]
+		lstm, self._lstm_state = self._lstm_layers(tower)
+		print( "    [{}]LSTM shape: {}".format(self._id, lstm.get_shape()) )
+		# [Policy]
+		self._policy = self._policy_layers(lstm)
+		print( "    [{}]Policy shape: {}".format(self._id, self._policy.get_shape()) )
+		# [Value]
+		self._value	= self._value_layers(lstm)
+		print( "    [{}]Value shape: {}".format(self._id, self._value.get_shape()) )
 		
 	def _convolutive_layers(self, input, reuse=False):
 		with tf.variable_scope("base_conv{0}".format(self._id), reuse=reuse) as scope:
@@ -71,29 +86,26 @@ class BaseAC_Network(object):
 			return input
 	
 	def _lstm_layers(self, input, reuse=False):
-		self._initial_lstm_state0 = tf.placeholder(tf.float32, [1, self._lstm_units])
-		self._initial_lstm_state1 = tf.placeholder(tf.float32, [1, self._lstm_units])
-		self._initial_lstm_state = tf.contrib.rnn.LSTMStateTuple(self._initial_lstm_state0, self._initial_lstm_state1)
-		self.reset()
 		with tf.variable_scope("base_lstm{0}".format(self._id), reuse=reuse) as scope:
-		
-			input = tf.layers.flatten(input) # input shape: (batch,w*h*depth)
+			input = tf.layers.flatten(input) # shape: (batch,w*h*depth)
 			# input = tf.contrib.model_pruning.masked_fully_connected(inputs=input, num_outputs=self._lstm_units, activation_fn=tf.nn.relu) # xavier initializer
 			input = tf.layers.dense( inputs=input, units=self._lstm_units, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
-			step_size = tf.shape(input)[:1] # (unroll_step, 256)
+			step_size = tf.shape(input)[:1] # shape: (batch)
 			if self._concat_size > 0:
-				input = tf.concat([input, self._concat], 1) # (unroll_step, 256+policy_size+1)
-				input = tf.reshape(input, [1, -1, self._lstm_units+self._concat_size]) # (1, unroll_step, 256+policy_size+1)
+				input = tf.concat([input, self._concat], 1) # shape: (batch, concat_size+lstm_units)
+				input = tf.reshape(input, [1, -1, self._lstm_units+self._concat_size]) # shape: (1, batch, concat_size+lstm_units)
 			else:
-				input = tf.reshape(input, [1, -1, self._lstm_units]) # (1, unroll_step, 256)
+				input = tf.reshape(input, [1, -1, self._lstm_units]) # shape: (1, batch, lstm_units)
 
 			# self._lstm_cell = tf.contrib.model_pruning.MaskedBasicLSTMCell(num_units=self._lstm_units, forget_bias=1.0, state_is_tuple=True, activation=None)
-			self._lstm_cell = tf.contrib.rnn.BasicLSTMCell(self._lstm_units, state_is_tuple=True)
-			lstm_outputs, lstm_state = tf.nn.dynamic_rnn(self._lstm_cell, input, initial_state = self._initial_lstm_state, sequence_length = step_size, time_major = False, scope = scope)
+			self._lstm_cell = tf.contrib.rnn.LSTMCell(num_units=self._lstm_units)
+			self._initial_lstm_state = tf.contrib.rnn.LSTMStateTuple(self._lstm_state_placeholder(), self._lstm_state_placeholder())
+			lstm_outputs, lstm_state = tf.nn.dynamic_rnn(cell=self._lstm_cell, inputs=input, initial_state=self._initial_lstm_state, sequence_length=step_size, time_major = False, scope = scope)
+			
 			# Dropout: https://www.nature.com/articles/s41586-018-0102-6
 			lstm_outputs = tf.layers.dropout(inputs=lstm_outputs, rate=0.5)
 			
-			lstm_outputs = tf.reshape(lstm_outputs, [-1,self._lstm_units]) #(1,unroll_step,256) for back prop, (1,1,256) for forward prop.
+			lstm_outputs = tf.reshape(lstm_outputs, [-1,self._lstm_units]) # shape: (batch, lstm_units)
 			return lstm_outputs, lstm_state
 
 	def _policy_layers(self, input, reuse=False): # Policy (output)
@@ -133,38 +145,6 @@ class BaseAC_Network(object):
 		clipped_rp = tf.clip_by_value(self._reward_prediction, 1e-20, 1.0)
 		return -tf.reduce_sum(self.reward_prediction_target * tf.log(clipped_rp))
 
-	def reset(self):
-		# reset lstm state output
-		self.lstm_state_out = tf.contrib.rnn.LSTMStateTuple(np.zeros([1, self._lstm_units]), np.zeros([1, self._lstm_units]))
-
-	def run_policy_and_value(self, states, concats=None, initial_lstm_state=None):
-		# This run_policy_and_value() is used when forward propagating so the step size is 1.
-		if initial_lstm_state is None:
-			initial_lstm_state = self.lstm_state_out
-		feed_dict = { 
-				self._input : states, 
-				self._initial_lstm_state0 : initial_lstm_state[0], 
-				self._initial_lstm_state1 : initial_lstm_state[1]
-			}
-		if self._concat_size > 0:
-			feed_dict.update( { self._concat : concats } )
-		pi_out, v_out, self.lstm_state_out = self._session.run( [self._policy, self._value, self._lstm_state], feed_dict = feed_dict )
-		# pi_out: (1,3), v_out: (1)
-		return (pi_out[0], v_out[0])
-		
-	def run_value(self, states, concats=None, initial_lstm_state=None):
-		if initial_lstm_state is None:
-			initial_lstm_state = self.lstm_state_out
-		feed_dict = { 
-				self._input : states, 
-				self._initial_lstm_state0 : initial_lstm_state[0], 
-				self._initial_lstm_state1 : initial_lstm_state[1] 
-			}
-		if self._concat_size > 0:
-			feed_dict.update( { self._concat : concats } )
-		v_out, _ = self._session.run( [self._value, self._lstm_state], feed_dict = feed_dict )
-		return v_out[0]
-		
 	def bind_sync(self, src_network, name=None):
 		src_vars = src_network.get_vars()
 		dst_vars = self.get_vars()
@@ -206,35 +186,35 @@ class BaseAC_Network(object):
 			hot_vector[action] = 1.0
 		return hot_vector
 		
-	def _lstm_state_placeholder(self):
-		return tf.placeholder(tf.float32, [1, self._lstm_units])
+	def get_empty_lstm_state(self):
+		return (np.zeros([1, self._lstm_units]), np.zeros([1, self._lstm_units]))
 		
-	def _state_placeholder(self):
-		return tf.placeholder(tf.float32, np.concatenate([[None], self._state_shape], 0))
-		
-	def _concat_placeholder(self):
-		return tf.placeholder(tf.float32, [None, self._concat_size])
+	def run_policy_and_value(self, states, concats=None, lstm_state=None):
+		feed_dict = { 
+				self._input : states, 
+				self._initial_lstm_state: lstm_state if lstm_state is not None else self.get_empty_lstm_state()
+			}
+		if self._concat_size > 0:
+			feed_dict.update( { self._concat : concats } )
+		# return policies, values, lstm_state
+		return self._session.run( [self._policy, self._value, self._lstm_state], feed_dict=feed_dict )
 				
-	def state_target_reward_prediction(self, states, rewards):
-		if len(states) == 1:
-			states = states + states
-			rewards = rewards + rewards
-		length = min(3, len(states)-1)
-			
-		start_idx = np.random.randint(len(states)-length)
-		reward_prediction_states = [states[start_idx+i] for i in range(length)]
-		reward_prediction_target = [0.0, 0.0, 0.0]
+	def run_value(self, states, concats=None, lstm_state=None):
+		feed_dict = { 
+				self._input : states, 
+				self._initial_lstm_state: lstm_state if lstm_state is not None else self.get_empty_lstm_state()
+			}
+		if self._concat_size > 0:
+			feed_dict.update( { self._concat : concats } )
+		# return values, lstm_state
+		return self._session.run( [self._value, self._lstm_state], feed_dict=feed_dict )
+				
+	def train(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state=None, concats=None, reward_prediction_states=None, reward_prediction_target=None):
+		self.train_count += len(states)
+		feed_dict = self.build_feed(states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target)
+		self._session.run(self.apply_gradient, feed_dict) # Calculate gradients and copy them to global network
 		
-		r = rewards[start_idx+length]
-		if r == 0:
-			reward_prediction_target[0] = 1.0 # zero
-		elif r > 0:
-			reward_prediction_target[1] = 1.0 # positive
-		else:
-			reward_prediction_target[2] = 1.0 # negative
-		return reward_prediction_states, [reward_prediction_target]
-		
-	def build_feed(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_states, concat):
+	def build_feed(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state=None, concat=None, reward_prediction_states=None, reward_prediction_target=None):
 		values = np.reshape(values,[-1])
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 			advantages = np.reshape(generalized_advantage_estimators,[-1])
@@ -250,21 +230,13 @@ class BaseAC_Network(object):
 					self.advantage_batch: advantages,
 					self.old_value_batch: values,
 					self.old_policy_batch: policies,
-					self._initial_lstm_state: lstm_states[0]
+					self._initial_lstm_state: lstm_state if lstm_state is not None else self.get_empty_lstm_state()
 				}
 		if self._concat_size > 0:
 			feed_dict.update( {self._concat : concat} )
 		if self.predict_reward:
-			self.reward_prediction_buffer.put(batch={"states":states, "rewards":rewards}, type=1 if sum(rewards) != 0 else 0)
-			(rpb,_) = self.reward_prediction_buffer.get()
-			reward_prediction_states, reward_prediction_target = self.state_target_reward_prediction(rpb["states"], rpb["rewards"])
 			feed_dict.update( {
 				self._reward_prediction_states: reward_prediction_states,
 				self.reward_prediction_target: reward_prediction_target
 			} )
 		return feed_dict
-				
-	def train(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_states, concats=None):
-		self.train_count += len(states)
-		feed_dict = self.build_feed(states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_states, concats)
-		self._session.run(self.apply_gradient, feed_dict) # Calculate gradients and copy them to global network

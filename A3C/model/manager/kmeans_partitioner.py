@@ -53,7 +53,7 @@ class KMeansPartitioner(BasicManager):
 		training_net = self.get_model(0)
 		for i in range(1,self.model_size):
 			partition_net = self.get_model(i)
-			self.sync_list.append(partition_net.bind_sync(training_net)) # for synching local network with global one
+			self.sync_list.append(partition_net.bind_sync(training_net)) # for syncing local network with global one
 			
 	def sync_with_training_net(self):
 		for i in range(1,self.model_size):
