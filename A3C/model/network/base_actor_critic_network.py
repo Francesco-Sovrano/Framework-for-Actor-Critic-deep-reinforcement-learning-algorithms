@@ -46,7 +46,6 @@ class BaseAC_Network(object):
 			self._build_base()
 			if self.predict_reward:
 				self._build_reward_prediction()
-			
 		self.variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope_name)
 		
 	def _build_reward_prediction(self):

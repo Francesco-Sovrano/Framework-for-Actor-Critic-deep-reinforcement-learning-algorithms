@@ -151,7 +151,7 @@ class Application(object):
 	
 	def load_checkpoint(self):
 		# init or load checkpoint with saver
-		self.saver = tf.train.Saver(self.global_network.get_vars())
+		self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES))
 		checkpoint = tf.train.get_checkpoint_state(flags.checkpoint_dir)
 		if checkpoint and checkpoint.model_checkpoint_path:
 			self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
@@ -198,7 +198,7 @@ class Application(object):
 		# Save Checkpoint
 		print('Start saving..')
 		self.saver.save(self.sess, flags.checkpoint_dir + '/checkpoint', global_step=self.global_t)
-		self.save_important_information(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_t))
+		self.save_important_information(flags.checkpoint_dir + '/{}.pkl'.format(self.global_t))
 		print('Checkpoint saved in ' + flags.checkpoint_dir)
 	
 		if not self.terminate_reqested:
@@ -212,36 +212,40 @@ class Application(object):
 					thread.start()
 					
 	def save_important_information(self, path):
+		trainers_count = len(self.trainers)
 		persistent_memory = {}
-		persistent_memory["train_count_matrix"] = []
+		persistent_memory["train_count_matrix"] = [[]]*trainers_count
 		if flags.replay_ratio > 0:
-			persistent_memory["experience_buffers"] = []
-		for trainer in self.trainers:
+			persistent_memory["experience_buffers"] = [None]*trainers_count
+		if flags.predict_reward:
+			persistent_memory["reward_prediction_buffers"] = [None]*trainers_count
+		for i in range(trainers_count):
+			trainer = self.trainers[i]
 			# train counters
-			tc = []
+			train_count_matrix = persistent_memory["train_count_matrix"][i]
 			for model in trainer.local_network.model_list:
-				tc.append(model.train_count)
-			persistent_memory["train_count_matrix"].append(tc)
+				train_count_matrix.append(model.train_count)
 			# experience buffer
 			if flags.replay_ratio > 0:
-				persistent_memory["experience_buffers"].append(trainer.local_network.experience_buffer)
-		with open(path, 'wb') as f:
-			pickle.dump(persistent_memory, f, pickle.HIGHEST_PROTOCOL)
+				persistent_memory["experience_buffers"][i] = trainer.local_network.experience_buffer
+			if flags.predict_reward:
+				persistent_memory["reward_prediction_buffers"][i] = trainer.local_network.reward_prediction_buffer
+		with open(path, 'wb') as file:
+			pickle.dump(persistent_memory, file)
 			
 	def load_important_information(self, path):
-		with open(path, 'rb') as f:
-			persistent_memory = pickle.load(f)
-			i = 0
-			for trainer in self.trainers:
-				# train counters
-				j=0
-				for model in trainer.local_network.model_list:
-					model.train_count = persistent_memory["train_count_matrix"][i][j]
-					j+=1
-				# experience buffer
-				if flags.replay_ratio > 0:
-					trainer.local_network.experience_buffer = persistent_memory["experience_buffers"][i]
-				i+=1
+		with open(path, 'rb') as file:
+			persistent_memory = pickle.load(file)
+			
+		for (i, trainer) in enumerate(self.trainers):
+			# train counters
+			for (j, model) in enumerate(trainer.local_network.model_list):
+				model.train_count = persistent_memory["train_count_matrix"][i][j]
+			# experience buffer
+			if flags.replay_ratio > 0:
+				trainer.local_network.experience_buffer = persistent_memory["experience_buffers"][i]
+			if flags.predict_reward:
+				trainer.local_network.reward_prediction_buffer = persistent_memory["reward_prediction_buffers"][i]
 		
 	def signal_handler(self, signal, frame):
 		print('You pressed Ctrl+C!')

@@ -174,7 +174,7 @@ class BasicManager(object):
 		self.batch["is_terminal"] = terminal
 		return new_state, policy, value, action, reward, terminal
 		
-	def get_frame(self, batch, index, keys=None):
+	def get_frame(self, batch, index, keys=["states","concats","actions","rewards","values","policies","lstm_states","discounted_cumulative_rewards","generalized_advantage_estimators"]):
 		batch_size = batch["size"]
 		if index >= batch_size or index < -batch_size:
 			return None
@@ -182,8 +182,6 @@ class BasicManager(object):
 		frame = {}
 		frame["agent_id"] = agent_id
 		frame["batch_pos"] = batch_pos
-		if keys is None:
-			keys = ["states","concats","actions","rewards","values","policies","lstm_states","discounted_cumulative_rewards","generalized_advantage_estimators"]
 		for key in keys:
 			frame[key] = batch[key][agent_id][batch_pos]
 		return frame
@@ -295,13 +293,14 @@ class BasicManager(object):
 		batch = self.compute_cumulative_reward(self.batch)
 		# reward prediction -> before training, this way there will be at least one batch in the reward_prediction_buffer
 		if flags.predict_reward:
-			def flatten(a):
-				return list(itertools.chain.from_iterable(a))
-			reward_prediction_batch = {
-				"states": flatten(batch["states"]),
-				"rewards": flatten(batch["rewards"])
-			}
-			self.reward_prediction_buffer.put(batch=reward_prediction_batch, type=1 if batch["total_reward"] != 0 else 0)
+			batch_size = batch["size"]
+			states = [None]*batch_size
+			rewards = [None]*batch_size
+			for i in range(batch_size):
+				frame = self.get_frame(batch=batch, index=i, keys=["rewards","states"])
+				states[i] = frame["states"]
+				rewards[i] = frame["rewards"]
+			self.reward_prediction_buffer.put(batch={"states":states, "rewards":rewards}, type=1 if batch["total_reward"] != 0 else 0)
 		# train
 		self.train(batch)
 		# experience replay

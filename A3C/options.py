@@ -46,7 +46,7 @@ def build():
 	tf.app.flags.DEFINE_boolean("concat_last_action_reward", True, "Whether to concatenate the last action-reward vector in the network.")
 # Reward Prediction: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
 	tf.app.flags.DEFINE_boolean("predict_reward", True, "Whether to predict rewards. This is useful with sparse rewards.")
-	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 128, "Maximum number of batches stored in the reward prediction buffer")
+	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 16, "Maximum number of batches stored in the reward prediction buffer")
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
 	tf.app.flags.DEFINE_float("replay_ratio", 1, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4

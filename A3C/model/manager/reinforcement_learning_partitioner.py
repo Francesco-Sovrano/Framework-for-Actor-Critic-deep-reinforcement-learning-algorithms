@@ -68,14 +68,10 @@ class ReinforcementLearningPartitioner(BasicManager):
 		super().initialize_new_batch()
 		self.batch["manager_value_list"] = []
 		
-	def reset(self):
-		super().reset()
-		self.manager_lstm_state = None
-		
 	def act(self, policy_to_action_function, act_function, state, concat=None):
 		if self.query_partitioner(self.batch["size"]):
-			self.batch["lstm_states"][0].append(self.manager_lstm_state)
-			self.agent_id, manager_policy, manager_value, self.manager_lstm_state = self.get_state_partition(state=state, lstm_state=self.manager_lstm_state)
+			self.batch["lstm_states"][0].append(None)
+			self.agent_id, manager_policy, manager_value, _ = self.get_state_partition(state=state, lstm_state=None)
 			
 			self.batch["values"][0].append(manager_value)
 			self.batch["policies"][0].append(manager_policy)
@@ -93,7 +89,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		return new_state, policy, value, action, reward, terminal
 		
 	def bootstrap(self, state, concat=None):
-		id, _, value, _ = self.get_state_partition(state=state, lstm_state=self.manager_lstm_state)
+		id, _, value, _ = self.get_state_partition(state=state, lstm_state=None)
 		if self.query_partitioner(self.batch["size"]):
 			self.agent_id = id
 		super().bootstrap(state, concat)
@@ -126,14 +122,13 @@ class ReinforcementLearningPartitioner(BasicManager):
 		new_batch["values"][0] = deque()
 		# replay values
 		lstm_state = self.get_frame(batch=batch, index=0, keys=["lstm_states"])["lstm_states"]
-		manager_lstm_state = batch["lstm_states"][0][0]
 		for i in range(batch["size"]):
 			frame = self.get_frame(batch=batch, index=i)
 			state = frame["states"]
 			concat = frame["concats"]
 			if self.query_partitioner(i):
-				new_batch["lstm_states"][0].append(manager_lstm_state)
-				agent_id, _, manager_value, manager_lstm_state = self.get_state_partition(state=state, lstm_state=manager_lstm_state)
+				new_batch["lstm_states"][0].append(None)
+				agent_id, _, manager_value, _ = self.get_state_partition(state=state, lstm_state=None)
 				new_batch["values"][0].append(manager_value)
 				new_batch["manager_value_list"].append(manager_value)
 				
@@ -143,7 +138,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 			new_batch["policies"][agent_id].append(frame["policies"])
 			new_batch["actions"][agent_id].append(frame["actions"])
 			
-			new_batch["lstm_states"][agent_id].append(lstm_state)		
+			new_batch["lstm_states"][agent_id].append(lstm_state)
 			new_values, lstm_state = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
 			new_batch["values"][agent_id].append(new_values[0])
 			new_batch["agent-position_list"].append( (agent_id, len(new_batch["states"][agent_id])-1) ) # (agent_id, batch_position)
@@ -152,7 +147,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 			bootstrap = new_batch["bootstrap"]
 			state = bootstrap["state"]
 			concat = bootstrap["concat"]
-			id, _, bootstrap["manager_value"], _ = self.get_state_partition(state=state, lstm_state=manager_lstm_state)
+			id, _, bootstrap["manager_value"], _ = self.get_state_partition(state=state, lstm_state=None)
 			if self.query_partitioner(batch["size"]):
 				agent_id = id
 			values, _ = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
@@ -167,6 +162,8 @@ class ReinforcementLearningPartitioner(BasicManager):
 			manager_discounted_cumulative_reward = batch["bootstrap"]["manager_value"]
 		# Compute agents' cumulative_reward
 		batch = super().compute_cumulative_reward(batch)
+		batch["discounted_cumulative_rewards"][0]=deque()
+		batch["generalized_advantage_estimators"][0]=deque()
 		# Compute partitioner's cumulative_reward
 		last_manager_value = manager_discounted_cumulative_reward
 		batch_size = batch["size"]
