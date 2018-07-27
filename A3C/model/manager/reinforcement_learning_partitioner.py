@@ -70,8 +70,8 @@ class ReinforcementLearningPartitioner(BasicManager):
 		
 	def act(self, policy_to_action_function, act_function, state, concat=None):
 		if self.query_partitioner(self.batch["size"]):
-			self.batch["lstm_states"][0].append(None)
-			self.agent_id, manager_policy, manager_value, _ = self.get_state_partition(state=state, lstm_state=None)
+			self.batch["lstm_states"][0].append(self.lstm_state)
+			self.agent_id, manager_policy, manager_value, _ = self.get_state_partition(state=state, lstm_state=self.lstm_state)
 			
 			self.batch["values"][0].append(manager_value)
 			self.batch["policies"][0].append(manager_policy)
@@ -89,7 +89,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		return new_state, policy, value, action, reward, terminal
 		
 	def bootstrap(self, state, concat=None):
-		id, _, value, _ = self.get_state_partition(state=state, lstm_state=None)
+		id, _, value, _ = self.get_state_partition(state=state, lstm_state=self.lstm_state)
 		if self.query_partitioner(self.batch["size"]):
 			self.agent_id = id
 		super().bootstrap(state, concat)
@@ -127,8 +127,8 @@ class ReinforcementLearningPartitioner(BasicManager):
 			state = frame["states"]
 			concat = frame["concats"]
 			if self.query_partitioner(i):
-				new_batch["lstm_states"][0].append(None)
-				agent_id, _, manager_value, _ = self.get_state_partition(state=state, lstm_state=None)
+				new_batch["lstm_states"][0].append(lstm_state)
+				agent_id, _, manager_value, _ = self.get_state_partition(state=state, lstm_state=lstm_state)
 				new_batch["values"][0].append(manager_value)
 				new_batch["manager_value_list"].append(manager_value)
 				
@@ -147,7 +147,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 			bootstrap = new_batch["bootstrap"]
 			state = bootstrap["state"]
 			concat = bootstrap["concat"]
-			id, _, bootstrap["manager_value"], _ = self.get_state_partition(state=state, lstm_state=None)
+			id, _, bootstrap["manager_value"], _ = self.get_state_partition(state=state, lstm_state=lstm_state)
 			if self.query_partitioner(batch["size"]):
 				agent_id = id
 			values, _ = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
