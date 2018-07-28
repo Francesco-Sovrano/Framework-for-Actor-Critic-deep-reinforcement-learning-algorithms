@@ -3,7 +3,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import itertools
 from collections import deque
 import tensorflow as tf
 import numpy as np
@@ -31,9 +30,9 @@ class BasicManager(object):
 		self.build_agents(state_shape=state_shape, action_size=action_size, concat_size=concat_size)
 	# Build experience buffer
 		if flags.replay_ratio > 0:
-			self.experience_buffer = Buffer(size=flags.replay_buffer_size, types=2 if not flags.save_only_batches_with_reward else 1)
+			self.experience_buffer = Buffer(size=flags.replay_buffer_size, type_count=2 if not flags.save_only_batches_with_reward else 1)
 		if flags.predict_reward:
-			self.reward_prediction_buffer = Buffer(size=flags.reward_prediction_buffer_size, types=2)
+			self.reward_prediction_buffer = Buffer(size=flags.reward_prediction_buffer_size, type_count=2)
 	# Bind optimizer to global
 		if not self.is_global_network():
 			self.bind_to_global(self.global_network)
@@ -59,7 +58,7 @@ class BasicManager(object):
 		self.model_list.append(agent)
 			
 	def sync(self):
-		assert not self.is_global_network(), 'you are trying to sync the global network with itself'
+		# assert not self.is_global_network(), 'you are trying to sync the global network with itself'
 		for i in range(self.model_size):
 			agent = self.model_list[i]
 			sync = self.sync_list[i]
@@ -228,7 +227,8 @@ class BasicManager(object):
 				model = self.get_model(i)
 				# reward prediction
 				if model.predict_reward:
-					rp_states, rp_target = self.get_state_target_for_reward_prediction(self.reward_prediction_buffer.get())
+					rp_batch = self.reward_prediction_buffer.get()
+					rp_states, rp_target = rp_batch["states"], rp_batch["target"]
 				else:
 					rp_states = None
 					rp_target = None
@@ -268,39 +268,44 @@ class BasicManager(object):
 			bootstrap["value"] = values[0]
 		return self.compute_cumulative_reward(batch)
 		
-	def get_state_target_for_reward_prediction(self, batch):
-		states = batch["states"]
-		rewards = batch["rewards"]
-		if len(states) == 1:
-			states = states + states
-			rewards = rewards + rewards
-		length = min(3, len(states)-1)
+	def add_to_reward_prediction_buffer(self, batch):
+		batch_size = batch["size"]
+		if batch_size <= 1:
+			return
+		rp_frame_length = min(3, batch_size-1)
+		save_even_if_buffer_is_full = self.save_even_if_buffer_is_full(batch_size) # Prioritize smaller batches because they have terminated prematurely, thus they are probably more important and also faster to process
+		for i in range(rp_frame_length, batch_size):
+			reward = self.get_frame(batch=batch, index=i, keys=["rewards"])["rewards"]
+			type_id = 1 if reward != 0 else 0
+			if not self.reward_prediction_buffer.id_is_full(type_id) or save_even_if_buffer_is_full:
+				states = [self.get_frame(batch=batch, index=j, keys=["states"])["states"] for j in range(i-rp_frame_length, i)]
+				target = [0.0, 0.0, 0.0]
+				if reward == 0:
+					target[0] = 1.0 # zero
+				elif reward > 0:
+					target[1] = 1.0 # positive
+				else:
+					target[2] = 1.0 # negative
+				# if len(states)==0:
+					# print(i, " ", rp_frame_length)
+				self.reward_prediction_buffer.put(batch={"states":states, "target":[target]}, type_id=type_id)
+				
+	def save_even_if_buffer_is_full(self, size):
+		return np.random.randint(size) == 0
 			
-		start_idx = np.random.randint(len(states)-length)
-		reward_prediction_states = [states[start_idx+i] for i in range(length)]
-		reward_prediction_target = [0.0, 0.0, 0.0]
-		
-		r = rewards[start_idx+length]
-		if r == 0:
-			reward_prediction_target[0] = 1.0 # zero
-		elif r > 0:
-			reward_prediction_target[1] = 1.0 # positive
-		else:
-			reward_prediction_target[2] = 1.0 # negative
-		return reward_prediction_states, [reward_prediction_target]
+	def add_to_replay_buffer(self, batch):
+		batch_reward = batch["total_reward"]
+		if batch_reward != 0 or not flags.save_only_batches_with_reward:
+			# batch["lstm_states"] = None # remove lstm state from batch
+			type_id = 1 if batch_reward != 0 else 0
+			if not self.experience_buffer.id_is_full(type_id) or self.save_even_if_buffer_is_full(batch["size"]): # Prioritize smaller batches because they have terminated prematurely, thus they are probably more important and also faster to process
+				self.experience_buffer.put(batch=batch, type_id=type_id)
 		
 	def process_batch(self):
 		batch = self.compute_cumulative_reward(self.batch)
-		# reward prediction -> before training, this way there will be at least one batch in the reward_prediction_buffer
+		# reward prediction
 		if flags.predict_reward:
-			batch_size = batch["size"]
-			states = [None]*batch_size
-			rewards = [None]*batch_size
-			for i in range(batch_size):
-				frame = self.get_frame(batch=batch, index=i, keys=["rewards","states"])
-				states[i] = frame["states"]
-				rewards[i] = frame["rewards"]
-			self.reward_prediction_buffer.put(batch={"states":states, "rewards":rewards}, type=1 if batch["total_reward"] != 0 else 0)
+			self.add_to_reward_prediction_buffer(batch) # do it before training, this way there will be at least one batch in the reward_prediction_buffer
 		# train
 		self.train(batch)
 		# experience replay
@@ -310,7 +315,4 @@ class BasicManager(object):
 				for _ in range(n):
 					old_batch = self.experience_buffer.get()
 					self.train( self.replay_value(old_batch) if flags.replay_value else old_batch )
-			batch_reward = batch["total_reward"]
-			if batch_reward != 0 or not flags.save_only_batches_with_reward:
-				# batch["lstm_states"] = None # remove lstm state from batch
-				self.experience_buffer.put(batch=batch, type=0 if batch_reward != 0 else 1)
+			self.add_to_replay_buffer(batch)
