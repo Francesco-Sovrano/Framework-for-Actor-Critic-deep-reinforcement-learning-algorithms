@@ -294,11 +294,14 @@ class BasicManager(object):
 		return np.random.randint(size) == 0
 			
 	def add_to_replay_buffer(self, batch):
+		batch_size = batch["size"]
+		if batch_size <= 1:
+			return
 		batch_reward = batch["total_reward"]
 		if batch_reward != 0 or not flags.save_only_batches_with_reward:
 			# batch["lstm_states"] = None # remove lstm state from batch
 			type_id = 1 if batch_reward != 0 else 0
-			if not self.experience_buffer.id_is_full(type_id) or self.save_even_if_buffer_is_full(batch["size"]): # Prioritize smaller batches because they have terminated prematurely, thus they are probably more important and also faster to process
+			if not self.experience_buffer.id_is_full(type_id) or self.save_even_if_buffer_is_full(batch_size): # Prioritize smaller batches because they have terminated prematurely, thus they are probably more important and also faster to process
 				self.experience_buffer.put(batch=batch, type_id=type_id)
 		
 	def process_batch(self):
