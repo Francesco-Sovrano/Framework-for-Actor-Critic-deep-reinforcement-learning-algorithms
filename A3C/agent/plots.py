@@ -97,7 +97,10 @@ def plot(logs, figure_file):
 					continue
 				key = stat[idx]
 				plot_id = key_ids[key]
-				plot = plots[plot_id] if nrows == 1 else plots[plot_id//ncols][plot_id%ncols]
+				if nrows == 1:
+					plot = plots[plot_id] if ncols > 1 else plots
+				else:
+					plot = plots[plot_id//ncols][plot_id%ncols]
 				# print stats
 				print("    ", y[key]["min"], " < ", key, " < ", y[key]["max"])
 				# plot
@@ -109,13 +112,12 @@ def plot(logs, figure_file):
 				plot.grid(True)
 	# remove unused plot
 	for plot_id in range(len(key_ids), nrows*ncols):
-		plot = plots[plot_id] if nrows == 1 else plots[plot_id//ncols][plot_id%ncols]
+		plot = plots[plot_id//ncols][plot_id%ncols] # always nrows > 1
 		figure.delaxes(plot)
 		
 	figure.savefig(figure_file)
 	print("Plot figure saved in ", figure_file)
-	figure.clf() # release memory
-	plt.close() # release memory
+	plt.close(figure) # release memory
 
 def plot_files(log_files, figure_file):
 	logs = []
@@ -127,42 +129,40 @@ def get_length(file):
 	return sum(1 for line in open(file))
 	
 def parse(log_fname):
-	logfile = open(log_fname, 'r')
-	for i, line in enumerate(logfile):
-		try:
-			splitted = line.split(' ')
-			# date_str = splitted[0] + ' ' + splitted[1]
-			# date = datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S,%f')
-			# obj = {'date': date}
-			# Get step
-			if '<' in splitted[2]:
-				step = re.sub('[<>]', '', splitted[2]) # remove following chars: <>
-				step = int(step)
-				xs = splitted[3:]
-			else:
-				step = i
-				xs = splitted[2:]
-			# Get objects
-			obj = {}
-			for x in xs:
-				x = re.sub('[\',\[\]]', '', x) # remove following chars: ',[]
-				# print(x)
-				key, val = x.split('=')
-				obj[key] = float(val)
-			# print (obj)
-			yield (step, obj)
-		except Exception as e:
-			print("exc %s on line %s" % (repr(e), i+1))
-			print("skipping line")
-			continue
-	logfile.close()
+	with open(log_fname, 'r') as logfile:
+		for i, line in enumerate(logfile):
+			try:
+				splitted = line.split(' ')
+				# date_str = splitted[0] + ' ' + splitted[1]
+				# date = datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S,%f')
+				# obj = {'date': date}
+				# Get step
+				if '<' in splitted[2]:
+					step = re.sub('[<>]', '', splitted[2]) # remove following chars: <>
+					step = int(step)
+					xs = splitted[3:]
+				else:
+					step = i
+					xs = splitted[2:]
+				# Get objects
+				obj = {}
+				for x in xs:
+					x = re.sub('[\',\[\]]', '', x) # remove following chars: ',[]
+					# print(x)
+					key, val = x.split('=')
+					obj[key] = float(val)
+				# print (obj)
+				yield (step, obj)
+			except Exception as e:
+				print("exc %s on line %s" % (repr(e), i+1))
+				print("skipping line")
+				continue
 	
 def heatmap(heatmap, figure_file):
 	figure, ax = plt.subplots(nrows=1, ncols=1)
 	sns.heatmap(data=heatmap, ax=ax)
 	figure.savefig(figure_file)
-	figure.clf() # release memory
-	plt.close() # release memory
+	plt.close(figure) # release memory
 	
 def ascii_image(string, file_name):
 	# find image size

@@ -18,8 +18,9 @@ from environment import environment
 from rogueinabox.box import RogueBox
 
 class RogueEnvironment(environment.Environment):
-	def get_action_size(self):
-		return len(self.real_actions)
+		
+	def get_action_shape(self):
+		return (len(self.real_actions),1)
 		
 	def get_state_shape(self):
 		return self.game.state_generator._shape
@@ -62,7 +63,8 @@ class RogueEnvironment(environment.Environment):
 		# observation_info = "observation={}".format(np.array_str(observation.flatten()))
 		frame_dict = {}
 		frame_dict["log"] = state_info + policy_info + '\n'.join(last_frame.screen)+'\n'
-		frame_dict["screen"] = { "value": frame_dict["log"], "type": 'ASCII' }
+		if flags.save_episode_screen:
+			frame_dict["screen"] = { "value": frame_dict["log"], "type": 'ASCII' }
 		# Heatmap
 		if flags.save_episode_heatmap:
 			heatmap_states = self.game.compute_walkable_states()
@@ -72,15 +74,14 @@ class RogueEnvironment(environment.Environment):
 			for (heatmap_state,(x,y)) in heatmap_states:
 				value_map[x][y] = network.estimate_value(state=heatmap_state, concat=concat)
 			frame_dict["heatmap"] = value_map
-			
 		return frame_dict
 		
-	def process(self, action):
-		action = action%len(self.real_actions)
+	def process(self, policy):
+		action = self.choose_action(policy)
 		real_action = self.real_actions[action]
 		reward, new_state, win, lose = self.game.send_command(real_action)
 		
 		self.last_state = new_state["value"]
 		self.last_action = action
 		self.last_reward = reward
-		return self.last_state, reward, (win or lose)
+		return self.last_action, self.last_state, self.last_reward, (win or lose)

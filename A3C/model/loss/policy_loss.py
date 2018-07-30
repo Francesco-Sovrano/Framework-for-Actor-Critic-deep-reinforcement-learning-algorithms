@@ -27,13 +27,13 @@ class PolicyLoss(Loss):
 		return tf.log(tf.clip_by_value(policy, 1e-20, 1.0)) # Avoid NaN with clipping when value in pi becomes zero
 	
 	def get_action_log_policy(self, log_policy, action):
-		return tf.reduce_sum(tf.multiply(log_policy, action), reduction_indices=1)
+		return tf.reduce_sum(tf.multiply(log_policy, action), reduction_indices=1 if len(self.policy.get_shape()) < 3 else [1,2])
 		
 	def vanilla(self):
 		# Avoid NaN with clipping when value in pi becomes zero
 		log_policy = self.get_log_policy(self.policy)
 		# Policy entropy
-		entropy = -tf.reduce_sum(self.policy * log_policy, reduction_indices=1)
+		entropy = -tf.reduce_sum(self.policy * log_policy, reduction_indices=1 if len(self.policy.get_shape()) < 3 else [1,2])
 		# Policy loss (output)
 		return -tf.reduce_sum( self.get_action_log_policy(log_policy, self.action) * self.advantage + entropy * self.entropy_beta )
 		
@@ -49,7 +49,7 @@ class PolicyLoss(Loss):
 		ratio = tf.exp(action_log_policy - old_action_log_policy)
 		clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.cliprange, 1.0 + self.cliprange)
 		# entropy
-		entropy = -tf.reduce_sum(self.policy * log_policy, reduction_indices=1)
+		entropy = -tf.reduce_sum(self.policy * log_policy, reduction_indices=1 if len(self.policy.get_shape()) < 3 else [1,2])
 		# Policy loss
 		return -tf.reduce_sum( tf.minimum(ratio, clipped_ratio) * self.advantage + entropy * self.entropy_beta )
 				
@@ -65,7 +65,7 @@ class PolicyLoss(Loss):
 		ratio = tf.exp(action_log_policy - old_action_log_policy)
 		clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.cliprange, 1.0 + self.cliprange)
 		# entropy
-		entropy = -tf.reduce_sum(self.policy * log_policy, reduction_indices=1)
+		entropy = -tf.reduce_sum(self.policy * log_policy, reduction_indices=1 if len(self.policy.get_shape()) < 3 else [1,2])
 		# Policy loss
 		# self.advantage = (self.advantage - tf.reduce_mean(self.advantage)) / (self.reduce_std(self.advantage) + 1e-8)
 		return -tf.reduce_mean( tf.minimum(ratio, clipped_ratio) * self.advantage + entropy * self.entropy_beta )

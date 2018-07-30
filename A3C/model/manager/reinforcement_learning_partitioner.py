@@ -18,18 +18,19 @@ class ReinforcementLearningPartitioner(BasicManager):
 		if self.model_size < 2:
 			self.model_size = 2
 			
-	def build_agents(self, state_shape, action_size, concat_size):
+	def build_agents(self, state_shape, action_shape, concat_size):
 		agents_count = self.model_size-1
 		# the manager
 		self.manager = eval(flags.network + "_Network")(
 			session=self.session, 
 			id="{0}_{1}".format(self.id, 0), 
 			state_shape=state_shape, 
-			policy_size=agents_count, 
+			action_shape=(agents_count,1), 
 			entropy_beta=flags.entropy_beta, 
 			clip=self.clip[0], 
 			device=self.device, 
-			predict_reward=flags.predict_reward
+			predict_reward=flags.predict_reward,
+			training = self.training
 		)
 		self.model_list.append(self.manager)
 		# the agents
@@ -38,12 +39,13 @@ class ReinforcementLearningPartitioner(BasicManager):
 				session=self.session, 
 				id="{0}_{1}".format(self.id, i+1), 
 				state_shape=state_shape, 
-				policy_size=action_size, 
+				action_shape=action_shape, 
 				concat_size=concat_size,
 				entropy_beta=flags.entropy_beta*(i+1), 
 				clip=self.clip[i+1], 
 				device=self.device, 
-				predict_reward=flags.predict_reward
+				predict_reward=flags.predict_reward,
+				training = self.training
 			)
 			self.model_list.append(agent)
 			
@@ -68,7 +70,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		super().initialize_new_batch()
 		self.batch["manager_value_list"] = []
 		
-	def act(self, policy_to_action_function, act_function, state, concat=None):
+	def act(self, act_function, state, concat=None):
 		if self.query_partitioner(self.batch["size"]):
 			self.batch["lstm_states"][0].append(self.lstm_state)
 			self.agent_id, manager_policy, manager_value, _ = self.get_state_partition(state=state, lstm_state=self.lstm_state)
@@ -83,7 +85,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		else:
 			has_queried_partitioner = False
 			
-		new_state, policy, value, action, reward, terminal = super().act(policy_to_action_function, act_function, state, concat)
+		new_state, policy, value, action, reward, terminal = super().act(act_function, state, concat)
 		if has_queried_partitioner:
 			self.batch["rewards"][0].append(reward)
 		return new_state, policy, value, action, reward, terminal

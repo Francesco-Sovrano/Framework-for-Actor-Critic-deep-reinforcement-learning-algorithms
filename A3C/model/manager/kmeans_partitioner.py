@@ -22,7 +22,7 @@ class KMeansPartitioner(BasicManager):
 		if self.model_size < 2:
 			self.model_size = 2
 			
-	def build_agents(self, state_shape, action_size, concat_size):
+	def build_agents(self, state_shape, action_shape, concat_size):
 		# partitioner
 		if self.is_global_network():
 			self.buffer = Buffer(size=flags.partitioner_training_set_size)
@@ -35,12 +35,13 @@ class KMeansPartitioner(BasicManager):
 				session=self.session, 
 				id="{0}_{1}".format(self.id, i), 
 				state_shape=state_shape, 
-				policy_size=action_size, 
+				action_shape=action_shape, 
 				concat_size=concat_size,
 				entropy_beta=flags.entropy_beta, 
 				clip=self.clip[i], 
 				device=self.device, 
-				predict_reward=flags.predict_reward
+				predict_reward=flags.predict_reward,
+				training = self.training
 			)
 			self.model_list.append(agent)
 		# bind partition nets to training net
@@ -68,10 +69,10 @@ class KMeansPartitioner(BasicManager):
 	def query_partitioner(self, step):
 		return self.partitioner_trained and step%flags.partitioner_granularity==0
 		
-	def act(self, policy_to_action_function, act_function, state, concat=None):
+	def act(self, act_function, state, concat=None):
 		if self.query_partitioner(self.batch["size"]):
 			self.agent_id = self.get_state_partition(state)
-		return super().act(policy_to_action_function, act_function, state, concat)
+		return super().act(act_function, state, concat)
 		
 	def populate_partitioner(self, states):
 		# assert self.is_global_network(), 'only global network can populate partitioner'

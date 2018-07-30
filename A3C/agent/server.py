@@ -43,7 +43,7 @@ class Application(object):
 		if flags.use_gpu:
 			config.gpu_options.allow_growth = True
 		self.sess = tf.Session(config=config)
-		self.global_t = 0
+		self.global_step = 0
 		self.stop_requested = False
 		self.terminate_reqested = False
 		self.build_network()
@@ -72,7 +72,7 @@ class Application(object):
 		testers = []
 		threads = []
 		for i in range(flags.parallel_size): # parallel testing
-			tester = Worker(thread_index=-i, session=self.sess, global_network=self.global_network, device=self.device, train=False)
+			tester = Worker(thread_index=-i, session=self.sess, global_network=self.global_network, device=self.device, training=False)
 			thread = threading.Thread(target=self.test_function, args=(tester,flags.match_count_for_evaluation//flags.parallel_size))
 			thread.start()
 			threads.append(thread)
@@ -102,21 +102,21 @@ class Application(object):
 				if parallel_index == 0:
 					self.save()
 				break
-			if self.global_t > flags.max_time_step:
+			if self.global_step > flags.max_time_step:
 				trainer.stop()
 				break
-			if parallel_index == 0 and self.global_t > self.next_save_steps:
+			if parallel_index == 0 and self.global_step > self.next_save_steps:
 				# Save checkpoint
 				self.save()
 	
-			diff_global_t = trainer.process(self.global_t)
+			diff_global_step = trainer.process(self.global_step)
 			with self.lock:
-				self.global_t += diff_global_t			
+				self.global_step += diff_global_step			
 				# print global statistics
 				if trainer.terminal:
 					info = self.get_global_statistics(clients=self.trainers)
 					if info:
-						info_str = "<{}> {}".format(self.global_t, ["{}={}".format(key,value) for key, value in sorted(info.items(), key=lambda t: t[0])])
+						info_str = "<{}> {}".format(self.global_step, ["{}={}".format(key,value) for key, value in sorted(info.items(), key=lambda t: t[0])])
 						self.training_logger.info(info_str) # Print statistics
 					sys.stdout.flush() # force print immediately what is in output buffer
 				
@@ -157,14 +157,14 @@ class Application(object):
 			self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
 			tokens = checkpoint.model_checkpoint_path.split("-")
 			# set global step
-			self.global_t = int(tokens[1])
-			print(">>> global step set: ", self.global_t)
+			self.global_step = int(tokens[1])
+			print(">>> global step set: ", self.global_step)
 			# set wall time
-			wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_t)
+			wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_step)
 			with open(wall_t_fname, 'r') as f:
 				self.wall_t = float(f.read())
-				self.next_save_steps = (self.global_t + flags.save_interval_step) // flags.save_interval_step * flags.save_interval_step
-			self.load_important_information(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_t))
+				self.next_save_steps = (self.global_step + flags.save_interval_step) // flags.save_interval_step * flags.save_interval_step
+			self.load_important_information(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_step))
 			print("Checkpoint loaded: ", checkpoint.model_checkpoint_path)
 		else:
 			# set wall time
@@ -187,7 +187,7 @@ class Application(object):
 	
 		# Write wall time
 		wall_t = time.time() - self.start_time
-		wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_t)
+		wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_step)
 		with open(wall_t_fname, 'w') as f:
 			f.write(str(wall_t))
 	
@@ -197,8 +197,8 @@ class Application(object):
 		
 		# Save Checkpoint
 		print('Start saving..')
-		self.saver.save(self.sess, flags.checkpoint_dir + '/checkpoint', global_step=self.global_t)
-		self.save_important_information(flags.checkpoint_dir + '/{}.pkl'.format(self.global_t))
+		self.saver.save(self.sess, flags.checkpoint_dir + '/checkpoint', global_step=self.global_step)
+		self.save_important_information(flags.checkpoint_dir + '/{}.pkl'.format(self.global_step))
 		print('Checkpoint saved in ' + flags.checkpoint_dir)
 	
 		if not self.terminate_reqested:

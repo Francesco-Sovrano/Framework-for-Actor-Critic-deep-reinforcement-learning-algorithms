@@ -11,6 +11,9 @@ class Environment(object):
 		if env_type == 'rogue':
 			from . import rogue_environment
 			return rogue_environment.RogueEnvironment(thread_index)
+		elif env_type == 'car_controller':
+			from . import car_controller_environment
+			return car_controller_environment.CarControllerEnvironment(thread_index)
 		else:
 			from . import gym_environment
 			return gym_environment.GymEnvironment(thread_index,env_type)

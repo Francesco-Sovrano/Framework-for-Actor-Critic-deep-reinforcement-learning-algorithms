@@ -13,7 +13,8 @@ import options
 flags = options.get()
 
 class BasicManager(object):
-	def __init__(self, session, device, id, action_size, state_shape, concat_size=0, global_network=None):
+	def __init__(self, session, device, id, action_shape, state_shape, concat_size=0, global_network=None, training=True):
+		self.training = training
 		self.session = session
 		self.id = id
 		self.device = device
@@ -27,12 +28,12 @@ class BasicManager(object):
 	# Build agents
 		self.model_list = []
 		self._model_usage_list = deque()
-		self.build_agents(state_shape=state_shape, action_size=action_size, concat_size=concat_size)
+		self.build_agents(state_shape=state_shape, action_shape=action_shape, concat_size=concat_size)
 	# Build experience buffer
 		if flags.replay_ratio > 0:
-			self.experience_buffer = Buffer(size=flags.replay_buffer_size, type_count=2 if not flags.save_only_batches_with_reward else 1)
+			self.experience_buffer = Buffer(size=flags.replay_buffer_size)
 		if flags.predict_reward:
-			self.reward_prediction_buffer = Buffer(size=flags.reward_prediction_buffer_size, type_count=2)
+			self.reward_prediction_buffer = Buffer(size=flags.reward_prediction_buffer_size)
 	# Bind optimizer to global
 		if not self.is_global_network():
 			self.bind_to_global(self.global_network)
@@ -43,17 +44,18 @@ class BasicManager(object):
 	def set_model_size(self):
 		self.model_size = 1
 			
-	def build_agents(self, state_shape, action_size, concat_size):
+	def build_agents(self, state_shape, action_shape, concat_size):
 		agent=eval(flags.network + "_Network")(
 			session=self.session,
 			id="{0}_{1}".format(self.id, 0),
 			device=self.device,
 			state_shape=state_shape,
-			policy_size=action_size,
+			action_shape=action_shape,
 			concat_size=concat_size,
 			entropy_beta=flags.entropy_beta,
 			clip=self.clip[0],
-			predict_reward=flags.predict_reward
+			predict_reward=flags.predict_reward,
+			training = self.training
 		)
 		self.model_list.append(agent)
 			
@@ -146,7 +148,7 @@ class BasicManager(object):
 	def estimate_value(self, agent_id, states, concats=None, lstm_state=None):
 		return self.get_model(agent_id).run_value(states=states, concats=concats, lstm_state=lstm_state)
 		
-	def act(self, policy_to_action_function, act_function, state, concat=None):
+	def act(self, act_function, state, concat=None):
 		agent_id = self.agent_id
 		agent = self.get_model(agent_id)
 		self.batch["states"][agent_id].append(state)
@@ -157,8 +159,7 @@ class BasicManager(object):
 		policy = policies[0]
 		value = values[0]
 		
-		action = policy_to_action_function(policy)
-		new_state, reward, terminal = act_function(action)
+		action, new_state, reward, terminal = act_function(policy)
 		if flags.clip_reward:
 			reward = np.clip(reward, flags.min_reward, flags.max_reward)
 		self.batch["total_reward"] += reward
@@ -268,16 +269,21 @@ class BasicManager(object):
 			bootstrap["value"] = values[0]
 		return self.compute_cumulative_reward(batch)
 		
+	def should_save_batch(self, batch):
+		# Prioritize smaller batches because they have terminated prematurely, thus they are probably more important and also faster to process
+		batch_size = batch["size"]
+		return np.random.randint(batch_size) == 0
+		
 	def add_to_reward_prediction_buffer(self, batch):
 		batch_size = batch["size"]
 		if batch_size <= 1:
 			return
 		rp_frame_length = min(3, batch_size-1)
-		save_even_if_buffer_is_full = self.save_even_if_buffer_is_full(batch_size) # Prioritize smaller batches because they have terminated prematurely, thus they are probably more important and also faster to process
+		should_save_batch = self.should_save_batch(batch)
 		for i in range(rp_frame_length, batch_size):
 			reward = self.get_frame(batch=batch, index=i, keys=["rewards"])["rewards"]
-			type_id = 1 if reward != 0 else 0
-			if not self.reward_prediction_buffer.id_is_full(type_id) or save_even_if_buffer_is_full:
+			type_id = 1 if reward > 0 else 0
+			if should_save_batch or not self.reward_prediction_buffer.id_is_full(type_id):
 				states = [self.get_frame(batch=batch, index=j, keys=["states"])["states"] for j in range(i-rp_frame_length, i)]
 				target = [0.0, 0.0, 0.0]
 				if reward == 0:
@@ -289,22 +295,20 @@ class BasicManager(object):
 				# if len(states)==0:
 					# print(i, " ", rp_frame_length)
 				self.reward_prediction_buffer.put(batch={"states":states, "target":[target]}, type_id=type_id)
-				
-	def save_even_if_buffer_is_full(self, size):
-		return np.random.randint(size) == 0
 			
 	def add_to_replay_buffer(self, batch):
 		batch_size = batch["size"]
 		if batch_size <= 1:
 			return
 		batch_reward = batch["total_reward"]
-		if batch_reward != 0 or not flags.save_only_batches_with_reward:
+		if batch_reward == 0 and flags.save_only_batches_with_reward:
+			return
+		type_id = 1 if batch_reward > 0 else 0
+		if not self.experience_buffer.id_is_full(type_id) or self.should_save_batch(batch):
 			# batch["lstm_states"] = None # remove lstm state from batch
-			type_id = 1 if batch_reward != 0 else 0
-			if not self.experience_buffer.id_is_full(type_id) or self.save_even_if_buffer_is_full(batch_size): # Prioritize smaller batches because they have terminated prematurely, thus they are probably more important and also faster to process
-				self.experience_buffer.put(batch=batch, type_id=type_id)
+			self.experience_buffer.put(batch=batch, type_id=type_id)
 		
-	def process_batch(self):
+	def process_batch(self, global_step):
 		batch = self.compute_cumulative_reward(self.batch)
 		# reward prediction
 		if flags.predict_reward:
@@ -312,7 +316,7 @@ class BasicManager(object):
 		# train
 		self.train(batch)
 		# experience replay
-		if flags.replay_ratio > 0:
+		if flags.replay_ratio > 0 and global_step > flags.replay_step:
 			if self.experience_buffer.has_atleast(flags.replay_start):
 				n = np.random.poisson(flags.replay_ratio)
 				for _ in range(n):

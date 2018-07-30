@@ -29,8 +29,8 @@ class Worker(object):
 			return "BasicManager"
 		return flags.partitioner_type + "Partitioner"
 			
-	def __init__(self, thread_index, session, global_network, device, train=True):
-		self.train = train
+	def __init__(self, thread_index, session, global_network, device, training=True):
+		self.training = training
 		self.thread_index = thread_index
 		self.global_network = global_network
 		#logs
@@ -49,18 +49,19 @@ class Worker(object):
 		# build network
 		self.environment = Environment.create_environment(flags.env_type, self.thread_index)
 		self.device = device
-		if self.train:
+		if self.training:
 			state_shape = self.environment.get_state_shape()
-			action_size = self.environment.get_action_size()
-			concat_size = action_size+1 if flags.concat_last_action_reward else 0
+			action_shape = self.environment.get_action_shape()
+			concat_size = action_shape[0]+1 if flags.concat_last_action_reward else 0
 			self.local_network = eval(self.get_model_manager())(
 				session=session, 
 				device=self.device, 
 				id=self.thread_index, 
-				action_size=action_size, 
+				action_shape=action_shape, 
 				concat_size=concat_size,
 				state_shape=state_shape, 
-				global_network=self.global_network
+				global_network=self.global_network,
+				training=self.training
 			)
 		else:
 			self.local_network = self.global_network
@@ -87,13 +88,13 @@ class Worker(object):
 	def set_start_time(self, start_time):
 		self.start_time = start_time
 		
-	def print_speed(self, global_t, step):
+	def print_speed(self, global_step, step):
 		self.local_t += step
 		if (self.thread_index == 1) and (self.local_t - self.prev_local_t >= PERFORMANCE_LOG_INTERVAL):
 			self.prev_local_t += PERFORMANCE_LOG_INTERVAL
 			elapsed_time = time.time() - self.start_time
-			steps_per_sec = global_t / elapsed_time
-			print("### Performance : {} STEPS in {:.0f} sec. {:.0f} STEPS/sec. {:.2f}M STEPS/hour".format( global_t, elapsed_time, steps_per_sec, steps_per_sec * 3600 / 1000000.))
+			steps_per_sec = global_step / elapsed_time
+			print("### Performance : {} STEPS in {:.0f} sec. {:.0f} STEPS/sec. {:.2f}M STEPS/hour".format( global_step, elapsed_time, steps_per_sec, steps_per_sec * 3600 / 1000000.))
 		
 	def print_statistics(self):
 		# Update statistics
@@ -161,24 +162,24 @@ class Worker(object):
 		if flags.save_episode_gif and len(gif_filenames) > 0:
 			plt.make_gif(file_list=gif_filenames, gif_path=episode_directory+'/episode.gif')
 		
-	def log(self, global_t, step):
+	def log(self, global_step, step):
 		# Speed
-		self.print_speed(global_t, step)
+		self.print_speed(global_step, step)
 
 		if self.terminal:
 			# Statistics
 			self.print_statistics()
 			# Frames
 			if flags.show_all_episodes:
-				self.print_frames(global_t)
+				self.print_frames(global_step)
 			elif flags.show_best_episodes:
 				if self.episode_reward > self.max_reward:
 					self.max_reward = self.episode_reward
-					self.print_frames(global_t)
+					self.print_frames(global_step)
 				
 	# run simulations
-	def run_batch(self):
-		if self.train: # Copy weights from shared to local
+	def run_batch(self, global_step):
+		if self.training: # Copy weights from shared to local
 			self.local_network.sync()
 			
 		step = 0
@@ -187,7 +188,6 @@ class Worker(object):
 			step += 1
 			state=self.environment.last_state
 			new_state, policy, value, action, reward, self.terminal = self.local_network.act( 
-				policy_to_action_function=self.environment.choose_action, 
 				act_function=self.environment.process, 
 				state=state,
 				concat=self.environment.get_last_action_reward() if flags.concat_last_action_reward else None
@@ -195,23 +195,23 @@ class Worker(object):
 			self.episode_reward += reward
 			
 			if flags.show_best_episodes or flags.show_all_episodes:
-				self.frame_info_list.append( self.environment.get_frame_info(network=self.local_network, observation=state, policy=policy, value=value, action=action, reward=reward) )
+				self.frame_info_list.append( self.environment.get_frame_info(network=self.local_network, observation=self.environment.get_screen(), policy=policy, value=value, action=action, reward=reward) )
 			
 		if self.terminal: # an episode has terminated
 			self.terminated_episodes += 1
 			
-		if self.train: # train using batch
+		if self.training: # train using batch
 			if not self.terminal:
 				self.local_network.bootstrap(state=new_state, concat=self.environment.get_last_action_reward() if flags.concat_last_action_reward else None)
-			self.local_network.process_batch()
+			self.local_network.process_batch(global_step)
 		return step
 
-	def process(self, global_t=0):
+	def process(self, global_step=0):
 		try:
 			if self.terminal:
 				self.prepare()
-			step = self.run_batch()
-			self.log(global_t, step)
+			step = self.run_batch(global_step)
+			self.log(global_step, step)
 			return step
 		except:
 			traceback.print_exc()
