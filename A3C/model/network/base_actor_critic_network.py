@@ -154,21 +154,20 @@ class BaseAC_Network(object):
 			
 	def reward_prediction_loss(self):
 		# reward prediction target. one hot vector
-		self.reward_prediction_target = tf.placeholder("float", [1,3]) # it's a hot-vector, do not normalize it
+		self.reward_prediction_target = tf.placeholder(tf.float32, [1,3]) # it's a hot-vector, do not normalize it
 		# Reward prediction loss (output)
 		clipped_rp = tf.clip_by_value(self._reward_prediction, 1e-20, 1.0)
 		return -tf.reduce_sum(self.reward_prediction_target * tf.log(clipped_rp))
 
-	def bind_sync(self, src_network, name=None):
+	def bind_sync(self, src_network):
 		src_vars = src_network.get_vars()
 		dst_vars = self.get_vars()
 		sync_ops = []
 		with tf.device(self._device):
-			with tf.name_scope(name, "A3CModel{0}".format(self._id),[]) as name:
-				for(src_var, dst_var) in zip(src_vars, dst_vars):
-					sync_op = tf.assign(dst_var, src_var)
-					sync_ops.append(sync_op)
-				return tf.group(*sync_ops, name=name)
+			for(src_var, dst_var) in zip(src_vars, dst_vars):
+				sync_op = tf.assign(ref=dst_var, value=src_var, use_locking=True)
+				sync_ops.append(sync_op)
+			return tf.group(*sync_ops)
 				
 	def sync(self, sync):
 		self._session.run(fetches=sync, options=tf.RunOptions.NO_TRACE)

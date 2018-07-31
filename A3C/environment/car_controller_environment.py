@@ -77,6 +77,13 @@ def angle(p, U, V):
 	Ud = derivative(p,U)
 	Vd = derivative(p,V)
 	return (np.arctan(Vd/Ud)) if abs(Ud) > abs(Vd/1000) else (np.pi/2)
+	
+def norm(angle):
+    if angle >= np.pi:
+        angle -= 2*np.pi
+    elif angle < -np.pi:
+        angle += 2*np.pi
+    return angle
 
 def convert_degree_to_radians(degree):
 	return (degree/180)*np.pi
@@ -105,7 +112,8 @@ class CarControllerEnvironment(Environment):
 		self.max_distance = 2
 		self.noise = .2
 		self.speed = .1 # m/s
-		self.max_angle_degrees = 30
+		self.max_angle_degrees = 90
+		self.max_steps = 100
 		self.max_angle_radians = convert_degree_to_radians(self.max_angle_degrees)
 		# evaluator stuff
 		self.episodes = deque()
@@ -137,35 +145,41 @@ class CarControllerEnvironment(Environment):
 			self.last_action = 0
 			self.last_state = self.get_state()
 			self.last_reward = 0
+			self.steps = 0
 		
 	def get_last_action_reward(self):
 		return [self.last_action, self.last_reward]
 		
-	def compute_new_car_position(self, steering_angle):
+	def compute_new_car_position(self, compensation_angle):
 		car_x, car_y = self.car_point
-		car_x += self.speed*np.cos(steering_angle)
-		car_y += self.speed*np.sin(steering_angle)
-		return car_x, car_y
-		
-	def add_noise_to_car_point(self):
-		car_x, car_y = self.car_point
-		car_x += 2*self.noise*np.random.random()-self.noise # add noise to the position
-		car_y += 2*self.noise*np.random.random()-self.noise # add noise to the position
-		return car_x, car_y
+		car_angle = norm(angle(self.points[self.closest_position], self.U1, self.V1)) # use the tangent to path as default direction -> more stable results
+		car_angle = norm(car_angle + compensation_angle) # adjust the default direction using the compensation_angle
+		# update position
+		car_x += self.speed*np.cos(car_angle)
+		car_y += self.speed*np.sin(car_angle)
+		# car_x += self.speed*np.cos(compensation_angle)
+		# car_y += self.speed*np.sin(compensation_angle)
+		# add noise to car point
+		car_x += (2*np.random.random()-1)*self.noise
+		car_y += (2*np.random.random()-1)*self.noise
+		car_point = (car_x, car_y)
+		relative_path, closest_position = get_relative_path_and_closest_position(point=car_point, path=self.path) # shift path to car vision
+		return car_point, relative_path, closest_position
 
 	def process(self, policy):
+		self.steps += 1
 		policy_choice=0
 		action = np.clip(policy[policy_choice],0,1)
 		# get agent steering angle and car position
-		steering_angle = (2*action-1)*self.max_angle_radians
-		self.car_point = self.compute_new_car_position(steering_angle)
+		compensation_angle = (2*action-1)*self.max_angle_radians
+		# update car position
+		self.car_point, self.relative_path, new_closest_position = self.compute_new_car_position(compensation_angle)
+		if new_closest_position > self.closest_position:
+			self.closest_position = new_closest_position
 		# get state and reward
 		state = self.get_state()
 		reward = self.get_reward()
-		# update car position
-		self.car_point = self.add_noise_to_car_point()
-		self.relative_path, self.closest_position = get_relative_path_and_closest_position(point=self.car_point, path=self.path) #now we shift to car vision
-		terminal = self.is_terminal_position(self.closest_position)
+		terminal = self.is_terminal_position(self.closest_position) or self.steps > self.max_steps
 		# populate statistics
 		if terminal:
 			self.episodes.append( {"reward":self.cumulative_reward} )

@@ -32,10 +32,10 @@ def build():
 	tf.app.flags.DEFINE_string("partitioner_optimizer", "ProximalAdagrad", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is ProximalAdagrad
 # Loss clip range
 	tf.app.flags.DEFINE_float("clip", 0.2, "PPO/PVO initial clip range") # default is 0.2, for openAI is 0.1
-	tf.app.flags.DEFINE_boolean("clip_decay", False, "Whether to decay the clip range")
+	tf.app.flags.DEFINE_boolean("clip_decay", True, "Whether to decay the clip range")
 	tf.app.flags.DEFINE_string("clip_annealing_function", "exponential_decay", "annealing function: exponential_decay, inverse_time_decay, natural_exp_decay") # default is inverse_time_decay
-	tf.app.flags.DEFINE_integer("clip_decay_steps", 10**5, "decay clip every x steps") # default is 1
-	tf.app.flags.DEFINE_float("clip_decay_rate", 0.96, "decay rate") # default is 0.5
+	tf.app.flags.DEFINE_integer("clip_decay_steps", 10**6, "decay clip every x steps") # default is 1
+	tf.app.flags.DEFINE_float("clip_decay_rate", 0.98, "decay rate") # default is 0.5
 # Learning rate
 	tf.app.flags.DEFINE_float("alpha", 3.5e-4, "initial learning rate") # default is 7.0e-4, for openAI is 2.5e-4
 	tf.app.flags.DEFINE_boolean("alpha_decay", False, "whether to decay the learning rate") # default is False
@@ -77,6 +77,7 @@ def build():
 	tf.app.flags.DEFINE_string("checkpoint_dir", "./checkpoint", "checkpoint directory")
 	tf.app.flags.DEFINE_string("event_dir", "./events", "events directory")
 	tf.app.flags.DEFINE_string("log_dir", "./log", "events directory")
+	tf.app.flags.DEFINE_boolean("tracemalloc", False, "whether to trace memory allocations")
 	tf.app.flags.DEFINE_boolean("show_best_episodes", True, "whether to save best matches")
 	tf.app.flags.DEFINE_boolean("show_all_episodes", False, "whether to save all the matches")
 	# save_episode_screen = True might slow down the algorithm

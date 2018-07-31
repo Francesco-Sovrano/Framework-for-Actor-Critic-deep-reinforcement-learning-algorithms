@@ -23,26 +23,37 @@ flags = options.get()
 
 import numpy as np
 
+if flags.tracemalloc:
+	import tracemalloc
+	tracemalloc.start()
+
 class Application(object):
 	def __init__(self):
+		if not os.path.isdir(flags.log_dir):
+			os.mkdir(flags.log_dir)
 		self.train_logfile = flags.log_dir + '/train_results.log'
 		# Training logger
 		self.training_logger = logging.getLogger('results')
-		if not os.path.isdir(flags.log_dir):
-			os.mkdir(flags.log_dir)
 		hdlr = logging.FileHandler(self.train_logfile)
-		formatter = logging.Formatter('%(asctime)s %(message)s')
-		hdlr.setFormatter(formatter)
+		hdlr.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
 		self.training_logger.addHandler(hdlr) 
 		self.training_logger.setLevel(logging.DEBUG)
+		# Memory usage logger
+		if flags.tracemalloc:
+			self.memory_logger = logging.getLogger('memory_usage')
+			hdlr = logging.FileHandler(flags.log_dir + '/memory_usage.log')
+			hdlr.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
+			self.memory_logger.addHandler(hdlr) 
+			self.memory_logger.setLevel(logging.DEBUG)
 		# Initialize network
 		self.device = "/cpu:0"
 		if flags.use_gpu:
 			self.device = "/gpu:0"
-		config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True) # prepare session
-		if flags.use_gpu:
-			config.gpu_options.allow_growth = True
-		self.sess = tf.Session(config=config)
+		# config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True) # prepare session
+		# if flags.use_gpu:
+			# config.gpu_options.allow_growth = True
+		# self.sess = tf.Session(config=config)
+		self.sess = tf.Session()
 		self.global_step = 0
 		self.stop_requested = False
 		self.terminate_reqested = False
@@ -57,7 +68,7 @@ class Application(object):
 		for i in range(flags.parallel_size):
 			self.trainers.append( Worker(thread_index=i+1, session=self.sess, global_network=self.global_network, device=self.device) )
 		# initialize variables
-		self.sess.run(tf.global_variables_initializer()) # do it before loading checkpoint
+		self.sess.run(tf.global_variables_initializer(), options=tf.RunOptions.NO_TRACE) # do it before loading checkpoint
 		# load checkpoint
 		self.load_checkpoint()
 		
@@ -200,7 +211,13 @@ class Application(object):
 		self.saver.save(self.sess, flags.checkpoint_dir + '/checkpoint', global_step=self.global_step)
 		self.save_important_information(flags.checkpoint_dir + '/{}.pkl'.format(self.global_step))
 		print('Checkpoint saved in ' + flags.checkpoint_dir)
+		
+		# Print memory usage insights
+		if flags.tracemalloc:
+			top_stats = tracemalloc.take_snapshot().statistics('lineno')
+			self.memory_logger.info(str([stat for stat in top_stats[:10]])) 
 	
+		# Restart workers
 		if not self.terminate_reqested:
 			self.stop_requested = False
 			self.next_save_steps += flags.save_interval_step

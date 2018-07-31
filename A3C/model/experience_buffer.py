@@ -48,8 +48,8 @@ class Buffer(object):
 		# update buffer size
 		self.next_idx[type] = (self.next_idx[type] + 1) % self.size
 		self.num_in_buffer[type] = min(self.size, self.num_in_buffer[type] + 1)
-		if self.num_in_buffer[type] == self.size-1:
-			print("Buffer type ", type, " full with memory size ", sys.getsizeof(self))
+		# if self.num_in_buffer[type] == self.size-1:
+			# print("Buffer type ", type, " full with memory size ", sys.getsizeof(self))
 
 	def get(self):
 		# assert self.has_atleast(frames=1)
