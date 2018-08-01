@@ -25,9 +25,9 @@ class CarControllerEnvironment(Environment):
 	def __init__(self, thread_index):
 		Environment.__init__(self)
 		self.thread_index = thread_index
-		self.max_distance_to_path = 2
+		self.max_distance_to_path = .5
 		self.noise = .2
-		self.speed = .1 # m/s
+		self.speed = .1 # meters per step
 		self.max_angle_degrees = 45
 		self.points_number = 100
 		self.max_steps = self.points_number
@@ -52,15 +52,15 @@ class CarControllerEnvironment(Environment):
 		return position > self.points_number
 		
 	def reset(self):
-		self.car_point = (0, 0) #car position and orientation are always expressed with respect to the initial position and orientation of the road fragment
+		self.car_position = (0, 0) #car position and orientation are always expressed with respect to the initial position and orientation of the road fragment
 		self.path = self.build_random_path()
-		self.relative_path, self.next_position = get_relative_path_and_next_position(point=self.car_point, path=self.path) #now we shift to car vision
+		self.relative_path, self.next_position = get_relative_path_and_next_position(point=self.car_position, path=self.path) #now we shift to car vision
 		if self.is_terminal_position(self.next_position):
 			reset()
 		else:
 			self.cumulative_reward = 0
 			self.last_action = 0
-			self.last_state = self.get_state(car_point=self.car_point)
+			self.last_state = self.get_state(car_position=self.car_position)
 			self.last_reward = 0
 			self.steps = 0
 			self.progress_point = 0
@@ -68,8 +68,8 @@ class CarControllerEnvironment(Environment):
 	def get_last_action_reward(self):
 		return [self.last_action, self.last_reward]
 		
-	def compute_new_car_position(self, compensation_angle):
-		car_x, car_y = self.car_point
+	def compute_new_car_position(self, car_position, compensation_angle):
+		car_x, car_y = car_position
 		car_angle = norm(angle(self.points[self.next_position], self.U1, self.V1)) # use the tangent to path as default direction -> more stable results
 		car_angle = norm(car_angle + compensation_angle) # adjust the default direction using the compensation_angle
 		# update position
@@ -77,10 +77,14 @@ class CarControllerEnvironment(Environment):
 		car_y += self.speed*np.sin(car_angle)
 		# car_x += self.speed*np.cos(compensation_angle)
 		# car_y += self.speed*np.sin(compensation_angle)
-		# add noise to car point
-		car_x += (2*np.random.random()-1)*self.noise
-		car_y += (2*np.random.random()-1)*self.noise
 		return (car_x, car_y)
+		
+	def get_noisy_position(self, position):
+		x, y = position
+		# add noise to position
+		x += (2*np.random.random()-1)*self.noise
+		y += (2*np.random.random()-1)*self.noise
+		return (x, y)
 
 	def process(self, policy):
 		self.steps += 1
@@ -89,14 +93,14 @@ class CarControllerEnvironment(Environment):
 		# get agent steering angle and car position
 		compensation_angle = (2*action-1)*self.max_angle_radians
 		# update car position
-		self.car_point = self.compute_new_car_position(compensation_angle)
+		self.car_position = self.compute_new_car_position(car_position=self.car_position, compensation_angle=compensation_angle)
 		# update next position
-		self.relative_path, new_next_position = get_relative_path_and_next_position(point=self.car_point, path=self.path) # shift path to car vision
+		self.relative_path, new_next_position = get_relative_path_and_next_position(point=self.car_position, path=self.path) # shift path to car vision
 		if new_next_position > self.next_position:
 			self.next_position = new_next_position
 		# get state and reward
-		state = self.get_state(car_point=self.car_point)
-		reward = self.get_reward(car_point=self.car_point, next_position=self.next_position)
+		state = self.get_state(car_position=self.get_noisy_position(self.car_position))
+		reward = self.get_reward(car_position=self.car_position, next_position=self.next_position)
 		terminal = self.is_terminal_position(self.next_position) or self.steps >= self.max_steps
 		# populate statistics
 		if terminal:
@@ -111,23 +115,22 @@ class CarControllerEnvironment(Environment):
 		self.cumulative_reward += reward
 		return policy_choice, state, reward, terminal
 		
-	def get_reward(self, car_point, next_position):
-		car_x, car_y = car_point
+	def get_reward(self, car_position, next_position):
+		car_x, car_y = car_position
 		def get_distance(point):
 			x, y = poly(point,self.U1), poly(point,self.V1)
 			return math.sqrt((car_x-x)**2 + (car_y-y)**2)
 		a = self.progress_point
-		b = self.points[next_position] if next_position < self.points_number else self.progress_point
+		b = self.points[next_position] if next_position < self.points_number else 1
 		result = optimize.minimize_scalar(get_distance, bounds=(a,b)) # find the closest spline point
-		if result.x > self.progress_point:
+		if result.x > self.progress_point: # is moving toward next position
 			self.progress_point = result.x
-			# smaller distances to path give higher rewards
-			distance = get_distance(result.x)
-			return 1 - np.clip(distance,0,self.max_distance_to_path)/self.max_distance_to_path # always in [0,1]
-		return -1
+			distance = get_distance(self.points[next_position]) if next_position < self.points_number else get_distance(1)
+			return 1 - np.clip(distance/self.max_distance_to_path,0,1) # always in [0,1] # smaller distances to path give higher rewards
+		return -1 # is NOT moving toward next position
 		
-	def get_state(self, car_point):
-		car_x, car_y = car_point
+	def get_state(self, car_position):
+		car_x, car_y = car_position
 		shape = self.get_state_shape()
 		state = np.zeros(shape)
 		state[0][0] = [car_x, car_y]
