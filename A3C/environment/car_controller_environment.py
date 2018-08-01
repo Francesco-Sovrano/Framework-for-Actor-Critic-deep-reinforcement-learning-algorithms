@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import operator
+from scipy import optimize
 
 # get command line args
 import options
@@ -24,11 +25,12 @@ class CarControllerEnvironment(Environment):
 	def __init__(self, thread_index):
 		Environment.__init__(self)
 		self.thread_index = thread_index
-		self.max_distance = 2
+		self.max_distance_to_path = 2
 		self.noise = .2
 		self.speed = .1 # m/s
-		self.max_angle_degrees = 90
-		self.max_steps = 100
+		self.max_angle_degrees = 45
+		self.points_number = 100
+		self.max_steps = self.points_number
 		self.max_angle_radians = convert_degree_to_radians(self.max_angle_degrees)
 		# evaluator stuff
 		self.episodes = deque()
@@ -38,7 +40,7 @@ class CarControllerEnvironment(Environment):
 		self.U1, self.V1 = generate_random_polynomial()
 		self.U2, self.V2 = generate_random_polynomial()
 		# we generate all points for both polynomials, then we shall draw only a portion of them
-		self.points = np.linspace(start=0, stop=1, num=100)
+		self.points = np.linspace(start=0, stop=1, num=self.points_number)
 		theta = angle(1, self.U1, self.V1)
 		xv,yv = poly(self.points,self.U1), poly(self.points,self.V1)
 		xv2,yv2 = rotate_and_shift(poly(self.points,self.U2),poly(self.points,self.V2),xv[-1],yv[-1],theta)
@@ -47,13 +49,13 @@ class CarControllerEnvironment(Environment):
 		return x, y
 		
 	def is_terminal_position(self, position):
-		return position > 100
+		return position > self.points_number
 		
 	def reset(self):
 		self.car_point = (0, 0) #car position and orientation are always expressed with respect to the initial position and orientation of the road fragment
 		self.path = self.build_random_path()
-		self.relative_path, self.closest_position = get_relative_path_and_closest_position(point=self.car_point, path=self.path) #now we shift to car vision
-		if self.is_terminal_position(self.closest_position):
+		self.relative_path, self.next_position = get_relative_path_and_next_position(point=self.car_point, path=self.path) #now we shift to car vision
+		if self.is_terminal_position(self.next_position):
 			reset()
 		else:
 			self.cumulative_reward = 0
@@ -61,13 +63,14 @@ class CarControllerEnvironment(Environment):
 			self.last_state = self.get_state(car_point=self.car_point)
 			self.last_reward = 0
 			self.steps = 0
+			self.progress_point = 0
 		
 	def get_last_action_reward(self):
 		return [self.last_action, self.last_reward]
 		
 	def compute_new_car_position(self, compensation_angle):
 		car_x, car_y = self.car_point
-		car_angle = norm(angle(self.points[self.closest_position], self.U1, self.V1)) # use the tangent to path as default direction -> more stable results
+		car_angle = norm(angle(self.points[self.next_position], self.U1, self.V1)) # use the tangent to path as default direction -> more stable results
 		car_angle = norm(car_angle + compensation_angle) # adjust the default direction using the compensation_angle
 		# update position
 		car_x += self.speed*np.cos(car_angle)
@@ -87,17 +90,17 @@ class CarControllerEnvironment(Environment):
 		compensation_angle = (2*action-1)*self.max_angle_radians
 		# update car position
 		self.car_point = self.compute_new_car_position(compensation_angle)
+		# update next position
+		self.relative_path, new_next_position = get_relative_path_and_next_position(point=self.car_point, path=self.path) # shift path to car vision
+		if new_next_position > self.next_position:
+			self.next_position = new_next_position
 		# get state and reward
 		state = self.get_state(car_point=self.car_point)
-		reward = self.get_reward(car_point=self.car_point, closest_path_position=self.closest_position)
-		# update closest position
-		self.relative_path, new_closest_position = get_relative_path_and_closest_position(point=self.car_point, path=self.path) # shift path to car vision
-		if new_closest_position > self.closest_position:
-			self.closest_position = new_closest_position
-		terminal = self.is_terminal_position(self.closest_position) or self.steps > self.max_steps
+		reward = self.get_reward(car_point=self.car_point, next_position=self.next_position)
+		terminal = self.is_terminal_position(self.next_position) or self.steps >= self.max_steps
 		# populate statistics
 		if terminal:
-			self.episodes.append( {"reward":self.cumulative_reward, "step": self.steps} )
+			self.episodes.append( {"reward":self.cumulative_reward, "step": self.steps, "completed": 1 if self.is_terminal_position(self.next_position) else 0} )
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
 		# update last action/state/reward
@@ -108,12 +111,20 @@ class CarControllerEnvironment(Environment):
 		self.cumulative_reward += reward
 		return policy_choice, state, reward, terminal
 		
-	def get_reward(self, car_point, closest_path_position):
+	def get_reward(self, car_point, next_position):
 		car_x, car_y = car_point
-		closest_x, closest_y = self.path[0][closest_path_position], self.path[1][closest_path_position]
-		distance = math.sqrt((car_x-closest_x)**2 + (car_y-closest_y)**2)
-		# smaller distances give an higher reward
-		return -2*np.clip(distance,0,self.max_distance)/self.max_distance + 1 # always in [-1,1]
+		def get_distance(point):
+			x, y = poly(point,self.U1), poly(point,self.V1)
+			return math.sqrt((car_x-x)**2 + (car_y-y)**2)
+		a = self.progress_point
+		b = self.points[next_position] if next_position < self.points_number else self.progress_point
+		result = optimize.minimize_scalar(get_distance, bounds=(a,b)) # find the closest spline point
+		if result.x > self.progress_point:
+			self.progress_point = result.x
+			# smaller distances to path give higher rewards
+			distance = get_distance(result.x)
+			return 1 - np.clip(distance,0,self.max_distance_to_path)/self.max_distance_to_path # always in [0,1]
+		return -1
 		
 	def get_state(self, car_point):
 		car_x, car_y = car_point
@@ -126,9 +137,9 @@ class CarControllerEnvironment(Environment):
 		
 	def get_screen(self):
 		xc, yc = self.relative_path
-		position = self.closest_position
-		xct = xc[position:min(position+100,200)] if position < len(xc) else []
-		yct = yc[position:min(position+100,200)] if position < len(xc) else []
+		position = self.next_position
+		xct = xc[position:min(position+self.points_number,2*self.points_number)] if position < len(xc) else []
+		yct = yc[position:min(position+self.points_number,2*self.points_number)] if position < len(xc) else []
 		return (xct,yct)
 		
 	def get_frame_info(self, network, observation, policy, value, action, reward):
@@ -152,13 +163,16 @@ class CarControllerEnvironment(Environment):
 		result = {}
 		result["avg_reward"] = 0
 		result["avg_step"] = 0
+		result["avg_completed"] = 0
 		count = len(self.episodes)
 		if count>0:
 			for e in self.episodes:
 				result["avg_reward"] += e["reward"]
 				result["avg_step"] += e["step"]
+				result["avg_completed"] += e["completed"]
 			result["avg_reward"] /= count
 			result["avg_step"] /= count
+			result["avg_completed"] /= count
 		return result
 		
 def rot(x,y,theta):
@@ -236,12 +250,12 @@ def norm(angle):
 def convert_degree_to_radians(degree):
 	return (degree/180)*np.pi
 	
-def get_relative_path_and_closest_position(point, path):
+def get_relative_path_and_next_position(point, path):
 	point_x, point_y = point
 	path_xs, path_ys = path
 	relative_path = shift_and_rotate(path_xs, path_ys, -point_x, -point_y, 0)
 	xc, yc = relative_path
-	closest_position = 0
-	while closest_position < len(xc) and xc[closest_position] < 0:
-		closest_position +=1
-	return relative_path, closest_position
+	next_position = 0
+	while next_position < len(xc) and xc[next_position] < 0:
+		next_position +=1
+	return relative_path, next_position

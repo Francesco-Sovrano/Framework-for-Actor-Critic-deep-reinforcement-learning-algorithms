@@ -1,5 +1,6 @@
 import sys
 import numpy as np
+from collections import deque
 
 class Buffer(object):
 	def __init__(self, size):
@@ -9,18 +10,20 @@ class Buffer(object):
 		
 	def clean(self):
 		self.batches = []
-		self.next_idx = []
-		self.num_in_buffer = []
 
 	def has_atleast(self, frames, type=None):
 		if type is None:
-			return sum(self.num_in_buffer) >= frames
-		return self.num_in_buffer[type] >= frames
+			if len(self.batches) == 0:
+				return 0 >= frames
+			return sum([len(batch) for batch in self.batches]) >= frames
+		return len(self.batches[type]) >= frames
 		
 	def has(self, frames, type=None):
 		if type is None:
-			return sum(self.num_in_buffer) == frames
-		return self.num_in_buffer[type] == frames
+			if len(self.batches) == 0:
+				return 0 == frames
+			return sum([len(batch) for batch in self.batches]) == frames
+		return len(self.batches[type]) == frames
 		
 	def id_is_full(self, type_id):
 		return self.has(self.size, self.get_type(type_id))
@@ -36,23 +39,18 @@ class Buffer(object):
 	def get_type(self, type_id):
 		if type_id not in self.types:
 			self.types[type_id] = len(self.types)
-			self.batches.append([None]*self.size)
-			self.next_idx.append(0)
-			self.num_in_buffer.append(0)
+			self.batches.append(deque())
 		return self.types[type_id]
 
 	def put(self, batch, type_id=0):
 		type = self.get_type(type_id)
 		# put batch into buffer
-		self.batches[type][self.next_idx[type]] = batch
-		# update buffer size
-		self.next_idx[type] = (self.next_idx[type] + 1) % self.size
-		self.num_in_buffer[type] = min(self.size, self.num_in_buffer[type] + 1)
-		# if self.num_in_buffer[type] == self.size-1:
-			# print("Buffer type ", type, " full with memory size ", sys.getsizeof(self))
+		if self.is_full(type):
+			self.batches[type].popleft()
+		self.batches[type].append(batch)
 
 	def get(self):
 		# assert self.has_atleast(frames=1)
 		type = np.random.choice([type for type in range(len(self.types)) if not self.is_empty(type)])
-		id = np.random.randint(0, self.num_in_buffer[type])
+		id = np.random.randint(0, len(self.batches[type]))
 		return self.batches[type][id]

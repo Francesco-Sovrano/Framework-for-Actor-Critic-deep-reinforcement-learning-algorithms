@@ -20,12 +20,7 @@ import agent.plots as plt
 
 import options
 flags = options.get()
-
 import numpy as np
-
-if flags.tracemalloc:
-	import tracemalloc
-	tracemalloc.start()
 
 class Application(object):
 	def __init__(self):
@@ -38,13 +33,6 @@ class Application(object):
 		hdlr.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
 		self.training_logger.addHandler(hdlr) 
 		self.training_logger.setLevel(logging.DEBUG)
-		# Memory usage logger
-		if flags.tracemalloc:
-			self.memory_logger = logging.getLogger('memory_usage')
-			hdlr = logging.FileHandler(flags.log_dir + '/memory_usage.log')
-			hdlr.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
-			self.memory_logger.addHandler(hdlr) 
-			self.memory_logger.setLevel(logging.DEBUG)
 		# Initialize network
 		self.device = "/cpu:0"
 		if flags.use_gpu:
@@ -212,11 +200,6 @@ class Application(object):
 		self.save_important_information(flags.checkpoint_dir + '/{}.pkl'.format(self.global_step))
 		print('Checkpoint saved in ' + flags.checkpoint_dir)
 		
-		# Print memory usage insights
-		if flags.tracemalloc:
-			top_stats = tracemalloc.take_snapshot().statistics('lineno')
-			self.memory_logger.info(str([stat for stat in top_stats[:10]])) 
-	
 		# Restart workers
 		if not self.terminate_reqested:
 			self.stop_requested = False
