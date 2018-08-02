@@ -12,17 +12,21 @@ import os
 import logging
 import time
 import sys
-import pickle
+import _pickle as pickle
 
 from environment.environment import Environment
 from agent.client import Worker
 import agent.plots as plt
+import gc
 
 import options
 flags = options.get()
 import numpy as np
 
 class Application(object):
+	# __slots__ = ('training_logger','train_logfile','sess','global_step','stop_requested','terminate_reqested','lock','device',
+					# 'global_network','trainers','saver','elapsed_time','next_save_steps','train_threads')
+					
 	def __init__(self):
 		if not os.path.isdir(flags.log_dir):
 			os.mkdir(flags.log_dir)
@@ -142,7 +146,7 @@ class Application(object):
 			self.train_threads.append(threading.Thread(target=self.train_function, args=(i,)))
 		signal.signal(signal.SIGINT, self.signal_handler)
 		# set start time
-		self.start_time = time.time() - self.wall_t
+		self.start_time = time.time() - self.elapsed_time
 		for t in self.train_threads:
 			t.start()
 		print('Press Ctrl+C to stop')
@@ -159,15 +163,15 @@ class Application(object):
 			self.global_step = int(tokens[1])
 			print(">>> global step set: ", self.global_step)
 			# set wall time
-			wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_step)
-			with open(wall_t_fname, 'r') as f:
-				self.wall_t = float(f.read())
+			elapsed_time_fname = flags.checkpoint_dir + '/' + 'elapsed_time.' + str(self.global_step)
+			with open(elapsed_time_fname, 'r') as f:
+				self.elapsed_time = float(f.read())
 				self.next_save_steps = (self.global_step + flags.save_interval_step) // flags.save_interval_step * flags.save_interval_step
 			self.load_important_information(flags.checkpoint_dir + '/{0}.pkl'.format(self.global_step))
 			print("Checkpoint loaded: ", checkpoint.model_checkpoint_path)
 		else:
 			# set wall time
-			self.wall_t = 0.0
+			self.elapsed_time = 0.0
 			self.next_save_steps = flags.save_interval_step
 			print("Could not find old checkpoint")
 			
@@ -185,10 +189,10 @@ class Application(object):
 			os.mkdir(flags.checkpoint_dir)
 	
 		# Write wall time
-		wall_t = time.time() - self.start_time
-		wall_t_fname = flags.checkpoint_dir + '/' + 'wall_t.' + str(self.global_step)
-		with open(wall_t_fname, 'w') as f:
-			f.write(str(wall_t))
+		elapsed_time = time.time() - self.start_time
+		elapsed_time_fname = flags.checkpoint_dir + '/' + 'elapsed_time.' + str(self.global_step)
+		with open(elapsed_time_fname, 'w') as f:
+			f.write(str(elapsed_time))
 	
 		# Print plot
 		if flags.compute_plot_when_saving:
@@ -199,6 +203,7 @@ class Application(object):
 		self.saver.save(self.sess, flags.checkpoint_dir + '/checkpoint', global_step=self.global_step)
 		self.save_important_information(flags.checkpoint_dir + '/{}.pkl'.format(self.global_step))
 		print('Checkpoint saved in ' + flags.checkpoint_dir)
+		gc.collect()
 		
 		# Restart workers
 		if not self.terminate_reqested:
@@ -214,11 +219,11 @@ class Application(object):
 	def save_important_information(self, path):
 		trainers_count = len(self.trainers)
 		persistent_memory = {}
-		persistent_memory["train_count_matrix"] = [[]]*trainers_count
+		persistent_memory["train_count_matrix"] = [[] for _ in range(trainers_count)]
 		if flags.replay_ratio > 0:
-			persistent_memory["experience_buffers"] = [None]*trainers_count
+			persistent_memory["experience_buffers"] = [None for _ in range(trainers_count)]
 		if flags.predict_reward:
-			persistent_memory["reward_prediction_buffers"] = [None]*trainers_count
+			persistent_memory["reward_prediction_buffers"] = [None for _ in range(trainers_count)]
 		for i in range(trainers_count):
 			trainer = self.trainers[i]
 			# train counters

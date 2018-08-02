@@ -13,6 +13,7 @@ import collections
 import numpy as np
         
 class GymEnvironment(environment.Environment):
+	__slots__ = ( 'thread_index','real_actions','game','last_action','last_reward','last_state','episodes','use_ram','cumulative_reward','step' )
 	
 	def __init__(self, thread_index, environment_name):
 		environment.Environment.__init__(self)

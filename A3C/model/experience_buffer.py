@@ -3,6 +3,8 @@ import numpy as np
 from collections import deque
 
 class Buffer(object):
+	__slots__ = ('types', 'size', 'batches')
+	
 	def __init__(self, size):
 		self.types = {}
 		self.size = size

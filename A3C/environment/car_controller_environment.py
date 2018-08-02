@@ -7,6 +7,7 @@ from scipy import optimize
 import options
 flags = options.get()
 
+from bisect import bisect_right
 from collections import deque
 import matplotlib
 matplotlib.use('Agg') # non-interactive back-end
@@ -15,9 +16,13 @@ from matplotlib import pyplot as plt
 from environment.environment import Environment
 	
 class CarControllerEnvironment(Environment):
+	__slots__ = ( 'thread_index','max_distance_to_path','max_noise_diameter','speed','max_angle_degrees','max_angle_radians','points_number','max_step',
+					'noise_per_step', 'episodes', 'U1', 'V1', 'U2', 'V2', 'points',
+					'car_point_noisy', 'path', 'cumulative_reward', 'step', 'progress_position', 'next_idx_noisy', 
+					'last_action', 'last_state' )
 
 	def get_state_shape(self):
-		return (1,5,2)
+		return (1,6,2)
 
 	def get_action_shape(self):
 		return (1,) # steering angle, continuous control
@@ -25,13 +30,14 @@ class CarControllerEnvironment(Environment):
 	def __init__(self, thread_index):
 		Environment.__init__(self)
 		self.thread_index = thread_index
-		self.max_distance_to_path = .5
-		self.noise = .2
-		self.speed = .1 # meters per step
+		self.max_distance_to_path = 0.1 # meters
+		self.max_noise_diameter = 0.4 # diameter in meters
+		self.speed = 0.1 # meters per step (assuming a step each 0.1 seconds -> 3.6km/h)
 		self.max_angle_degrees = 45
-		self.points_number = 100
-		self.max_steps = self.points_number
 		self.max_angle_radians = convert_degree_to_radians(self.max_angle_degrees)
+		self.points_number = 100
+		self.max_step = self.points_number
+		self.noise_per_step = self.max_noise_diameter/self.max_step
 		# evaluator stuff
 		self.episodes = deque()
 		
@@ -49,100 +55,114 @@ class CarControllerEnvironment(Environment):
 		return x, y
 		
 	def is_terminal_position(self, position):
-		return position > self.points_number
+		return position >= self.points_number
 		
 	def reset(self):
-		self.car_position = (0, 0) #car position and orientation are always expressed with respect to the initial position and orientation of the road fragment
+		self.car_point_noisy = self.car_point = (0, 0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
 		self.path = self.build_random_path()
-		self.relative_path, self.next_position = get_relative_path_and_next_position(point=self.car_position, path=self.path) #now we shift to car vision
-		if self.is_terminal_position(self.next_position):
-			reset()
-		else:
-			self.cumulative_reward = 0
-			self.last_action = 0
-			self.last_state = self.get_state(car_position=self.car_position)
-			self.last_reward = 0
-			self.steps = 0
-			self.progress_point = 0
+		self.cumulative_reward = 0
+		self.step = 0
+		self.progress_position = 0
+		self.next_idx_noisy = self.next_idx = 1
+		self.last_action = 0
+		self.last_state = self.get_state(self.car_point_noisy, self.next_idx_noisy)
 		
-	def get_last_action_reward(self):
-		return [self.last_action, self.last_reward]
+	def get_car_position_and_next_position_id(self, car_point):
+		car_x, car_y = car_point
+		def get_distance(position):
+			x, y = poly(position,self.U1), poly(position,self.V1)
+			return euclidean_distance(car_point,(x,y))
+		result = optimize.minimize_scalar(get_distance, bounds=(0,1)) # find the closest spline point
+		car_position = result.x
+		# Find leftmost value greater than x: the next_position_id
+		next_position_id = bisect_right(self.points, car_position)
+		# print(car_position, next_position_id)
+		return car_position, next_position_id
 		
-	def compute_new_car_position(self, car_position, compensation_angle):
-		car_x, car_y = car_position
-		car_angle = norm(angle(self.points[self.next_position], self.U1, self.V1)) # use the tangent to path as default direction -> more stable results
+	def compute_new_car_point(self, car_point, next_position_id, compensation_angle):
+		car_x, car_y = car_point
+		car_angle = norm(angle(self.points[next_position_id], self.U1, self.V1)) # use the tangent to path as default direction -> more stable results
 		car_angle = norm(car_angle + compensation_angle) # adjust the default direction using the compensation_angle
-		# update position
+		# change point
 		car_x += self.speed*np.cos(car_angle)
 		car_y += self.speed*np.sin(car_angle)
-		# car_x += self.speed*np.cos(compensation_angle)
-		# car_y += self.speed*np.sin(compensation_angle)
 		return (car_x, car_y)
 		
-	def get_noisy_position(self, position):
-		x, y = position
-		# add noise to position
-		x += (2*np.random.random()-1)*self.noise
-		y += (2*np.random.random()-1)*self.noise
+	def get_noisy_point(self, point):
+		x, y = point
+		# add noise to point
+		x += (2*np.random.random()-1)*self.noise_per_step
+		y += (2*np.random.random()-1)*self.noise_per_step
 		return (x, y)
 
 	def process(self, policy):
-		self.steps += 1
 		policy_choice=0
 		action = np.clip(policy[policy_choice],0,1)
-		# get agent steering angle and car position
+		# get compensation angle
 		compensation_angle = (2*action-1)*self.max_angle_radians
-		# update car position
-		self.car_position = self.compute_new_car_position(car_position=self.car_position, compensation_angle=compensation_angle)
-		# update next position
-		self.relative_path, new_next_position = get_relative_path_and_next_position(point=self.car_position, path=self.path) # shift path to car vision
-		if new_next_position > self.next_position:
-			self.next_position = new_next_position
-		# get state and reward
-		state = self.get_state(car_position=self.get_noisy_position(self.car_position))
-		reward = self.get_reward(car_position=self.car_position, next_position=self.next_position)
-		terminal = self.is_terminal_position(self.next_position) or self.steps >= self.max_steps
-		# populate statistics
-		if terminal:
-			self.episodes.append( {"reward":self.cumulative_reward, "step": self.steps, "completed": 1 if self.is_terminal_position(self.next_position) else 0} )
-			if len(self.episodes) > flags.match_count_for_evaluation:
-				self.episodes.popleft()
+		# update car point
+		self.car_point = self.compute_new_car_point(self.car_point, self.next_idx, compensation_angle)
+		self.car_point_noisy = self.get_noisy_point(self.compute_new_car_point(self.car_point_noisy, self.next_idx_noisy, compensation_angle))
+		# update position and direction
+		car_position, next_idx = self.get_car_position_and_next_position_id(self.car_point)
+		_, next_idx_noisy = self.get_car_position_and_next_position_id(self.car_point_noisy)
+		# compute reward (before updating progress position)
+		reward = self.get_reward(self.car_point, self.progress_position, car_position)
+		# update progress
+		if car_position > self.progress_position: # is moving toward next position
+			self.progress_position = car_position
+			self.next_idx = next_idx
+		if next_idx_noisy > self.next_idx_noisy:
+			self.next_idx_noisy = next_idx_noisy
+		# compute state (after updating progress)
+		state = self.get_state(self.car_point_noisy, self.next_idx_noisy)
 		# update last action/state/reward
 		self.last_state = state
-		self.last_reward = reward
 		self.last_action = action
 		# update cumulative reward
 		self.cumulative_reward += reward
+		# update step
+		self.step += 1
+		terminal = self.is_terminal_position(self.next_idx) or self.is_terminal_position(self.next_idx_noisy) or self.step >= self.max_step
+		if terminal: # populate statistics
+			self.episodes.append( {"reward":self.cumulative_reward, "step": self.step, "completed": 1 if self.is_terminal_position(self.next_idx) else 0} )
+			if len(self.episodes) > flags.match_count_for_evaluation:
+				self.episodes.popleft()
 		return policy_choice, state, reward, terminal
 		
-	def get_reward(self, car_position, next_position):
-		car_x, car_y = car_position
-		def get_distance(point):
-			x, y = poly(point,self.U1), poly(point,self.V1)
-			return math.sqrt((car_x-x)**2 + (car_y-y)**2)
-		a = self.progress_point
-		b = self.points[next_position] if next_position < self.points_number else 1
-		result = optimize.minimize_scalar(get_distance, bounds=(a,b)) # find the closest spline point
-		if result.x > self.progress_point: # is moving toward next position
-			self.progress_point = result.x
-			distance = get_distance(self.points[next_position]) if next_position < self.points_number else get_distance(1)
-			return 1 - np.clip(distance/self.max_distance_to_path,0,1) # always in [0,1] # smaller distances to path give higher rewards
-		return -1 # is NOT moving toward next position
+	def get_concatenation_size(self):
+		return 1
 		
-	def get_state(self, car_position):
-		car_x, car_y = car_position
+	def get_concatenation(self):
+		return [self.last_action]
+		
+	def get_reward(self, car_point, progress_position, car_position):
+		if car_position >= progress_position: # is moving toward next position
+			x, y = poly(car_position,self.U1), poly(car_position,self.V1)
+			distance = euclidean_distance(car_point,(x,y))
+			# distance = get_distance(self.points[next_position_id]) if next_position_id < self.points_number else get_distance(1)
+			return 1 - np.clip(distance/self.max_distance_to_path,0,1) # always in [0,1] # smaller distances to path give higher rewards
+		return 0 # is NOT moving toward next position
+		
+	def get_state(self, car_point, next_position_id):
+		if next_position_id >= self.points_number:
+			next_position_id = self.points_number - 1
+		xs, ys = self.path
+		next_x, next_y = xs[next_position_id], ys[next_position_id]
+		car_x, car_y = car_point
 		shape = self.get_state_shape()
 		state = np.zeros(shape)
 		state[0][0] = [car_x, car_y]
-		for i in range(1,shape[1]):
-			state[0][i] = [self.U1[i-1],self.V1[i-1]]
+		state[0][1] = [next_x, next_y]
+		for i in range(len(self.U1)):
+			state[0][2+i] = [self.U1[i],self.V1[i]]
 		return state
 		
 	def get_screen(self):
-		xc, yc = self.relative_path
-		position = self.next_position
-		xct = xc[position:min(position+self.points_number,2*self.points_number)] if position < len(xc) else []
-		yct = yc[position:min(position+self.points_number,2*self.points_number)] if position < len(xc) else []
+		relative_path, position_id = get_relative_path_and_next_position_id(point=self.car_point, path=self.path)
+		xc, yc = relative_path
+		xct = xc[position_id:min(position_id+self.points_number,2*self.points_number)] if position_id < len(xc) else []
+		yct = yc[position_id:min(position_id+self.points_number,2*self.points_number)] if position_id < len(xc) else []
 		return (xct,yct)
 		
 	def get_frame_info(self, network, observation, policy, value, action, reward):
@@ -253,12 +273,18 @@ def norm(angle):
 def convert_degree_to_radians(degree):
 	return (degree/180)*np.pi
 	
-def get_relative_path_and_next_position(point, path):
+def get_relative_path_and_next_position_id(point, path):
 	point_x, point_y = point
 	path_xs, path_ys = path
 	relative_path = shift_and_rotate(path_xs, path_ys, -point_x, -point_y, 0)
 	xc, yc = relative_path
-	next_position = 0
-	while next_position < len(xc) and xc[next_position] < 0:
-		next_position +=1
-	return relative_path, next_position
+	next_position_id = 0
+	while next_position_id < len(xc) and xc[next_position_id] < 0:
+		next_position_id +=1
+	return relative_path, next_position_id
+	
+def euclidean_distance(a,b):
+	sum = 0
+	for i in range(len(a)):
+		sum += (a[i]-b[i])**2
+	return math.sqrt(sum)

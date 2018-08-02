@@ -194,9 +194,12 @@ class BaseAC_Network(object):
 		return self.train_keys # get model variables
 		
 	def get_action_vector(self, action=None): # transform action into a 1-hot-vector
+		if type(action) not in [list,tuple]:
+			action = [action]
 		if self._policy_depth < 2:
 			hot_vector = np.zeros([self._policy_length])
-			hot_vector[action] = 1.0
+			for i in range(len(action)):
+				hot_vector[action[i]] = 1.0
 			return hot_vector
 		else:
 			hot_vector = np.zeros([self._policy_length, self._policy_depth])

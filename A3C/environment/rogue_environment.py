@@ -18,6 +18,7 @@ from environment import environment
 from rogueinabox.box import RogueBox
 
 class RogueEnvironment(environment.Environment):
+	__slots__ = ( 'thread_index','real_actions','game','last_action','last_reward','last_state' )
 		
 	def get_action_shape(self):
 		return (len(self.real_actions),1)
@@ -70,7 +71,7 @@ class RogueEnvironment(environment.Environment):
 			heatmap_states = self.game.compute_walkable_states()
 			(screen_x,screen_y,_) = self.get_screen_shape()
 			value_map = np.zeros((screen_x, screen_y))
-			concat=self.get_last_action_reward()
+			concat = self.get_concatenation() if flags.use_concatenation else None
 			for (heatmap_state,(x,y)) in heatmap_states:
 				value_map[x][y] = network.estimate_value(state=heatmap_state, concat=concat)
 			frame_dict["heatmap"] = value_map

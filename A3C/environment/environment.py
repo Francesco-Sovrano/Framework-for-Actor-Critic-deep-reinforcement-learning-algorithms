@@ -21,11 +21,14 @@ class Environment(object):
 	def choose_action(self, pi_values):
 		return np.random.choice(range(len(pi_values)), p=pi_values)
 		
-	def get_last_action_reward(self):
-		action_reward = np.zeros(self.get_action_shape()[0]+1)
-		action_reward[self.last_action]=1
-		action_reward[-1] = self.last_reward
-		return action_reward
+	def get_concatenation_size(self):
+		return self.get_action_shape()[0]+1
+		
+	def get_concatenation(self):
+		concatenation = np.zeros(self.get_concatenation_size())
+		concatenation[self.last_action]=1
+		concatenation[-1] = self.last_reward
+		return concatenation
 
 	def __init__(self):
 		pass

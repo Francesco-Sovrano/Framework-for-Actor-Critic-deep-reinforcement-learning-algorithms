@@ -70,7 +70,7 @@ class KMeansPartitioner(BasicManager):
 		return self.partitioner_trained and step%flags.partitioner_granularity==0
 		
 	def act(self, act_function, state, concat=None):
-		if self.query_partitioner(self.batch["size"]):
+		if self.query_partitioner(self.batch.size):
 			self.agent_id = self.get_state_partition(state)
 		return super().act(act_function, state, concat)
 		
@@ -91,7 +91,7 @@ class KMeansPartitioner(BasicManager):
 					self.buffer.clean()
 			
 	def bootstrap(self, state, concat=None):
-		if self.query_partitioner(self.batch["size"]):
+		if self.query_partitioner(self.batch.size):
 			self.agent_id = self.get_state_partition(state)
 		super().bootstrap(state, concat)
 			
@@ -99,7 +99,7 @@ class KMeansPartitioner(BasicManager):
 		batch = super().compute_cumulative_reward(batch)
 		# populate partitioner training set
 		if not self.partitioner_trained and not self.is_global_network():
-			self.global_network.populate_partitioner(states=batch["states"][self.agent_id]) # if the partitioner is not trained, al the states are associated to the current agent
+			self.global_network.populate_partitioner(states=batch.states[self.agent_id]) # if the partitioner is not trained, al the states are associated to the current agent
 			self.partitioner_trained = self.global_network.partitioner_trained
 			if self.partitioner_trained:
 				self.partitioner = copy.deepcopy(self.global_network.partitioner)

@@ -24,6 +24,9 @@ PERFORMANCE_LOG_INTERVAL = 1000
 
 
 class Worker(object):
+	__slots__ = ( 'reward_logger','max_reward','environment','local_network','global_network','terminal','local_t','prev_local_t','terminated_episodes','stats',
+					'frame_info_list','episode_reward','training','thread_index','device','start_time')
+	
 	def get_model_manager(self):
 		if flags.partition_count < 2:
 			return "BasicManager"
@@ -52,7 +55,7 @@ class Worker(object):
 		if self.training:
 			state_shape = self.environment.get_state_shape()
 			action_shape = self.environment.get_action_shape()
-			concat_size = action_shape[0]+1 if flags.concat_last_action_reward else 0
+			concat_size = self.environment.get_concatenation_size() if flags.use_concatenation else 0
 			self.local_network = eval(self.get_model_manager())(
 				session=session, 
 				device=self.device, 
@@ -190,7 +193,7 @@ class Worker(object):
 			new_state, policy, value, action, reward, self.terminal = self.local_network.act( 
 				act_function=self.environment.process, 
 				state=state,
-				concat=self.environment.get_last_action_reward() if flags.concat_last_action_reward else None
+				concat=self.environment.get_concatenation() if flags.use_concatenation else None
 			)
 			self.episode_reward += reward
 			
@@ -202,7 +205,7 @@ class Worker(object):
 			
 		if self.training: # train using batch
 			if not self.terminal:
-				self.local_network.bootstrap(state=new_state, concat=self.environment.get_last_action_reward() if flags.concat_last_action_reward else None)
+				self.local_network.bootstrap(state=new_state, concat=self.environment.get_concatenation() if flags.use_concatenation else None)
 			self.local_network.process_batch(global_step)
 		return step
 

@@ -10,6 +10,7 @@ def build():
 	tf.app.flags.DEFINE_boolean("use_gpu", False, "whether to use the GPU")
 	tf.app.flags.DEFINE_integer("max_time_step", 2*10**8, "max time steps")
 # Environment
+	# tf.app.flags.DEFINE_string("env_type", "car_controller", "environment types: rogue, car_controller, or environments from https://gym.openai.com/envs")
 	# tf.app.flags.DEFINE_string("env_type", "MontezumaRevenge-ram-v0", "environment types: rogue, or environments from https://gym.openai.com/envs")
 	tf.app.flags.DEFINE_string("env_type", "rogue", "environment types: rogue, or environments from https://gym.openai.com/envs")
 # Gradient optimization parameters
@@ -43,7 +44,7 @@ def build():
 	tf.app.flags.DEFINE_integer("alpha_decay_steps", 10**5, "decay alpha every x steps")
 	tf.app.flags.DEFINE_float("alpha_decay_rate", 0.96, "decay rate")
 # Last Action-Reward: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
-	tf.app.flags.DEFINE_boolean("concat_last_action_reward", True, "Whether to concatenate the last action-reward vector in the network.")
+	tf.app.flags.DEFINE_boolean("use_concatenation", True, "Whether to concatenate the last action-reward vector in the network.")
 # Reward Prediction: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
 	tf.app.flags.DEFINE_boolean("predict_reward", True, "Whether to predict rewards. This is useful with sparse rewards.")
 	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 128, "Maximum number of batches stored in the reward prediction buffer")
