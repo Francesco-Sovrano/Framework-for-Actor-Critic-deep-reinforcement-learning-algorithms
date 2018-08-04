@@ -6,12 +6,20 @@ class Buffer(object):
 	__slots__ = ('types', 'size', 'batches')
 	
 	def __init__(self, size):
-		self.types = {}
 		self.size = size
 		self.clean()
 		
 	def clean(self):
+		self.types = {}
 		self.batches = []
+		
+	def get_batches(self, type_id=None):
+		if type_id is None:
+			result = []
+			for type in range(len(self.types)):
+				result += self.batches[type]
+			return result
+		return self.batches[self.get_type(type_id)]
 
 	def has_atleast(self, frames, type=None):
 		if type is None:

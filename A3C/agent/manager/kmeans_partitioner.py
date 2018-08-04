@@ -77,18 +77,19 @@ class KMeansPartitioner(BasicManager):
 	def populate_partitioner(self, states):
 		# assert self.is_global_network(), 'only global network can populate partitioner'
 		with self.lock:
-			for i in range(0,len(states),flags.partitioner_granularity):
-				state = states[i]
-				self.buffer.put(batch=state.flatten())
-				if self.buffer.is_full():
-					print ("Buffer is full, starting partitioner training")
-					self.partitioner.fit( [batch for (batch,type) in self.buffer.batches] )
-					print ("Partitioner trained")
-					self.partitioner_trained = True
-					print ("Syncing with training net")
-					self.sync_with_training_net()
-					print ("Cleaning buffer")
-					self.buffer.clean()
+			if not self.partitioner_trained:
+				for i in range(0,len(states),flags.partitioner_granularity):
+					state = states[i]
+					self.buffer.put(batch=state.flatten())
+					if self.buffer.is_full():
+						print ("Buffer is full, starting partitioner training")
+						self.partitioner.fit(self.buffer.get_batches())
+						print ("Partitioner trained")
+						self.partitioner_trained = True
+						print ("Syncing with training net")
+						self.sync_with_training_net()
+						print ("Cleaning buffer")
+						self.buffer.clean()
 			
 	def bootstrap(self, state, concat=None):
 		if self.query_partitioner(self.batch.size):
