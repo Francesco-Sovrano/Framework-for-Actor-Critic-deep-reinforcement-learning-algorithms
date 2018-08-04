@@ -8,9 +8,9 @@ import threading
 import numpy as np
 import copy
 
-from model.network import *
-from model.experience_buffer import Buffer
-from model.manager import BasicManager
+from agent.network import *
+from agent.experience_buffer import Buffer
+from agent.manager import BasicManager
 from sklearn.cluster import KMeans
 
 import options

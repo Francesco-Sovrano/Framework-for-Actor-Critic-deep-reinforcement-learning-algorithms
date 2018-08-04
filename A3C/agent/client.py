@@ -13,7 +13,7 @@ import time
 import agent.plots as plt
 
 from environment.environment import Environment
-from model.manager import *
+from agent.manager import *
 
 # get command line args
 import options
@@ -24,8 +24,8 @@ PERFORMANCE_LOG_INTERVAL = 1000
 
 
 class Worker(object):
-	__slots__ = ( 'reward_logger','max_reward','environment','local_network','global_network','terminal','local_t','prev_local_t','terminated_episodes','stats',
-					'frame_info_list','episode_reward','training','thread_index','device','start_time')
+	#__slots__ = ( 'reward_logger','max_reward','environment','local_network','global_network','terminal','local_t','prev_local_t','terminated_episodes','stats',
+	#				'frame_info_list','episode_reward','training','thread_index','device','start_time')
 	
 	def get_model_manager(self):
 		if flags.partition_count < 2:

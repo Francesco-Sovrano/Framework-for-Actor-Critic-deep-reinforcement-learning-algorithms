@@ -7,21 +7,15 @@ if [ ! -d ".env" ]; then
 	virtualenv -p python3 .env
 fi
 . .env/bin/activate
+
+# upgrade pip
 pip install --upgrade pip
 
-# install OpenAI baselines
-cd .env
-if [ ! -d "baselines" ]; then
-	git clone https://github.com/openai/baselines.git
-fi
-cd ./baselines
-pip install -e .
-cd ../..
-
-pip install tensorflow matplotlib seaborn numpy scipy scikit-image pyte vtk sklearn
-pip install gym[atari]
-# pip install pytest
-# pytest
-
+pip install --compile tensorflow numpy scipy sklearn
+pip install --compile matplotlib seaborn imageio
+# install gym
+pip install --compile gym[atari]
+# install rogue
+pip install --compile pyte vtk
 bash ./Rogue/build_with_no_monsters.sh
 bash ./Rogue/build_with_monsters.sh

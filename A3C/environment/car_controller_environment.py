@@ -16,10 +16,6 @@ from matplotlib import pyplot as plt
 from environment.environment import Environment
 	
 class CarControllerEnvironment(Environment):
-	__slots__ = ( 'thread_index','max_distance_to_path','max_noise_diameter','speed','max_angle_degrees','max_angle_radians','points_number','max_step',
-					'noise_per_step', 'episodes', 'U1', 'V1', 'U2', 'V2', 'points',
-					'car_point_noisy', 'path', 'cumulative_reward', 'step', 'progress_position', 'next_idx_noisy', 
-					'last_action', 'last_state' )
 
 	def get_state_shape(self):
 		return (1,6,2)
@@ -58,14 +54,16 @@ class CarControllerEnvironment(Environment):
 		return position >= self.points_number
 		
 	def reset(self):
-		self.car_point_noisy = self.car_point = (0, 0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
 		self.path = self.build_random_path()
+		self.noisy_point = self.car_point = (0, 0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
+		self.noisy_progress = self.car_progress = 0
+		self.noisy_waypoint = self.car_waypoint = 1
+		
 		self.cumulative_reward = 0
 		self.step = 0
-		self.progress_position = 0
-		self.next_idx_noisy = self.next_idx = 1
 		self.last_action = 0
-		self.last_state = self.get_state(self.car_point_noisy, self.next_idx_noisy)
+		self.last_reward = 0
+		self.last_state = self.get_state(self.car_point, self.car_waypoint)
 		
 	def get_car_position_and_next_position_id(self, car_point):
 		car_x, car_y = car_point
@@ -100,49 +98,50 @@ class CarControllerEnvironment(Environment):
 		action = np.clip(policy[policy_choice],0,1)
 		# get compensation angle
 		compensation_angle = (2*action-1)*self.max_angle_radians
-		# update car point
-		self.car_point = self.compute_new_car_point(self.car_point, self.next_idx, compensation_angle)
-		self.car_point_noisy = self.get_noisy_point(self.compute_new_car_point(self.car_point_noisy, self.next_idx_noisy, compensation_angle))
+		# update perceived car point
+		self.car_point = self.compute_new_car_point(self.car_point, self.car_waypoint, compensation_angle)
+		# update real car point
+		self.noisy_point = self.get_noisy_point(self.compute_new_car_point(self.noisy_point, self.car_waypoint, compensation_angle)) # use perceived waypoint here!
 		# update position and direction
-		car_position, next_idx = self.get_car_position_and_next_position_id(self.car_point)
-		_, next_idx_noisy = self.get_car_position_and_next_position_id(self.car_point_noisy)
-		# compute reward (before updating progress position)
-		reward = self.get_reward(self.car_point, self.progress_position, car_position)
-		# update progress
-		if car_position > self.progress_position: # is moving toward next position
-			self.progress_position = car_position
-			self.next_idx = next_idx
-		if next_idx_noisy > self.next_idx_noisy:
-			self.next_idx_noisy = next_idx_noisy
+		car_position, car_waypoint = self.get_car_position_and_next_position_id(self.car_point)
+		noisy_position, noisy_waypoint = self.get_car_position_and_next_position_id(self.noisy_point)
+		# compute real reward
+		noisy_reward = self.get_reward(self.noisy_point, self.noisy_progress, noisy_position)
+		if noisy_position > self.noisy_progress: # is moving toward next position
+			self.noisy_progress = noisy_position # progress update
+			self.noisy_waypoint = noisy_waypoint
+		# compute perceived reward
+		car_reward = self.get_reward(self.car_point, self.car_progress, car_position)
+		if car_position > self.car_progress: # is moving toward next position
+			self.car_progress = car_position # progress update
+			self.car_waypoint = car_waypoint
 		# compute state (after updating progress)
-		state = self.get_state(self.car_point_noisy, self.next_idx_noisy)
+		state = self.get_state(self.car_point, self.car_waypoint)
 		# update last action/state/reward
 		self.last_state = state
 		self.last_action = action
+		self.last_reward = car_reward
 		# update cumulative reward
-		self.cumulative_reward += reward
+		self.cumulative_reward += noisy_reward
 		# update step
 		self.step += 1
-		terminal = self.is_terminal_position(self.next_idx) or self.is_terminal_position(self.next_idx_noisy) or self.step >= self.max_step
+		terminal = self.is_terminal_position(self.car_waypoint) or self.is_terminal_position(self.noisy_waypoint) or self.step >= self.max_step
 		if terminal: # populate statistics
-			self.episodes.append( {"reward":self.cumulative_reward, "step": self.step, "completed": 1 if self.is_terminal_position(self.next_idx) else 0} )
+			self.episodes.append( {"reward":self.cumulative_reward, "step": self.step, "completed": 1 if self.is_terminal_position(self.car_waypoint) else 0} )
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
-		return policy_choice, state, reward, terminal
-		
-	def get_concatenation_size(self):
-		return 1
+		return policy_choice, state, noisy_reward, terminal
 		
 	def get_concatenation(self):
-		return [self.last_action]
+		return [self.last_action, self.last_reward]
 		
-	def get_reward(self, car_point, progress_position, car_position):
-		if car_position >= progress_position: # is moving toward next position
+	def get_reward(self, car_point, car_progress, car_position):
+		if car_position > car_progress: # is moving toward next position
 			x, y = poly(car_position,self.U1), poly(car_position,self.V1)
 			distance = euclidean_distance(car_point,(x,y))
 			# distance = get_distance(self.points[next_position_id]) if next_position_id < self.points_number else get_distance(1)
 			return 1 - np.clip(distance/self.max_distance_to_path,0,1) # always in [0,1] # smaller distances to path give higher rewards
-		return 0 # is NOT moving toward next position
+		return -0.1 # is NOT moving toward next position
 		
 	def get_state(self, car_point, next_position_id):
 		if next_position_id >= self.points_number:

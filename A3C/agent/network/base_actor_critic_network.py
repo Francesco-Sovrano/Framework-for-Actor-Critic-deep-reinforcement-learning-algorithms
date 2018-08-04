@@ -9,8 +9,8 @@ import numpy as np
 import options
 flags = options.get()
 
-from model.loss.policy_loss import PolicyLoss
-from model.loss.value_loss import ValueLoss
+from agent.loss.policy_loss import PolicyLoss
+from agent.loss.value_loss import ValueLoss
 
 class BaseAC_Network(object):
 	def __init__(self, session, id, state_shape, action_shape, entropy_beta, clip, device, predict_reward, concat_size=0, training=True):
@@ -212,7 +212,7 @@ class BaseAC_Network(object):
 		
 	def run_policy_and_value(self, states, concats=None, lstm_state=None):
 		feed_dict = { 
-				self._input : states, 
+				self._input : states,
 				self._initial_lstm_state: lstm_state if lstm_state is not None else self.get_empty_lstm_state()
 			}
 		if self._concat_size > 0:

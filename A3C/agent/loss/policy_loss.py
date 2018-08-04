@@ -9,7 +9,7 @@ import numpy as np
 import options
 flags = options.get()
 
-from model.loss.loss import Loss
+from agent.loss.loss import Loss
 
 class PolicyLoss(Loss):
 		

@@ -17,7 +17,7 @@ import _pickle as pickle
 from environment.environment import Environment
 from agent.client import Worker
 import agent.plots as plt
-import gc
+# import gc
 
 import options
 flags = options.get()
@@ -25,7 +25,7 @@ import numpy as np
 
 class Application(object):
 	# __slots__ = ('training_logger','train_logfile','sess','global_step','stop_requested','terminate_reqested','lock','device',
-					# 'global_network','trainers','saver','elapsed_time','next_save_steps','train_threads')
+	#				 'global_network','trainers','saver','elapsed_time','next_save_steps','train_threads')
 					
 	def __init__(self):
 		if not os.path.isdir(flags.log_dir):
@@ -174,6 +174,7 @@ class Application(object):
 			self.elapsed_time = 0.0
 			self.next_save_steps = flags.save_interval_step
 			print("Could not find old checkpoint")
+		self.sess.graph.finalize()
 			
 	def save(self):
 		""" Save checkpoint. 
@@ -203,7 +204,7 @@ class Application(object):
 		self.saver.save(self.sess, flags.checkpoint_dir + '/checkpoint', global_step=self.global_step)
 		self.save_important_information(flags.checkpoint_dir + '/{}.pkl'.format(self.global_step))
 		print('Checkpoint saved in ' + flags.checkpoint_dir)
-		gc.collect()
+		# gc.collect()
 		
 		# Restart workers
 		if not self.terminate_reqested:
