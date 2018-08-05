@@ -222,7 +222,7 @@ class BasicManager(object):
 			new_values, new_lstm_state = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
 			batch.set_step_action({'lstm_states':lstm_state,'values':new_values[0]}, i)
 			lstm_state = new_lstm_state
-		if len(batch.bootstrap) > 0:
+		if 'value' in batch.bootstrap:
 			bootstrap = batch.bootstrap
 			values, _ = self.estimate_value(agent_id=bootstrap['agent_id'], states=[bootstrap['state']], concats=[bootstrap['concat']], lstm_state=lstm_state)
 			bootstrap['value'] = values[0]

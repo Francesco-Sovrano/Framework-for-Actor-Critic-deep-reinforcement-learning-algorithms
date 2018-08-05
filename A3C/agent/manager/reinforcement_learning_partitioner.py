@@ -91,7 +91,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		# init values
 		new_batch = ExperienceBatch(self.model_size)
 		# replay values
-		lstm_states = batch.get_step_action('lstm_states', 0)
+		lstm_state = batch.get_step_action('lstm_states', 0)
 		for i in range(batch.size):
 			state, concat, reward, policy, action = batch.get_step_action(['states','concats','rewards','policies','actions'], i)
 			if self.query_partitioner(i):
@@ -101,7 +101,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 			new_batch.add_agent_action(agent_id, state, concat, action, reward, new_values[0], policy, lstm_state, memorize_step=True)
 			lstm_state = new_lstm_state
 			
-		if len(batch.bootstrap) > 0:
+		if 'manager_value' in batch.bootstrap:
 			new_batch.bootstrap = batch.bootstrap
 			bootstrap = new_batch.bootstrap
 			state = bootstrap['state']
