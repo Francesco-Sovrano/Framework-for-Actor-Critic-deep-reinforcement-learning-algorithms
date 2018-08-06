@@ -226,7 +226,7 @@ class BasicManager(object):
 			bootstrap = batch.bootstrap
 			values, _ = self.estimate_value(agent_id=bootstrap['agent_id'], states=[bootstrap['state']], concats=[bootstrap['concat']], lstm_state=lstm_state)
 			bootstrap['value'] = values[0]
-		return self.compute_cumulative_reward(batch).finalize()
+		return self.compute_cumulative_reward(batch)
 		
 	def should_save_batch(self, batch):
 		# Prioritize smaller batches because they have terminated prematurely, thus they are probably more important and also faster to process
@@ -245,11 +245,11 @@ class BasicManager(object):
 				states = np.array([batch.get_step_action('states', j)  for j in range(i-rp_frame_length, i)]) # cast list to np.array to avoid tensorflow memory leaks
 				target = np.zeros((1,3))
 				if reward == 0:
-					target[0][0] = 1.0 # zero
+					target[0][0] = 1 # zero
 				elif reward > 0:
-					target[0][1] = 1.0 # positive
+					target[0][1] = 1 # positive
 				else:
-					target[0][2] = 1.0 # negative
+					target[0][2] = 1 # negative
 				self.reward_prediction_buffer.put(batch=RewardPredictionBatch(states, target), type_id=type_id)
 			
 	def add_to_replay_buffer(self, batch):
@@ -277,4 +277,4 @@ class BasicManager(object):
 				for _ in range(n):
 					old_batch = self.experience_buffer.get()
 					self.train(self.replay_value(old_batch) if flags.replay_value else old_batch)
-			self.add_to_replay_buffer(batch.finalize())
+			self.add_to_replay_buffer(batch)

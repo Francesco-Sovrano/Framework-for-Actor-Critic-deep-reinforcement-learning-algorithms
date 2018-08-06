@@ -29,7 +29,7 @@ class CarControllerEnvironment(Environment):
 		self.max_distance_to_path = 0.1 # meters
 		self.max_noise_diameter = 0.4 # diameter in meters
 		self.speed = 0.1 # meters per step (assuming a step each 0.1 seconds -> 3.6km/h)
-		self.max_angle_degrees = 45
+		self.max_angle_degrees = 30
 		self.max_angle_radians = convert_degree_to_radians(self.max_angle_degrees)
 		self.positions_number = 100
 		self.max_step = self.positions_number
@@ -78,10 +78,14 @@ class CarControllerEnvironment(Environment):
 		return car_position, next_waypoint
 		
 	def compute_new_car_point(self, car_point, next_waypoint, compensation_angle):
-		car_x, car_y = car_point
-		car_angle = norm(angle(self.positions[next_waypoint], self.U1, self.V1)) # use the tangent to path as default direction -> more stable results
-		car_angle = norm(car_angle + compensation_angle) # adjust the default direction using the compensation_angle
+		# get baseline angle
+		xs, ys = self.path
+		relative_path, _ = get_relative_path_and_next_position_id(point=car_point, path=([xs[next_waypoint]], [ys[next_waypoint]]))
+		_, yc = relative_path		
+		baseline_angle = angle(self.positions[next_waypoint], self.U1, self.V1) + np.arctan(yc[0]/(self.speed*10)) # use the tangent to the next waypoint as default direction -> more stable results
+		car_angle = baseline_angle + compensation_angle # adjust the default direction using the compensation_angle
 		# change point
+		car_x, car_y = car_point
 		car_x += self.speed*np.cos(car_angle)
 		car_y += self.speed*np.sin(car_angle)
 		return (car_x, car_y)
@@ -95,7 +99,7 @@ class CarControllerEnvironment(Environment):
 
 	def process(self, policy):
 		policy_choice=0
-		action = np.clip(policy[policy_choice],0,1)
+		action = np.clip(policy[0],0,1)
 		# get compensation angle
 		compensation_angle = (2*action-1)*self.max_angle_radians
 		# update perceived car point
@@ -205,31 +209,31 @@ def rot(x,y,theta):
 
 def shift_and_rotate(xv,yv,dx,dy,theta):
 	#xv and yv are lists
-	xy = zip(xv,yv)
-	xynew = [rot(c[0]+dx,c[1]+dy,theta) for c in xy]
-	xyunzip = list(zip(*xynew))
-	return(xyunzip[0],xyunzip[1])
-	# nex_xv = []
-	# nex_yv = []
-	# for i in range(len(xv)):
-		# x, y = rot(xv[i]+dx,yv[i]+dy,theta)
-		# nex_xv.append(x)
-		# nex_yv.append(y)
-	# return nex_xv, nex_yv
+	# xy = zip(xv,yv)
+	# xynew = [rot(c[0]+dx,c[1]+dy,theta) for c in xy]
+	# xyunzip = list(zip(*xynew))
+	# return(xyunzip[0],xyunzip[1])
+	nex_xv = []
+	nex_yv = []
+	for i in range(len(xv)):
+		x, y = rot(xv[i]+dx,yv[i]+dy,theta)
+		nex_xv.append(x)
+		nex_yv.append(y)
+	return nex_xv, nex_yv
 
 def rotate_and_shift(xv,yv,dx,dy,theta):
 	#xv and yv are lists
-	xy = zip(xv,yv)
-	xynew = [tuple(map(operator.add,rot(c[0],c[1],theta),(dx,dy))) for c in xy]
-	xyunzip = list(zip(*xynew))
-	return(xyunzip[0],xyunzip[1])
-	# nex_xv = []
-	# nex_yv = []
-	# for i in range(len(xv)):
-		# x, y = rot(xv[i],yv[i],theta)
-		# nex_xv.append(x + dx)
-		# nex_yv.append(y + dy)
-	# return nex_xv, nex_yv
+	# xy = zip(xv,yv)
+	# xynew = [tuple(map(operator.add,rot(c[0],c[1],theta),(dx,dy))) for c in xy]
+	# xyunzip = list(zip(*xynew))
+	# return(xyunzip[0],xyunzip[1])
+	nex_xv = []
+	nex_yv = []
+	for i in range(len(xv)):
+		x, y = rot(xv[i],yv[i],theta)
+		nex_xv.append(x + dx)
+		nex_yv.append(y + dy)
+	return nex_xv, nex_yv
 
 def generate_random_polynomial():
 	#both x and y are defined by two polynomials in a third variable p, plus

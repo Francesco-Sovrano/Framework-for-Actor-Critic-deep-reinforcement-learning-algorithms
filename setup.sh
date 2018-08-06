@@ -10,12 +10,12 @@ fi
 
 # upgrade pip
 pip install --upgrade pip
-
-pip install --compile tensorflow numpy scipy sklearn
-pip install --compile matplotlib seaborn imageio
+# install common libraries
+pip install tensorflow numpy scipy sklearn
+pip install matplotlib seaborn imageio
 # install gym
-pip install --compile gym[atari]
+pip install gym[atari]
 # install rogue
-pip install --compile pyte vtk
+pip install pyte vtk
 bash ./Rogue/build_with_no_monsters.sh
 bash ./Rogue/build_with_monsters.sh

@@ -111,7 +111,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 				agent_id = id
 			values, _ = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
 			bootstrap['value'] = values[0]
-		return self.compute_cumulative_reward(new_batch).finalize()
+		return self.compute_cumulative_reward(new_batch)
 			
 	def compute_cumulative_reward(self, batch):
 		manager_discounted_cumulative_reward = 0.0
