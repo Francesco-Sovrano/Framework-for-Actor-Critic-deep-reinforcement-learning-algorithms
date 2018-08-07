@@ -79,9 +79,11 @@ class RogueEnvironment(environment.Environment):
 	def process(self, policy):
 		action = self.choose_action(policy)
 		real_action = self.real_actions[action]
-		reward, new_state, win, lose = self.game.send_command(real_action)
-		
-		self.last_state = new_state["value"]
+		reward, state, win, lose = self.game.send_command(real_action)
+		state = state["value"]
+		terminal = (win or lose)
+		# store last results
+		self.last_state = state
 		self.last_action = action
 		self.last_reward = reward
-		return self.last_action, self.last_state, self.last_reward, (win or lose)
+		return action, state, reward, terminal

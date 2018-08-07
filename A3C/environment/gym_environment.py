@@ -83,15 +83,17 @@ class GymEnvironment(environment.Environment):
 	def process(self, policy):
 		action = self.choose_action(policy)
 		# self.game.render(mode='rgb_array')
-		self.last_state, reward, terminal, info = self.game.step(action)
-		self.last_state = self.normalize(self.last_state)
+		state, reward, terminal, info = self.game.step(action)
+		state = self.normalize(state)
+		# store last results
+		self.last_state = state
 		self.last_action = action
 		self.last_reward = reward
-		
+		# complete step
 		self.cumulative_reward += reward
 		self.step += 1
 		if terminal: # add to statistics
 			self.episodes.append( {"reward":self.cumulative_reward, "step":self.step} )
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
-		return self.last_action, self.last_state, reward, terminal
+		return action, state, reward, terminal

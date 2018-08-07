@@ -158,6 +158,7 @@ class BaseAC_Network(object):
 		batch_layer = bn.apply(logits, training=self._training)
 		mean = bn.moving_mean
 		std = tf.sqrt(bn.moving_variance)
+		# works well for populations that are normally distributed
 		return 0.5 * tf.reduce_sum(tf.square((labels - mean) / std), axis=-1) \
 			   + 0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(labels)[-1]) \
 			   + tf.reduce_sum(tf.log(std), axis=-1)
@@ -173,6 +174,7 @@ class BaseAC_Network(object):
 		bn = tf.layers.BatchNormalization(trainable=True)
 		batch_layer = bn.apply(logits, training=True)
 		std = tf.sqrt(bn.moving_variance)
+		# works well for populations that are normally distributed
 		return tf.reduce_sum(tf.log(std) + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
 			
 	def prepare_loss(self):
@@ -246,12 +248,13 @@ class BaseAC_Network(object):
 		return self.train_keys # get model variables
 		
 	def get_action_vector(self, action=None): # transform action into a 1-hot-vector
-		if type(action) not in [list,tuple]:
-			action = [action]
-		if self.policy_depth < 2:
+		if self.policy_depth == 0:
+			if type(action) not in [list,tuple]:
+				action = [action]
+			return action
+		elif self.policy_depth == 1:
 			hot_vector = np.zeros([self.policy_length])
-			for i in range(len(action)):
-				hot_vector[action[i]] = 1
+			hot_vector[action] = 1
 			return hot_vector
 		else:
 			hot_vector = np.zeros([self.policy_length, self.policy_depth])

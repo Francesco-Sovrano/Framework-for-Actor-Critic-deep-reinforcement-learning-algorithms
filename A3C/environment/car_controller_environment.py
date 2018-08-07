@@ -116,7 +116,6 @@ class CarControllerEnvironment(Environment):
 		return np.clip(speed, self.min_speed, self.max_speed)
 
 	def process(self, policy):
-		policy_choice=[0,1]
 		action = [np.clip(policy[0],0,1),np.clip(policy[1],0,1)]
 		# compute new speed
 		step_acceleration = (2*action[1]-1)*self.max_speed_change_per_step
@@ -163,7 +162,7 @@ class CarControllerEnvironment(Environment):
 			self.episodes.append(stats)
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
-		return policy_choice, state, noisy_reward, terminal
+		return action, state, noisy_reward, terminal
 		
 	def get_concatenation(self):
 		return self.last_action + [self.last_reward]
