@@ -149,8 +149,10 @@ class BasicManager(object):
 		if flags.clip_reward:
 			reward = np.clip(reward, flags.min_reward, flags.max_reward)
 		
-		self.batch.add_agent_action(agent_id, state, concat, agent.get_action_vector(action), reward, value, policy, lstm_state)
-		return new_state, policy, value, action, reward, terminal
+		action_vector = agent.get_action_vector(action)
+		cross_entropy, entropy = agent.run_cross_entropy(actions=[action_vector],states=[state],concats=[concat],lstm_state=lstm_state)
+		self.batch.add_agent_action(agent_id, state, concat, action_vector, cross_entropy, reward, value, policy, lstm_state)
+		return new_state, policy, value, action, reward, terminal, cross_entropy, entropy
 					
 	def compute_cumulative_reward(self, batch):
 		# prepare batch
@@ -179,6 +181,7 @@ class BasicManager(object):
 		states = batch.states
 		concats = batch.concats
 		actions = batch.actions
+		cross_entropies = batch.cross_entropies
 		values = batch.values
 		policies = batch.policies
 		rewards = batch.rewards
@@ -200,6 +203,7 @@ class BasicManager(object):
 				model.train(
 					states=states[i], concats=concats[i],
 					actions=actions[i], values=values[i],
+					cross_entropies=cross_entropies[i],
 					policies=policies[i], rewards=rewards[i],
 					discounted_cumulative_rewards=dcr[i],
 					generalized_advantage_estimators=gae[i],

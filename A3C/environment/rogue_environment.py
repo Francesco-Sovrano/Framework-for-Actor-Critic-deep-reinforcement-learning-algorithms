@@ -48,17 +48,16 @@ class RogueEnvironment(environment.Environment):
 	def get_screen(self):
 		return self.game.get_screen()
 		
-	def get_frame_info(self, network, observation, policy, value, action, reward):
+	def get_frame_info(self, network, observation, policy, value, action, reward, cross_entropy, entropy):
 		# Screen
 		last_frame = self.game.get_frame(-2)	
-		state_info = "reward={}, passages={}, doors={}, below_player={}, agent={}, action={}, value={}\n".format( 
+		state_info = "reward={}, passages={}, doors={}, below_player={}, agent={}, action={}, value={}, cross_entropy={}, entropy={}\n".format( 
 			reward,
 			last_frame.get_tile_count("#"),
 			last_frame.get_tile_count("+"),
 			last_frame.get_tile_below_player(),
 			network.agent_id,
-			action,
-			value
+			action, value, cross_entropy, entropy
 		)
 		policy_info = "policy={}\n".format(policy)
 		# observation_info = "observation={}".format(np.array_str(observation.flatten()))

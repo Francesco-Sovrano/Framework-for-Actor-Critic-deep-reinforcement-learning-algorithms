@@ -2,15 +2,13 @@ from collections import deque
 import numpy as np
 
 class ExperienceBatch(object):
-	#__slots__ = (	'states', 'concats', 'actions', 'rewards', 'values', 'policies', 'lstm_states', 'discounted_cumulative_rewards', 'generalized_advantage_estimators',
-	#	'agent_position_list', 'total_reward', 'size', 'is_terminal',
-	#	'bootstrap', 'manager_value_list')
-	
+
 	def __init__(self, model_size):
 		# action info
 		self.states = [deque() for _ in range(model_size)] # do NOT use [deque]*model_size
 		self.concats = [deque() for _ in range(model_size)]
 		self.actions = [deque() for _ in range(model_size)]
+		self.cross_entropies = [deque() for _ in range(model_size)]
 		self.rewards = [deque() for _ in range(model_size)]
 		self.values = [deque() for _ in range(model_size)]
 		self.policies = [deque() for _ in range(model_size)]
@@ -46,7 +44,7 @@ class ExperienceBatch(object):
 	def get_agent_and_pos(self, index):
 		return self.agent_position_list[index]
 
-	def add_agent_action(self, agent_id, state, concat, action, reward, value, policy, lstm_state=None, memorize_step=True):
+	def add_agent_action(self, agent_id, state, concat, action, cross_entropy, reward, value, policy, lstm_state=None, memorize_step=True):
 		self.states[agent_id].append(state)
 		self.concats[agent_id].append(concat)
 		self.lstm_states[agent_id].append(lstm_state)
@@ -54,6 +52,7 @@ class ExperienceBatch(object):
 		self.values[agent_id].append(value)
 		self.policies[agent_id].append(policy)
 		self.actions[agent_id].append(action)
+		self.cross_entropies[agent_id].append(cross_entropy)
 		if memorize_step:
 			self.agent_position_list.append( (agent_id, len(self.states[agent_id])-1) ) # (agent_id, batch_position)
 			self.size += 1

@@ -9,9 +9,12 @@ import numpy as np
 import options
 flags = options.get()
 
-from agent.loss.loss import Loss
-
-class ValueLoss(Loss):
+class ValueLoss(object):
+	def __init__(self, cliprange, value, old_value, reward):
+		self.cliprange = cliprange
+		self.value = value
+		self.old_value = old_value
+		self.reward = reward
 		
 	def get(self):
 		if flags.value_loss == 'vanilla':

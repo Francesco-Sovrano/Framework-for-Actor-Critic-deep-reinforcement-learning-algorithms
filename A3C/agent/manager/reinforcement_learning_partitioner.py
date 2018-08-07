@@ -75,10 +75,12 @@ class ReinforcementLearningPartitioner(BasicManager):
 		else:
 			has_queried_partitioner = False
 			
-		new_state, policy, value, action, reward, terminal = super().act(act_function, state, concat)
+		new_state, policy, value, action, reward, terminal, cross_entropy, entropy = super().act(act_function, state, concat)
 		if has_queried_partitioner:
-			self.batch.add_agent_action(0, state, None, self.manager.get_action_vector(self.agent_id-1), reward, manager_value, manager_policy, lstm_state, memorize_step=False)
-		return new_state, policy, value, action, reward, terminal
+			action_vector = self.manager.get_action_vector(self.agent_id-1)
+			cross_entropy, entropy = self.manager.run_cross_entropy(actions=[action_vector],states=[state],lstm_state=lstm_state)
+			self.batch.add_agent_action(agent_id=0, state=state, concat=None, action=action_vector, cross_entropy=cross_entropy, reward=reward, value=manager_value, policy=manager_policy, lstm_state=lstm_state, memorize_step=False)
+		return new_state, policy, value, action, reward, terminal, cross_entropy, entropy
 		
 	def bootstrap(self, state, concat=None):
 		id, _, value, _ = self.get_state_partition(state=state, lstm_state=self.lstm_state)
@@ -96,7 +98,9 @@ class ReinforcementLearningPartitioner(BasicManager):
 			state, concat, reward, policy, action = batch.get_step_action(['states','concats','rewards','policies','actions'], i)
 			if self.query_partitioner(i):
 				agent_id, manager_policy, manager_value, _ = self.get_state_partition(state=state, lstm_state=lstm_state)
-				new_batch.add_agent_action(0, state, None, self.manager.get_action_vector(agent_id-1), reward, manager_value, manager_policy, lstm_state, memorize_step=False)
+				action_vector = self.manager.get_action_vector(agent_id-1)
+				cross_entropy, _ = self.manager.run_cross_entropy(actions=[action_vector],states=[state],lstm_state=lstm_state)
+				self.batch.add_agent_action(agent_id=0, state=state, concat=None, action=action_vector, cross_entropy=cross_entropy, reward=reward, value=manager_value, policy=manager_policy, lstm_state=lstm_state, memorize_step=False)
 			new_values, new_lstm_state = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
 			new_batch.add_agent_action(agent_id, state, concat, action, reward, new_values[0], policy, lstm_state, memorize_step=True)
 			lstm_state = new_lstm_state

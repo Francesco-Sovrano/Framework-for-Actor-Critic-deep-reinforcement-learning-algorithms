@@ -21,16 +21,21 @@ class CarControllerEnvironment(Environment):
 		return (1,6,2)
 
 	def get_action_shape(self):
-		return (1,) # steering angle, continuous control
+		return (2,) # steering angle, continuous control without softmax
 	
 	def __init__(self, thread_index):
 		Environment.__init__(self)
 		self.thread_index = thread_index
 		self.max_distance_to_path = 0.1 # meters
 		self.max_noise_diameter = 0.4 # diameter in meters
-		self.speed = 0.1 # meters per step (assuming a step each 0.1 seconds -> 3.6km/h)
-		self.max_angle_degrees = 30
-		self.max_angle_radians = convert_degree_to_radians(self.max_angle_degrees)
+		self.min_speed = 0.05 # meters per step (assuming a step each 0.1 seconds -> 1.8km/h)
+		self.max_speed = 0.2 # meters per step (assuming a step each 0.1 seconds -> 7.2km/h)
+		self.max_speed_change_per_step = 0.01
+		self.gamma = 10
+		self.max_steering_degree = 30
+		self.max_compensation_degree = 15
+		self.max_steering_angle = convert_degree_to_radians(self.max_steering_degree)
+		self.max_compensation_angle = convert_degree_to_radians(self.max_compensation_degree)
 		self.positions_number = 100
 		self.max_step = self.positions_number
 		self.noise_per_step = self.max_noise_diameter/self.max_step
@@ -55,15 +60,19 @@ class CarControllerEnvironment(Environment):
 		
 	def reset(self):
 		self.path = self.build_random_path()
-		self.noisy_point = self.car_point = (0, 0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
+		self.noisy_point = self.car_point = (0,0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
+		self.car_angle = np.pi/2 + 0.01		
 		self.noisy_progress = self.car_progress = 0
 		self.noisy_waypoint = self.car_waypoint = 1
 		
+		self.speed = self.min_speed
+		self.steering_angle = 0		
 		self.cumulative_reward = 0
 		self.step = 0
-		self.last_action = 0
+		self.last_action = [0,0]
 		self.last_reward = 0
 		self.last_state = self.get_state(self.car_point, self.car_waypoint)
+		self.avg_speed_per_steps = 0
 		
 	def get_car_position_and_next_waypoint(self, car_point):
 		car_x, car_y = car_point
@@ -76,46 +85,59 @@ class CarControllerEnvironment(Environment):
 		next_waypoint = bisect_right(self.positions, car_position)
 		# print(car_position, next_waypoint)
 		return car_position, next_waypoint
-		
-	def compute_new_car_point(self, car_point, next_waypoint, compensation_angle):
-		# get baseline angle
-		xs, ys = self.path
-		relative_path, _ = get_relative_path_and_next_position_id(point=car_point, path=([xs[next_waypoint]], [ys[next_waypoint]]))
-		_, yc = relative_path		
-		baseline_angle = angle(self.positions[next_waypoint], self.U1, self.V1) + np.arctan(yc[0]/(self.speed*10)) # use the tangent to the next waypoint as default direction -> more stable results
-		car_angle = baseline_angle + compensation_angle # adjust the default direction using the compensation_angle
+
+	def compute_new_car_point_and_angle(self, car_point, car_angle, steering_angle, speed, add_noise=False):
+		# get new car angle
+		new_car_angle = car_angle + steering_angle
 		# change point
 		car_x, car_y = car_point
-		car_x += self.speed*np.cos(car_angle)
-		car_y += self.speed*np.sin(car_angle)
-		return (car_x, car_y)
+		car_x += speed*np.cos(new_car_angle)
+		car_y += speed*np.sin(new_car_angle)
+		if add_noise: # add noise to point
+			car_x += (2*np.random.random()-1)*self.noise_per_step
+			car_y += (2*np.random.random()-1)*self.noise_per_step
+		return (car_x, car_y), new_car_angle
+
+	def compute_new_steering_angle(self, speed, steering_angle, car_point, car_angle, compensation_angle, next_waypoint):
+		# get baseline angle
+		xs, ys = self.path
+		relative_path, _ = get_relative_path_and_next_waypoint(point=car_point, angle=car_angle, path=([xs[next_waypoint]], [ys[next_waypoint]]))
+		_, yc = relative_path
+		baseline_angle = angle(self.positions[next_waypoint], self.U1, self.V1) + np.arctan(yc[0]/(speed*self.gamma)) # use the tangent to the next waypoint as default direction -> more stable results
+		# get new angle
+		new_angle = compensation_angle + baseline_angle
+		# get steering angle
+		steering_angle += new_angle - car_angle
+		# clip steering angle in [-max_steering_angle, max_steering_angle]
+		return np.clip(steering_angle,-self.max_steering_angle,self.max_steering_angle)
 		
-	def get_noisy_point(self, point):
-		x, y = point
-		# add noise to point
-		x += (2*np.random.random()-1)*self.noise_per_step
-		y += (2*np.random.random()-1)*self.noise_per_step
-		return (x, y)
+	def compute_new_speed(self, speed, step_acceleration):
+		speed += step_acceleration
+		return np.clip(speed, self.min_speed, self.max_speed)
 
 	def process(self, policy):
-		policy_choice=0
-		action = np.clip(policy[0],0,1)
-		# get compensation angle
-		compensation_angle = (2*action-1)*self.max_angle_radians
+		policy_choice=[0,1]
+		action = [np.clip(policy[0],0,1),np.clip(policy[1],0,1)]
+		# compute new speed
+		step_acceleration = (2*action[1]-1)*self.max_speed_change_per_step
+		self.speed = self.compute_new_speed(speed=self.speed, step_acceleration=step_acceleration)
+		# compute new steering_angle
+		compensation_angle = (2*action[0]-1)*self.max_compensation_angle
+		self.steering_angle = self.compute_new_steering_angle(speed=self.speed, steering_angle=self.steering_angle, compensation_angle=compensation_angle, car_point=self.car_point, car_angle=self.car_angle, next_waypoint=self.car_waypoint)
 		# update perceived car point
-		self.car_point = self.compute_new_car_point(self.car_point, self.car_waypoint, compensation_angle)
+		self.car_point, self.car_angle = self.compute_new_car_point_and_angle(car_point=self.car_point, car_angle=self.car_angle, steering_angle=self.steering_angle, speed=self.speed)
 		# update real car point
-		self.noisy_point = self.get_noisy_point(self.compute_new_car_point(self.noisy_point, self.car_waypoint, compensation_angle)) # use perceived waypoint here!
+		self.noisy_point, _ = self.compute_new_car_point_and_angle(car_point=self.noisy_point, car_angle=self.car_angle, steering_angle=self.steering_angle, speed=self.speed, add_noise=True)
 		# update position and direction
 		car_position, car_waypoint = self.get_car_position_and_next_waypoint(self.car_point)
 		noisy_position, noisy_waypoint = self.get_car_position_and_next_waypoint(self.noisy_point)
 		# compute real reward
-		noisy_reward = self.get_reward(self.noisy_point, self.noisy_progress, noisy_position)
+		noisy_reward = self.get_reward(car_speed=self.speed, car_point=self.noisy_point, car_progress=self.noisy_progress, car_position=noisy_position)
 		if noisy_position > self.noisy_progress: # is moving toward next position
 			self.noisy_progress = noisy_position # progress update
 			self.noisy_waypoint = noisy_waypoint
 		# compute perceived reward
-		car_reward = self.get_reward(self.car_point, self.car_progress, car_position)
+		car_reward = self.get_reward(car_speed=self.speed, car_point=self.car_point, car_progress=self.car_progress, car_position=car_position)
 		if car_position > self.car_progress: # is moving toward next position
 			self.car_progress = car_position # progress update
 			self.car_waypoint = car_waypoint
@@ -127,24 +149,31 @@ class CarControllerEnvironment(Environment):
 		self.last_reward = car_reward
 		# update cumulative reward
 		self.cumulative_reward += noisy_reward
+		self.avg_speed_per_steps += self.speed
 		# update step
 		self.step += 1
 		terminal = self.is_terminal_position(self.car_waypoint) or self.is_terminal_position(self.noisy_waypoint) or self.step >= self.max_step
 		if terminal: # populate statistics
-			self.episodes.append( {"reward":self.cumulative_reward, "step": self.step, "completed": 1 if self.is_terminal_position(self.car_waypoint) else 0} )
+			stats = {
+				"avg_speed": self.avg_speed_per_steps/self.step,
+				"reward": self.cumulative_reward,
+				"step": self.step,
+				"completed": 1 if self.is_terminal_position(self.car_waypoint) else 0
+			}
+			self.episodes.append(stats)
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
 		return policy_choice, state, noisy_reward, terminal
 		
 	def get_concatenation(self):
-		return [self.last_action, self.last_reward]
+		return self.last_action + [self.last_reward]
 		
-	def get_reward(self, car_point, car_progress, car_position):
+	def get_reward(self, car_speed, car_point, car_progress, car_position):
 		if car_position > car_progress: # is moving toward next position
 			x, y = poly(car_position,self.U1), poly(car_position,self.V1)
 			distance = euclidean_distance(car_point,(x,y))
 			# distance = get_distance(self.positions[next_waypoint]) if next_waypoint < self.positions_number else get_distance(1)
-			return 1 - np.clip(distance/self.max_distance_to_path,0,1) # always in [0,1] # smaller distances to path give higher rewards
+			return car_speed*(1 - np.clip(distance/self.max_distance_to_path,0,1)) # always in [0,1] # smaller distances to path give higher rewards
 		return -0.1 # is NOT moving toward next position
 		
 	def get_state(self, car_point, next_waypoint):
@@ -162,14 +191,14 @@ class CarControllerEnvironment(Environment):
 		return state
 		
 	def get_screen(self):
-		relative_path, position_id = get_relative_path_and_next_waypoint(point=self.car_point, path=self.path)
+		relative_path, position_id = get_relative_path_and_next_waypoint(point=self.car_point, path=self.path, angle=self.car_angle)
 		xc, yc = relative_path
 		xct = xc[position_id:min(position_id+self.positions_number,2*self.positions_number)] if position_id < len(xc) else []
 		yct = yc[position_id:min(position_id+self.positions_number,2*self.positions_number)] if position_id < len(xc) else []
 		return (xct,yct)
 		
-	def get_frame_info(self, network, observation, policy, value, action, reward):
-		state_info = "reward={}, action={}, agent={}, value={}\n".format(reward, action, network.agent_id, value)
+	def get_frame_info(self, network, observation, policy, value, action, reward, cross_entropy, entropy):
+		state_info = "reward={}, speed={}, steering_angle={}, agent={}, value={}, cross_entropy={}, entropy={}\n".format(reward, self.speed, self.steering_angle, network.agent_id, value, cross_entropy, entropy)
 		policy_info = "policy={}\n".format(policy)
 		frame_info = { "log": state_info + policy_info }
 		if flags.save_episode_screen:
@@ -189,15 +218,18 @@ class CarControllerEnvironment(Environment):
 		result = {}
 		result["avg_reward"] = 0
 		result["avg_step"] = 0
+		result["avg_speed"] = 0
 		result["avg_completed"] = 0
 		count = len(self.episodes)
 		if count>0:
 			for e in self.episodes:
 				result["avg_reward"] += e["reward"]
 				result["avg_step"] += e["step"]
+				result["avg_speed"] += e["avg_speed"]
 				result["avg_completed"] += e["completed"]
 			result["avg_reward"] /= count
 			result["avg_step"] /= count
+			result["avg_speed"] /= count
 			result["avg_completed"] /= count
 		return result
 		
@@ -291,10 +323,10 @@ def norm(angle):
 def convert_degree_to_radians(degree):
 	return (degree/180)*np.pi
 	
-def get_relative_path_and_next_waypoint(point, path):
+def get_relative_path_and_next_waypoint(point, path, angle):
 	point_x, point_y = point
 	path_xs, path_ys = path
-	relative_path = shift_and_rotate(path_xs, path_ys, -point_x, -point_y, 0)
+	relative_path = shift_and_rotate(path_xs, path_ys, -point_x, -point_y, -angle)
 	xc, yc = relative_path
 	next_waypoint = 0
 	while next_waypoint < len(xc) and xc[next_waypoint] < 0:
