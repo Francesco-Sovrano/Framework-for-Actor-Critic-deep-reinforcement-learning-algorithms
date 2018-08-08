@@ -67,10 +67,10 @@ class GymEnvironment(environment.Environment):
 	def get_screen(self):
 		return self.last_state
 		
-	def get_frame_info(self, network, observation, policy, value, action, reward, cross_entropy, entropy):
-		state_info = "reward={}, action={}, agent={}, value={}, cross_entropy={}, entropy={}\n".format(reward, action, network.agent_id, value, cross_entropy, entropy)
-		policy_info = "policy={}\n".format(policy)
-		frame_info = { "log": state_info + policy_info }
+	def get_frame_info(self, network, observation, value, action, reward, neglog_prob, entropy):
+		state_info = "reward={}, agent={}, value={}, neglog_prob={}, entropy={}\n".format(reward, network.agent_id, value, neglog_prob, entropy)
+		action_info = "action={}\n".format(action)
+		frame_info = { "log": state_info + action_info }
 		if flags.save_episode_screen:
 			if self.use_ram: # ram
 				observation_info = "observation={}\n".format(np.array_str(observation.flatten()))
@@ -80,8 +80,8 @@ class GymEnvironment(environment.Environment):
 				frame_info["screen"] = { "value": observation, "type": 'RGB' }
 		return frame_info
 		
-	def process(self, policy):
-		action = self.choose_action(policy)
+	def process(self, action_vector):
+		action = np.argwhere(action_vector==1)[0][0]
 		# self.game.render(mode='rgb_array')
 		state, reward, terminal, info = self.game.step(action)
 		state = self.normalize(state)
@@ -96,4 +96,4 @@ class GymEnvironment(environment.Environment):
 			self.episodes.append( {"reward":self.cumulative_reward, "step":self.step} )
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
-		return action, state, reward, terminal
+		return state, reward, terminal

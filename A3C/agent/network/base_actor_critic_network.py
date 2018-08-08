@@ -39,11 +39,11 @@ class BaseAC_Network(object):
 	def _state_placeholder(self, name=None):
 		return tf.placeholder(dtype=tf.float32, shape=np.concatenate([[None], self._state_shape], 0), name=name)
 		
-	def _policy_placeholder(self, name=None):
-		if self.policy_depth < 2:
+	def _neglog_placeholder(self, name=None):
+		if self.policy_depth == 0:
 			return tf.placeholder(dtype=tf.float32, shape=[None,self.policy_length], name=name)
 		else:
-			return tf.placeholder(dtype=tf.float32, shape=[None,self.policy_length,self.policy_depth], name=name)
+			return tf.placeholder(dtype=tf.float32, shape=[None,self.policy_depth], name=name)
 		
 	def _value_placeholder(self, name=None):
 		return tf.placeholder(dtype=tf.float32, shape=[None,1], name=name)
@@ -78,17 +78,20 @@ class BaseAC_Network(object):
 		lstm, self._lstm_state = self._lstm_layers(tower, self._concat)
 		print( "    [{}]LSTM shape: {}".format(self._id, lstm.get_shape()) )
 		# [Policy]
-		self.policy_batch = self._policy_layers(lstm)
-		print( "    [{}]Policy shape: {}".format(self._id, self.policy_batch.get_shape()) )
+		self.action_batch = self._policy_layers(lstm)
+		print( "    [{}]Action shape: {}".format(self._id, self.action_batch.get_shape()) )
 		# [Value]
 		self.value_batch = self._value_layers(lstm)
 		print( "    [{}]Value shape: {}".format(self._id, self.value_batch.get_shape()) )
 		
 	def _build_reward_prediction(self):
-		self._reward_prediction_states = self._state_placeholder("reward_prediction_state")
-		output = self._convolutive_layers(self._reward_prediction_states, reuse=True)
+		self.reward_prediction_labels = self._reward_prediction_target_placeholder("reward_prediction_target")
+		self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state")
+		output = self._convolutive_layers(self.reward_prediction_state_batch, reuse=True)
 		output = tf.layers.flatten(output)
-		self.reward_prediction_logits = tf.layers.dense(inputs=output, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
+		logits = tf.layers.dense(inputs=output, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
+		policy = tf.contrib.layers.softmax(logits)
+		self.reward_prediction_cross_entropy = self.get_cross_entropy(labels=self.reward_prediction_labels, logits=logits)
 		
 	def _convolutive_layers(self, input, reuse=False):
 		with tf.variable_scope("base_conv{0}".format(self._id), reuse=reuse) as scope:
@@ -123,75 +126,76 @@ class BaseAC_Network(object):
 			lstm_outputs = tf.reshape(lstm_outputs, [-1,self._lstm_units]) # shape: (batch, lstm_units)
 			return lstm_outputs, lstm_state
 			
+	def get_clipped_log(self, input):
+		return tf.log(tf.clip_by_value(input,10e-8,1))
+
+	def get_random_choice(self, input, depth):
+		samples = tf.multinomial(self.get_clipped_log(input), 1)
+		return tf.reshape(tf.one_hot(indices=samples, depth=depth), [-1,depth])
+	
 	def _policy_layers(self, input, reuse=False): # Policy (output)
 		with tf.variable_scope("base_policy{0}".format(self._id), reuse=reuse) as scope:
-			if self.policy_depth < 2:
-				input = tf.layers.dense(inputs=input, units=self.policy_length, activation=None, kernel_initializer=tf.initializers.variance_scaling)
-				logits = input
-				output = tf.nn.softmax(logits) if self.policy_depth > 0 else logits
+			if self.policy_depth < 1:
+				mu = tf.layers.dense(
+					inputs=input,
+					units=self.policy_length,  # number of hidden units
+					activation=tf.nn.tanh,
+					kernel_initializer=tf.random_normal_initializer(0.,.1),  # weights
+					bias_initializer=tf.constant_initializer(0.1),  # biases
+					name='mu'
+				)
+				sigma = tf.layers.dense(
+					inputs=input,
+					units=self.policy_length,  # output units
+					activation=tf.nn.softplus,  # get action probabilities
+					kernel_initializer=tf.random_normal_initializer(0.,.1),  # weights
+					bias_initializer=tf.constant_initializer(1.),  # biases
+					name='sigma'
+				)
+				dist = tf.distributions.Normal(mu, sigma+1e-4, validate_args=False) # validate_args is computationally expensive
+				action_batch = tf.stop_gradient(tf.clip_by_value(dist.sample(),0,1)) # tf.stop_gradient stops the accumulated gradient from flowing through that operator in the backward direction
+				self.neglog_prob_batch = -dist.log_prob(action_batch) # probability density function
+				self.entropy_batch = dist.entropy()
 			else:
-				policy = []
-				for i in range(self.policy_depth):
-					p = tf.layers.dense(inputs=input, units=self.policy_length, activation=None, kernel_initializer=tf.initializers.variance_scaling)
-					p = tf.expand_dims(p, axis=-1)
-					policy.append(p)
-				logits = tf.concat(policy, -1)
-				output = tf.contrib.layers.softmax(logits)
-			self.action_batch = self._policy_placeholder("action")
-			self.cross_entropy_batch = self.get_cross_entropy(labels=self.action_batch, logits=logits, softmax=self.policy_depth > 0)
-			self.entropy_batch = self.get_entropy(logits=logits, softmax=self.policy_depth > 0)
-			return output
+				logits = tf.layers.dense(inputs=input, units=self.policy_length, activation=None, kernel_initializer=tf.initializers.variance_scaling)
+				policy_batch = tf.contrib.layers.softmax(logits)
+				action_batch = tf.stop_gradient(self.get_random_choice(policy_batch, self.policy_length)) # tf.stop_gradient stops the accumulated gradient from flowing through that operator in the backward direction
+				self.neglog_prob_batch = self.get_cross_entropy(labels=action_batch, logits=logits)
+				self.entropy_batch = self.get_entropy(logits=logits)
+			return action_batch
 
 	def _value_layers(self, input, reuse=False): # Value (output)
 		with tf.variable_scope("base_value{0}".format(self._id), reuse=reuse) as scope:
-			input = tf.layers.dense( inputs=input, units=1, activation=None, kernel_initializer=tf.initializers.variance_scaling )
+			input = tf.layers.dense(inputs=input, units=1, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			return tf.reshape(input, [-1]) # flatten output
 		
-	def get_cross_entropy(self, labels, logits, softmax):
-		if softmax: # discrete control
-			return tf.losses.softmax_cross_entropy(onehot_labels=labels, logits=logits)
-			# The following alternative is: (i) less numerically stable (since the softmax may compute much larger values) and (ii) less efficient (since some redundant computation would happen in the backprop)
-			# log_batch = tf.log(tf.clip_by_value(logits, 1e-8, 1.0)) # Avoid NaN with clipping when value in tensor becomes zero
-			# return tf.reduce_sum(tf.multiply(log_batch, labels), reduction_indices=1)
-		# else continuous control
-		bn = tf.layers.BatchNormalization(trainable=self._training)
-		batch_layer = bn.apply(logits, training=self._training)
-		mean = bn.moving_mean
-		std = tf.sqrt(bn.moving_variance)
-		# works well for populations that are normally distributed
-		return 0.5 * tf.reduce_sum(tf.square((labels - mean) / std), axis=-1) \
-			   + 0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(labels)[-1]) \
-			   + tf.reduce_sum(tf.log(std), axis=-1)
+	def get_cross_entropy(self, labels, logits):
+		return tf.losses.softmax_cross_entropy(onehot_labels=labels, logits=logits, reduction=tf.losses.Reduction.NONE)
+		# The following alternative is: (i) less numerically stable (since the softmax may compute much larger values) and (ii) less efficient (since some redundant computation would happen in the backprop)
+		# log_logits = self.get_clipped_log(logits) # Avoid NaN with clipping when value in tensor becomes zero
+		# return -tf.reduce_sum(tf.multiply(log_logits, labels), reduction_indices=1)
 			
-	def get_entropy(self, logits, softmax):
-		if softmax: # discrete control
-			a0 = logits - tf.reduce_max(logits, axis=-1, keepdims=True)
-			ea0 = tf.exp(a0)
-			z0 = tf.reduce_sum(ea0, axis=-1, keepdims=True)
-			p0 = ea0 / z0
-			return tf.reduce_sum( tf.multiply(p0, (tf.log(z0) - a0)), axis=-1)
-		# else continuous control
-		bn = tf.layers.BatchNormalization(trainable=True)
-		batch_layer = bn.apply(logits, training=True)
-		std = tf.sqrt(bn.moving_variance)
-		# works well for populations that are normally distributed
-		return tf.reduce_sum(tf.log(std) + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
+	def get_entropy(self, logits):
+		a0 = logits - tf.reduce_max(logits, axis=-1, keepdims=True)
+		ea0 = tf.exp(a0)
+		z0 = tf.reduce_sum(ea0, axis=-1, keepdims=True)
+		p0 = ea0 / z0
+		return tf.reduce_sum( tf.multiply(p0, (tf.log(z0) - a0)), axis=-1)
+		# log_logits = self.get_clipped_log(logits) # Avoid NaN with clipping when value in tensor becomes zero
+		# return tf.reduce_sum(tf.multiply(log_logits, logits), reduction_indices=1)
 			
 	def prepare_loss(self):
 		with tf.device(self._device):
 			# Batch placeholders
-			self.old_policy_batch = self._policy_placeholder("old_policy")
 			self.old_value_batch = self._value_placeholder("old_value")
 			self.advantage_batch = self._value_placeholder("advantage")
 			self.cumulative_reward_batch = self._value_placeholder("cumulative_reward")
-			self.old_cross_entropy_batch = self._value_placeholder("old_cross_entropy")
+			self.old_neglog_prob_batch = self._neglog_placeholder("old_neglog_prob")
 			# Build losses
 			self.policy_loss = PolicyLoss(
 				cliprange=self.clip,
-				policy=self.policy_batch,
-				old_policy=self.old_policy_batch,
-				cross_entropy=self.cross_entropy_batch,
-				old_cross_entropy=self.old_cross_entropy_batch,
+				neglog_prob=self.neglog_prob_batch,
+				old_neglog_prob=self.old_neglog_prob_batch,
 				advantage=self.advantage_batch,
 				entropy=self.entropy_batch,
 				entropy_beta=self.entropy_beta
@@ -205,14 +209,8 @@ class BaseAC_Network(object):
 			# Compute total loss
 			self.total_loss = self.policy_loss.get() + flags.value_coefficient*self.value_loss.get()
 			if self.predict_reward:
-				self.total_loss += self.reward_prediction_loss()
+				self.total_loss += self.reward_prediction_cross_entropy
 			
-	def reward_prediction_loss(self):
-		# reward prediction target. one hot vector
-		self.reward_prediction_labels = self._reward_prediction_target_placeholder("reward_prediction_target")
-		# Reward prediction loss (output)
-		return -self.get_cross_entropy(labels=self.reward_prediction_labels, logits=self.reward_prediction_logits, softmax=True)
-
 	def bind_sync(self, src_network):
 		src_vars = src_network.get_vars()
 		dst_vars = self.get_vars()
@@ -247,41 +245,15 @@ class BaseAC_Network(object):
 	def get_vars(self):
 		return self.train_keys # get model variables
 		
-	def get_action_vector(self, action=None): # transform action into a 1-hot-vector
-		if self.policy_depth == 0:
-			if type(action) not in [list,tuple]:
-				action = [action]
-			return action
-		elif self.policy_depth == 1:
-			hot_vector = np.zeros([self.policy_length])
-			hot_vector[action] = 1
-			return hot_vector
-		else:
-			hot_vector = np.zeros([self.policy_length, self.policy_depth])
-			for i in range(self.policy_length):
-				hot_vector[i][action[i]] = 1
-			return hot_vector
-		
-	def run_cross_entropy(self, actions, states, concats=None, lstm_state=None):
-		feed_dict = { 
-				self.action_batch : actions,
-				self.state_batch : states,
-				self._initial_lstm_state: lstm_state if lstm_state is not None else self._empty_lstm_state
-			}
-		if self._concat_size > 0:
-			feed_dict.update( { self._concat : concats } )
-		entropy_batch, cross_entropy_batch, _, _, _ = self._session.run(fetches=[self.entropy_batch, self.cross_entropy_batch, self.policy_batch, self.value_batch, self._lstm_state], feed_dict=feed_dict, options=tf.RunOptions.NO_TRACE)
-		return cross_entropy_batch, entropy_batch
-		
-	def run_policy_and_value(self, states, concats=None, lstm_state=None):
+	def run_action_and_value(self, states, concats=None, lstm_state=None):
 		feed_dict = { 
 				self.state_batch : states,
 				self._initial_lstm_state: lstm_state if lstm_state is not None else self._empty_lstm_state
 			}
 		if self._concat_size > 0:
 			feed_dict.update( { self._concat : concats } )
-		# return policies, values, lstm_state
-		return self._session.run(fetches=[self.policy_batch, self.value_batch, self._lstm_state], feed_dict=feed_dict, options=tf.RunOptions.NO_TRACE)
+		return self._session.run(fetches=[self.action_batch, self.value_batch, self.entropy_batch, self.neglog_prob_batch, self._lstm_state], feed_dict=feed_dict)
+		# return action_batch, value_batch, entropy_batch, neglog_prob_batch, lstm_state
 				
 	def run_value(self, states, concats=None, lstm_state=None):
 		feed_dict = { 
@@ -290,16 +262,16 @@ class BaseAC_Network(object):
 			}
 		if self._concat_size > 0:
 			feed_dict.update( { self._concat : concats } )
-		# return values, lstm_state
-		return self._session.run(fetches=[self.value_batch, self._lstm_state], feed_dict=feed_dict, options=tf.RunOptions.NO_TRACE)
+		return self._session.run(fetches=[self.value_batch, self._lstm_state], feed_dict=feed_dict)
+		#return value_batch, lstm_state
 				
-	def train(self, states, actions, rewards, values, policies, cross_entropies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state=None, concats=None, reward_prediction_states=None, reward_prediction_target=None):
+	def train(self, states, actions, rewards, values, neglog_probs, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state=None, concats=None, reward_prediction_states=None, reward_prediction_target=None):
 		self.train_count += len(states)
-		feed_dict = self.build_feed(states, actions, rewards, values, policies, cross_entropies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target)
+		feed_dict = self.build_feed(states, actions, rewards, values, neglog_probs, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target)
 		self._session.run(fetches=self.train_op, feed_dict=feed_dict, options=tf.RunOptions.NO_TRACE) # Calculate gradients and copy them to global network
 		
-	def build_feed(self, states, actions, rewards, values, policies, cross_entropies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target):
-		cross_entropies = np.reshape(cross_entropies,[-1,1])
+	def build_feed(self, states, actions, rewards, values, neglog_probs, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target):
+		neglog_probs = np.reshape(neglog_probs,[-1,self.policy_length if self.policy_depth == 0 else self.policy_depth])
 		values = np.reshape(values,[-1,1])
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 			advantages = np.reshape(generalized_advantage_estimators,[-1,1])
@@ -309,19 +281,17 @@ class BaseAC_Network(object):
 			advantages = cumulative_rewards - values
 		feed_dict={
 					self.state_batch: states,
-					self.action_batch: actions,
 					self.cumulative_reward_batch: cumulative_rewards,
 					self.advantage_batch: advantages,
 					self.old_value_batch: values,
-					# self.old_policy_batch: policies,
-					self.old_cross_entropy_batch: cross_entropies,
+					self.old_neglog_prob_batch: neglog_probs,
 					self._initial_lstm_state: lstm_state if lstm_state is not None else self._empty_lstm_state
 				}
 		if self._concat_size > 0:
 			feed_dict.update( {self._concat : concats} )
 		if self.predict_reward:
 			feed_dict.update( {
-				self._reward_prediction_states: reward_prediction_states,
+				self.reward_prediction_state_batch: reward_prediction_states,
 				self.reward_prediction_labels: reward_prediction_target
 			} )
 		return feed_dict

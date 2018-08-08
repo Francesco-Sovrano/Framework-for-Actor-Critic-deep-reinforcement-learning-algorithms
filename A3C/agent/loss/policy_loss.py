@@ -11,12 +11,10 @@ flags = options.get()
 
 class PolicyLoss(object):
 
-	def __init__(self, cliprange, policy, old_policy, cross_entropy, old_cross_entropy, advantage, entropy, entropy_beta):
+	def __init__(self, cliprange, neglog_prob, old_neglog_prob, advantage, entropy, entropy_beta):
 		self.cliprange = cliprange
-		self.policy = policy
-		self.old_policy = old_policy
-		self.cross_entropy = cross_entropy
-		self.old_cross_entropy = old_cross_entropy
+		self.neglog_prob = neglog_prob
+		self.old_neglog_prob = old_neglog_prob
 		self.advantage = advantage
 		self.entropy = entropy
 		self.entropy_beta = entropy_beta
@@ -31,27 +29,27 @@ class PolicyLoss(object):
 			
 	def vanilla(self):
 		entropy = tf.reduce_sum(self.entropy)
-		policy_loss = -tf.reduce_sum( tf.multiply(self.cross_entropy,self.advantage) )
+		policy_loss = -tf.reduce_sum( tf.multiply(self.neglog_prob,self.advantage) )
 		return policy_loss - tf.multiply(entropy,self.entropy_beta)
 		
 	def ppo(self):
 		# Schulman, John, et al. "Proximal policy optimization algorithms." arXiv preprint arXiv:1707.06347 (2017).
 		# Ratio
-		ratio = tf.exp(self.old_cross_entropy - self.cross_entropy)
+		ratio = tf.exp(self.old_neglog_prob - self.neglog_prob)
 		clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.cliprange, 1.0 + self.cliprange)
 		# Entropy
 		entropy = tf.reduce_sum(self.entropy)
 		# Policy loss
-		policy_loss = -tf.reduce_sum(tf.multiply(tf.minimum(ratio, clipped_ratio),self.advantage))
+		policy_loss = tf.reduce_sum(tf.maximum(-self.advantage*ratio, -self.advantage*clipped_ratio))
 		return policy_loss - tf.multiply(entropy,self.entropy_beta)
 				
 	def average_ppo(self):
 		# Schulman, John, et al. "Proximal policy optimization algorithms." arXiv preprint arXiv:1707.06347 (2017).
 		# Ratio
-		ratio = tf.exp(self.old_cross_entropy - self.cross_entropy)
+		ratio = tf.exp(self.old_neglog_prob - self.neglog_prob)
 		clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.cliprange, 1.0 + self.cliprange)
 		# Entropy
 		entropy = tf.reduce_mean(self.entropy)
 		# Policy loss
-		policy_loss = -tf.reduce_mean(tf.multiply(tf.minimum(ratio, clipped_ratio),self.advantage))
+		policy_loss = tf.reduce_mean(tf.maximum(-self.advantage*ratio, -self.advantage*clipped_ratio))
 		return policy_loss - tf.multiply(entropy,self.entropy_beta)

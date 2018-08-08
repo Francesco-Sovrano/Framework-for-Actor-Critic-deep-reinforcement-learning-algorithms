@@ -17,9 +17,6 @@ class Environment(object):
 		else:
 			from . import gym_environment
 			return gym_environment.GymEnvironment(thread_index,env_type)
-			
-	def choose_action(self, pi_values):
-		return np.random.choice(range(len(pi_values)), p=pi_values)
 		
 	def get_concatenation_size(self):
 		return self.get_action_shape()[0]+1

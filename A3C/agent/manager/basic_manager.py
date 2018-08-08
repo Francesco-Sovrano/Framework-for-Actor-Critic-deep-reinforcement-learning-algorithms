@@ -141,18 +141,14 @@ class BasicManager(object):
 		agent_id = self.agent_id
 		agent = self.get_model(agent_id)
 		lstm_state = self.lstm_state
-		policies, values, self.lstm_state = agent.run_policy_and_value(states=[state], concats=[concat], lstm_state=lstm_state)
-		policy = policies[0]
-		value = values[0]
-		
-		action, new_state, reward, terminal = act_function(policy)
+		action_batch, value_batch, entropy_batch, neglog_prob_batch, self.lstm_state = agent.run_action_and_value(states=[state], concats=[concat], lstm_state=lstm_state)
+		action, value, entropy, neglog_prob = action_batch[0], value_batch[0], entropy_batch[0], neglog_prob_batch[0]
+		new_state, reward, terminal = act_function(action)
 		if flags.clip_reward:
 			reward = np.clip(reward, flags.min_reward, flags.max_reward)
-		
-		action_vector = agent.get_action_vector(action)
-		cross_entropy, entropy = agent.run_cross_entropy(actions=[action_vector],states=[state],concats=[concat],lstm_state=lstm_state)
-		self.batch.add_agent_action(agent_id, state, concat, action_vector, cross_entropy, reward, value, policy, lstm_state)
-		return new_state, policy, value, action, reward, terminal, cross_entropy, entropy
+
+		self.batch.add_agent_action(agent_id, state, concat, action, neglog_prob, reward, value, lstm_state)
+		return new_state, value, action, reward, terminal, neglog_prob, entropy
 					
 	def compute_cumulative_reward(self, batch):
 		# prepare batch
@@ -181,9 +177,8 @@ class BasicManager(object):
 		states = batch.states
 		concats = batch.concats
 		actions = batch.actions
-		cross_entropies = batch.cross_entropies
+		neglog_probs = batch.neglog_probs
 		values = batch.values
-		policies = batch.policies
 		rewards = batch.rewards
 		dcr = batch.discounted_cumulative_rewards
 		gae = batch.generalized_advantage_estimators
@@ -203,8 +198,8 @@ class BasicManager(object):
 				model.train(
 					states=states[i], concats=concats[i],
 					actions=actions[i], values=values[i],
-					cross_entropies=cross_entropies[i],
-					policies=policies[i], rewards=rewards[i],
+					neglog_probs=neglog_probs[i],
+					rewards=rewards[i],
 					discounted_cumulative_rewards=dcr[i],
 					generalized_advantage_estimators=gae[i],
 					lstm_state=lstm_states[i][0],
@@ -213,11 +208,11 @@ class BasicManager(object):
 				)
 				
 	def bootstrap(self, state, concat=None):
-		values, _ = self.estimate_value(agent_id=self.agent_id, states=[state], concats=[concat], lstm_state=self.lstm_state)
+		value_batch, _ = self.estimate_value(agent_id=self.agent_id, states=[state], concats=[concat], lstm_state=self.lstm_state)
 		self.batch.bootstrap['agent_id'] = self.agent_id
 		self.batch.bootstrap['state'] = state
 		self.batch.bootstrap['concat'] = concat
-		self.batch.bootstrap['value'] = values[0]
+		self.batch.bootstrap['value'] = value_batch[0]
 				
 	def replay_value(self, batch): # replay values, lstm states
 		lstm_state = batch.get_step_action('lstm_states', 0)

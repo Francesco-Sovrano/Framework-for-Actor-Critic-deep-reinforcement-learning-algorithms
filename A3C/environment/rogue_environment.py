@@ -48,21 +48,21 @@ class RogueEnvironment(environment.Environment):
 	def get_screen(self):
 		return self.game.get_screen()
 		
-	def get_frame_info(self, network, observation, policy, value, action, reward, cross_entropy, entropy):
+	def get_frame_info(self, network, observation, value, action, reward, neglog_prob, entropy):
 		# Screen
 		last_frame = self.game.get_frame(-2)	
-		state_info = "reward={}, passages={}, doors={}, below_player={}, agent={}, action={}, value={}, cross_entropy={}, entropy={}\n".format( 
+		state_info = "reward={}, passages={}, doors={}, below_player={}, agent={}, value={}, neglog_prob={}, entropy={}\n".format( 
 			reward,
 			last_frame.get_tile_count("#"),
 			last_frame.get_tile_count("+"),
 			last_frame.get_tile_below_player(),
 			network.agent_id,
-			action, value, cross_entropy, entropy
+			value, neglog_prob, entropy
 		)
-		policy_info = "policy={}\n".format(policy)
+		action_info = "action={}\n".format(action)
 		# observation_info = "observation={}".format(np.array_str(observation.flatten()))
 		frame_dict = {}
-		frame_dict["log"] = state_info + policy_info + '\n'.join(last_frame.screen)+'\n'
+		frame_dict["log"] = state_info + action_info + '\n'.join(last_frame.screen)+'\n'
 		if flags.save_episode_screen:
 			frame_dict["screen"] = { "value": frame_dict["log"], "type": 'ASCII' }
 		# Heatmap
@@ -76,8 +76,8 @@ class RogueEnvironment(environment.Environment):
 			frame_dict["heatmap"] = value_map
 		return frame_dict
 		
-	def process(self, policy):
-		action = self.choose_action(policy)
+	def process(self, action_vector):
+		action = np.argwhere(action_vector==1)[0][0]
 		real_action = self.real_actions[action]
 		reward, state, win, lose = self.game.send_command(real_action)
 		state = state["value"]
@@ -86,4 +86,4 @@ class RogueEnvironment(environment.Environment):
 		self.last_state = state
 		self.last_action = action
 		self.last_reward = reward
-		return action, state, reward, terminal
+		return state, reward, terminal
