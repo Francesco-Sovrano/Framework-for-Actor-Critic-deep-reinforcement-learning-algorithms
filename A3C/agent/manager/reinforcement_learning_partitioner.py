@@ -94,7 +94,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 			state, concat, reward, action, neglog_prob = batch.get_step_action(['states','concats','rewards','actions','neglog_probs'], i)
 			if self.query_partitioner(i):
 				agent_id, manager_action, manager_value, _, manager_neglog_prob, _ = self.get_state_partition(state=state, lstm_state=lstm_state)
-				self.batch.add_agent_action(agent_id=0, state=state, concat=None, action=manager_action, neglog_prob=manager_neglog_prob, reward=reward, value=manager_value, lstm_state=lstm_state, memorize_step=False)
+				new_batch.add_agent_action(agent_id=0, state=state, concat=None, action=manager_action, neglog_prob=manager_neglog_prob, reward=reward, value=manager_value, lstm_state=lstm_state, memorize_step=False)
 			new_values, new_lstm_state = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
 			new_batch.add_agent_action(agent_id=agent_id, state=state, concat=concat, action=action, neglog_prob=neglog_prob, reward=reward, value=new_values[0], lstm_state=lstm_state, memorize_step=True)
 			lstm_state = new_lstm_state

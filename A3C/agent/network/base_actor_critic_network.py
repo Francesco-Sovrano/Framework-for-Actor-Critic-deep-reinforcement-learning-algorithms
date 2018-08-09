@@ -127,7 +127,7 @@ class BaseAC_Network(object):
 			return lstm_outputs, lstm_state
 			
 	def get_clipped_log(self, input):
-		return tf.log(tf.clip_by_value(input,10e-8,1))
+		return tf.log(tf.clip_by_value(input,1e-8,1))
 
 	def get_random_choice(self, input, depth):
 		samples = tf.multinomial(self.get_clipped_log(input), 1)
@@ -136,30 +136,36 @@ class BaseAC_Network(object):
 	def _policy_layers(self, input, reuse=False): # Policy (output)
 		with tf.variable_scope("base_policy{0}".format(self._id), reuse=reuse) as scope:
 			if self.policy_depth < 1:
+				# mean
 				mu = tf.layers.dense(
 					inputs=input,
-					units=self.policy_length,  # number of hidden units
-					activation=tf.nn.tanh,
-					kernel_initializer=tf.random_normal_initializer(0.,.1),  # weights
-					bias_initializer=tf.constant_initializer(0.1),  # biases
-					name='mu'
+					units=self.policy_length, # number of hidden units
+					activation=tf.nn.relu,
+					kernel_initializer=tf.initializers.variance_scaling
 				)
+				# sigma
 				sigma = tf.layers.dense(
 					inputs=input,
-					units=self.policy_length,  # output units
-					activation=tf.nn.softplus,  # get action probabilities
-					kernel_initializer=tf.random_normal_initializer(0.,.1),  # weights
-					bias_initializer=tf.constant_initializer(1.),  # biases
-					name='sigma'
+					units=self.policy_length, # output units
+					activation=tf.nn.relu, 
+					kernel_initializer=tf.initializers.variance_scaling
 				)
-				dist = tf.distributions.Normal(mu, sigma+1e-4, validate_args=False) # validate_args is computationally expensive
-				action_batch = tf.stop_gradient(tf.clip_by_value(dist.sample(),0,1)) # tf.stop_gradient stops the accumulated gradient from flowing through that operator in the backward direction
+				# clip mu and sigma in order to avoid numeric instabilities
+				clipped_mu = tf.clip_by_value(mu, 0,1)
+				clipped_sigma = tf.clip_by_value(sigma, 1e-4,np.sqrt(0.5)) # sigma MUST be greater than 0
+				# build distribution
+				dist = tf.distributions.Normal(clipped_mu, clipped_sigma, validate_args=True) # validate_args is computationally expensive
+				# sample action batch
+				action_batch = tf.clip_by_value(dist.sample(),0,1) # clip in [0,1]
+				action_batch = tf.stop_gradient(action_batch) # tf.stop_gradient stops the accumulated gradient from flowing through that operator in the backward direction
+				# compute entropies
 				self.neglog_prob_batch = -dist.log_prob(action_batch) # probability density function
 				self.entropy_batch = dist.entropy()
 			else:
 				logits = tf.layers.dense(inputs=input, units=self.policy_length, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 				policy_batch = tf.contrib.layers.softmax(logits)
-				action_batch = tf.stop_gradient(self.get_random_choice(policy_batch, self.policy_length)) # tf.stop_gradient stops the accumulated gradient from flowing through that operator in the backward direction
+				action_batch = self.get_random_choice(policy_batch, self.policy_length)
+				action_batch = tf.stop_gradient(action_batch) # tf.stop_gradient stops the accumulated gradient from flowing through that operator in the backward direction
 				self.neglog_prob_batch = self.get_cross_entropy(labels=action_batch, logits=logits)
 				self.entropy_batch = self.get_entropy(logits=logits)
 			return action_batch
@@ -173,16 +179,13 @@ class BaseAC_Network(object):
 		return tf.losses.softmax_cross_entropy(onehot_labels=labels, logits=logits, reduction=tf.losses.Reduction.NONE)
 		# The following alternative is: (i) less numerically stable (since the softmax may compute much larger values) and (ii) less efficient (since some redundant computation would happen in the backprop)
 		# log_logits = self.get_clipped_log(logits) # Avoid NaN with clipping when value in tensor becomes zero
-		# return -tf.reduce_sum(tf.multiply(log_logits, labels), reduction_indices=1)
+		# return -tf.reduce_sum(log_logits*labels, reduction_indices=1)
 			
 	def get_entropy(self, logits):
-		a0 = logits - tf.reduce_max(logits, axis=-1, keepdims=True)
-		ea0 = tf.exp(a0)
-		z0 = tf.reduce_sum(ea0, axis=-1, keepdims=True)
-		p0 = ea0 / z0
-		return tf.reduce_sum( tf.multiply(p0, (tf.log(z0) - a0)), axis=-1)
+		return tf.losses.softmax_cross_entropy(onehot_labels=tf.identity(logits), logits=logits, reduction=tf.losses.Reduction.NONE)
+		# The following alternative is: (i) less numerically stable (since the softmax may compute much larger values) and (ii) less efficient (since some redundant computation would happen in the backprop)
 		# log_logits = self.get_clipped_log(logits) # Avoid NaN with clipping when value in tensor becomes zero
-		# return tf.reduce_sum(tf.multiply(log_logits, logits), reduction_indices=1)
+		# return -tf.reduce_sum(log_logits*logits, reduction_indices=1)
 			
 	def prepare_loss(self):
 		with tf.device(self._device):

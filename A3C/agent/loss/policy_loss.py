@@ -28,28 +28,22 @@ class PolicyLoss(object):
 			return self.average_ppo()
 			
 	def vanilla(self):
-		entropy = tf.reduce_sum(self.entropy)
-		policy_loss = -tf.reduce_sum( tf.multiply(self.neglog_prob,self.advantage) )
-		return policy_loss - tf.multiply(entropy,self.entropy_beta)
+		policy = tf.reduce_sum(self.neglog_prob*self.advantage)
+		entropy = tf.reduce_sum(self.entropy)*self.entropy_beta
+		return policy - entropy
 		
 	def ppo(self):
 		# Schulman, John, et al. "Proximal policy optimization algorithms." arXiv preprint arXiv:1707.06347 (2017).
-		# Ratio
 		ratio = tf.exp(self.old_neglog_prob - self.neglog_prob)
 		clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.cliprange, 1.0 + self.cliprange)
-		# Entropy
-		entropy = tf.reduce_sum(self.entropy)
-		# Policy loss
-		policy_loss = tf.reduce_sum(tf.maximum(-self.advantage*ratio, -self.advantage*clipped_ratio))
-		return policy_loss - tf.multiply(entropy,self.entropy_beta)
+		policy = tf.reduce_sum(-tf.minimum(ratio, clipped_ratio)*self.advantage)
+		entropy = tf.reduce_sum(self.entropy)*self.entropy_beta
+		return policy - entropy
 				
 	def average_ppo(self):
 		# Schulman, John, et al. "Proximal policy optimization algorithms." arXiv preprint arXiv:1707.06347 (2017).
-		# Ratio
 		ratio = tf.exp(self.old_neglog_prob - self.neglog_prob)
 		clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.cliprange, 1.0 + self.cliprange)
-		# Entropy
-		entropy = tf.reduce_mean(self.entropy)
-		# Policy loss
-		policy_loss = tf.reduce_mean(tf.maximum(-self.advantage*ratio, -self.advantage*clipped_ratio))
-		return policy_loss - tf.multiply(entropy,self.entropy_beta)
+		policy = tf.reduce_mean(-tf.minimum(ratio, clipped_ratio)*self.advantage)
+		entropy = tf.reduce_mean(self.entropy)*self.entropy_beta
+		return policy - entropy

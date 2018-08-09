@@ -17,7 +17,7 @@ def build():
 	tf.app.flags.DEFINE_string("network", "BaseAC", "neural network: BaseAC") # default is Adam, for vanilla A3C is RMSProp
 	tf.app.flags.DEFINE_string("optimizer", "Adam", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is Adam, for vanilla A3C is RMSProp
 	tf.app.flags.DEFINE_float("grad_norm_clip", 0, "gradient norm clipping (0 for none)") # default is 40.0, for openAI is 0.5
-	tf.app.flags.DEFINE_string("policy_loss", "PPO", "policy loss function: vanilla, PPO, averagePPO, openaiPPO") # usually averagePPO works with GAE
+	tf.app.flags.DEFINE_string("policy_loss", "PPO", "policy loss function: vanilla, PPO, averagePPO") # usually averagePPO works with GAE
 	tf.app.flags.DEFINE_string("value_loss", "vanilla", "value loss function: vanilla, PVO, averagePVO") # usually averagePVO works with GAE
 # Partitioner parameters
 	# Partition count > 0 reduces algorithm speed, because also a partitioner is trained
@@ -63,7 +63,7 @@ def build():
 # Actor-Critic parameters
 	# Learning rate for Critic is half of Actor's, so multiply by 0.5 (default)
 	tf.app.flags.DEFINE_float("value_coefficient", 0.5, "value coefficient for tuning Critic learning rate") # default is 0.5, for openAI is 0.25
-	tf.app.flags.DEFINE_float("entropy_beta", 0.001, "entropy regularization constant") # default is 0.001, for openAI is 0.01
+	tf.app.flags.DEFINE_float("entropy_beta", 0.01, "entropy regularization constant") # default is 0.001, for openAI is 0.01
 	tf.app.flags.DEFINE_integer("parallel_size", 4, "parallel thread size")
 	tf.app.flags.DEFINE_integer("max_batch_size", 8, "maximum batch size") # default is 60, for openAI is 128
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
