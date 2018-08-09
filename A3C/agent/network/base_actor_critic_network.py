@@ -90,8 +90,8 @@ class BaseAC_Network(object):
 		output = self._convolutive_layers(self.reward_prediction_state_batch, reuse=True)
 		output = tf.layers.flatten(output)
 		logits = tf.layers.dense(inputs=output, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
-		policy = tf.contrib.layers.softmax(logits)
-		self.reward_prediction_cross_entropy = self.get_cross_entropy(labels=self.reward_prediction_labels, logits=logits)
+		# policy = tf.contrib.layers.softmax(logits)
+		self.reward_prediction_cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.reward_prediction_labels, logits=logits)
 		
 	def _convolutive_layers(self, input, reuse=False):
 		with tf.variable_scope("base_conv{0}".format(self._id), reuse=reuse) as scope:
@@ -165,27 +165,16 @@ class BaseAC_Network(object):
 				logits = tf.layers.dense(inputs=input, units=self.policy_length, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 				policy_batch = tf.contrib.layers.softmax(logits)
 				action_batch = self.get_random_choice(policy_batch, self.policy_length)
-				action_batch = tf.stop_gradient(action_batch) # tf.stop_gradient stops the accumulated gradient from flowing through that operator in the backward direction
-				self.neglog_prob_batch = self.get_cross_entropy(labels=action_batch, logits=logits)
-				self.entropy_batch = self.get_entropy(logits=logits)
+				# action_batch = tf.stop_gradient(action_batch) # tf.stop_gradient stops the accumulated gradient from flowing through that operator in the backward direction
+				# softmax_cross_entropy_with_logits_v2 stops labels gradient
+				self.neglog_prob_batch = tf.nn.softmax_cross_entropy_with_logits_v2(labels=action_batch, logits=logits)
+				self.entropy_batch = tf.nn.softmax_cross_entropy_with_logits_v2(labels=policy_batch, logits=logits)
 			return action_batch
 
 	def _value_layers(self, input, reuse=False): # Value (output)
 		with tf.variable_scope("base_value{0}".format(self._id), reuse=reuse) as scope:
 			input = tf.layers.dense(inputs=input, units=1, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			return tf.reshape(input, [-1]) # flatten output
-		
-	def get_cross_entropy(self, labels, logits):
-		return tf.losses.softmax_cross_entropy(onehot_labels=labels, logits=logits, reduction=tf.losses.Reduction.NONE)
-		# The following alternative is: (i) less numerically stable (since the softmax may compute much larger values) and (ii) less efficient (since some redundant computation would happen in the backprop)
-		# log_logits = self.get_clipped_log(logits) # Avoid NaN with clipping when value in tensor becomes zero
-		# return -tf.reduce_sum(log_logits*labels, reduction_indices=1)
-			
-	def get_entropy(self, logits):
-		return tf.losses.softmax_cross_entropy(onehot_labels=tf.identity(logits), logits=logits, reduction=tf.losses.Reduction.NONE)
-		# The following alternative is: (i) less numerically stable (since the softmax may compute much larger values) and (ii) less efficient (since some redundant computation would happen in the backprop)
-		# log_logits = self.get_clipped_log(logits) # Avoid NaN with clipping when value in tensor becomes zero
-		# return -tf.reduce_sum(log_logits*logits, reduction_indices=1)
 			
 	def prepare_loss(self):
 		with tf.device(self._device):
