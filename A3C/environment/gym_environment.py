@@ -67,8 +67,8 @@ class GymEnvironment(environment.Environment):
 	def get_screen(self):
 		return self.last_state
 		
-	def get_frame_info(self, network, observation, value, action, reward, neglog_prob, entropy):
-		state_info = "reward={}, agent={}, value={}, neglog_prob={}, entropy={}\n".format(reward, network.agent_id, value, neglog_prob, entropy)
+	def get_frame_info(self, network, observation, value, action, reward, cross_entropy, entropy):
+		state_info = "reward={}, agent={}, value={}, cross_entropy={}, entropy={}\n".format(reward, network.agent_id, value, cross_entropy, entropy)
 		action_info = "action={}\n".format(action)
 		frame_info = { "log": state_info + action_info }
 		if flags.save_episode_screen:

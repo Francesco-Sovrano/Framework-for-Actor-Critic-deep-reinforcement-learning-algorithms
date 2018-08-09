@@ -159,7 +159,7 @@ class BaseAC_Network(object):
 				action_batch = tf.clip_by_value(dist.sample(),0,1) # clip in [0,1]
 				action_batch = tf.stop_gradient(action_batch) # tf.stop_gradient stops the accumulated gradient from flowing through that operator in the backward direction
 				# compute entropies
-				self.neglog_prob_batch = -dist.log_prob(action_batch) # probability density function
+				self.cross_entropy_batch = -dist.log_prob(action_batch) # probability density function
 				self.entropy_batch = dist.entropy()
 			else:
 				logits = tf.layers.dense(inputs=input, units=self.policy_length, activation=None, kernel_initializer=tf.initializers.variance_scaling)
@@ -167,7 +167,7 @@ class BaseAC_Network(object):
 				action_batch = self.get_random_choice(policy_batch, self.policy_length)
 				# action_batch = tf.stop_gradient(action_batch) # tf.stop_gradient stops the accumulated gradient from flowing through that operator in the backward direction
 				# softmax_cross_entropy_with_logits_v2 stops labels gradient
-				self.neglog_prob_batch = tf.nn.softmax_cross_entropy_with_logits_v2(labels=action_batch, logits=logits)
+				self.cross_entropy_batch = tf.nn.softmax_cross_entropy_with_logits_v2(labels=action_batch, logits=logits)
 				self.entropy_batch = tf.nn.softmax_cross_entropy_with_logits_v2(labels=policy_batch, logits=logits)
 			return action_batch
 
@@ -182,12 +182,12 @@ class BaseAC_Network(object):
 			self.old_value_batch = self._value_placeholder("old_value")
 			self.advantage_batch = self._value_placeholder("advantage")
 			self.cumulative_reward_batch = self._value_placeholder("cumulative_reward")
-			self.old_neglog_prob_batch = self._neglog_placeholder("old_neglog_prob")
+			self.old_cross_entropy_batch = self._neglog_placeholder("old_cross_entropy")
 			# Build losses
 			self.policy_loss = PolicyLoss(
 				cliprange=self.clip,
-				neglog_prob=self.neglog_prob_batch,
-				old_neglog_prob=self.old_neglog_prob_batch,
+				cross_entropy=self.cross_entropy_batch,
+				old_cross_entropy=self.old_cross_entropy_batch,
 				advantage=self.advantage_batch,
 				entropy=self.entropy_batch,
 				entropy_beta=self.entropy_beta
@@ -244,8 +244,8 @@ class BaseAC_Network(object):
 			}
 		if self._concat_size > 0:
 			feed_dict.update( { self._concat : concats } )
-		return self._session.run(fetches=[self.action_batch, self.value_batch, self.entropy_batch, self.neglog_prob_batch, self._lstm_state], feed_dict=feed_dict)
-		# return action_batch, value_batch, entropy_batch, neglog_prob_batch, lstm_state
+		return self._session.run(fetches=[self.action_batch, self.value_batch, self.entropy_batch, self.cross_entropy_batch, self._lstm_state], feed_dict=feed_dict)
+		# return action_batch, value_batch, entropy_batch, cross_entropy_batch, lstm_state
 				
 	def run_value(self, states, concats=None, lstm_state=None):
 		feed_dict = { 
@@ -257,13 +257,13 @@ class BaseAC_Network(object):
 		return self._session.run(fetches=[self.value_batch, self._lstm_state], feed_dict=feed_dict)
 		#return value_batch, lstm_state
 				
-	def train(self, states, actions, rewards, values, neglog_probs, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state=None, concats=None, reward_prediction_states=None, reward_prediction_target=None):
+	def train(self, states, actions, rewards, values, cross_entropys, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state=None, concats=None, reward_prediction_states=None, reward_prediction_target=None):
 		self.train_count += len(states)
-		feed_dict = self.build_feed(states, actions, rewards, values, neglog_probs, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target)
+		feed_dict = self.build_feed(states, actions, rewards, values, cross_entropys, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target)
 		self._session.run(fetches=self.train_op, feed_dict=feed_dict, options=tf.RunOptions.NO_TRACE) # Calculate gradients and copy them to global network
 		
-	def build_feed(self, states, actions, rewards, values, neglog_probs, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target):
-		neglog_probs = np.reshape(neglog_probs,[-1,self.policy_length if self.policy_depth == 0 else self.policy_depth])
+	def build_feed(self, states, actions, rewards, values, cross_entropys, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target):
+		cross_entropys = np.reshape(cross_entropys,[-1,self.policy_length if self.policy_depth == 0 else self.policy_depth])
 		values = np.reshape(values,[-1,1])
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 			advantages = np.reshape(generalized_advantage_estimators,[-1,1])
@@ -276,7 +276,7 @@ class BaseAC_Network(object):
 					self.cumulative_reward_batch: cumulative_rewards,
 					self.advantage_batch: advantages,
 					self.old_value_batch: values,
-					self.old_neglog_prob_batch: neglog_probs,
+					self.old_cross_entropy_batch: cross_entropys,
 					self._initial_lstm_state: lstm_state if lstm_state is not None else self._empty_lstm_state
 				}
 		if self._concat_size > 0:

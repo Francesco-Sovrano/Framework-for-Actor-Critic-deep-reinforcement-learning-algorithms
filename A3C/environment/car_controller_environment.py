@@ -195,8 +195,8 @@ class CarControllerEnvironment(Environment):
 		yct = yc[position_id:min(position_id+self.positions_number,2*self.positions_number)] if position_id < len(xc) else []
 		return (xct,yct)
 		
-	def get_frame_info(self, network, observation, value, action, reward, neglog_prob, entropy):
-		state_info = "reward={}, speed={}, steering_angle={}, agent={}, value={}, neglog_prob={}, entropy={}\n".format(reward, self.speed, self.steering_angle, network.agent_id, value, neglog_prob, entropy)
+	def get_frame_info(self, network, observation, value, action, reward, cross_entropy, entropy):
+		state_info = "reward={}, speed={}, steering_angle={}, agent={}, value={}, cross_entropy={}, entropy={}\n".format(reward, self.speed, self.steering_angle, network.agent_id, value, cross_entropy, entropy)
 		action_info = "action={}\n".format(action)
 		frame_info = { "log": state_info + action_info }
 		if flags.save_episode_screen:

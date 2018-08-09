@@ -57,10 +57,10 @@ class ReinforcementLearningPartitioner(BasicManager):
 		self.gradient_optimizer[0] = eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True)
 		
 	def get_state_partition(self, state, lstm_state=None):
-		action_batch, value_batch, entropy_batch, neglog_prob_batch, lstm_state = self.manager.run_action_and_value(states=[state], lstm_state=lstm_state)
+		action_batch, value_batch, entropy_batch, cross_entropy_batch, lstm_state = self.manager.run_action_and_value(states=[state], lstm_state=lstm_state)
 		id = np.argwhere(action_batch[0]==1)[0][0]+1
 		self.add_to_statistics(id)
-		return id, action_batch[0], value_batch[0], entropy_batch[0], neglog_prob_batch[0], lstm_state
+		return id, action_batch[0], value_batch[0], entropy_batch[0], cross_entropy_batch[0], lstm_state
 		
 	def query_partitioner(self, step):
 		return step%flags.partitioner_granularity==0
@@ -68,15 +68,15 @@ class ReinforcementLearningPartitioner(BasicManager):
 	def act(self, act_function, state, concat=None):
 		if self.query_partitioner(self.batch.size):
 			lstm_state = self.lstm_state
-			self.agent_id, manager_action, manager_value, _, manager_neglog_prob, _ = self.get_state_partition(state=state, lstm_state=lstm_state)
+			self.agent_id, manager_action, manager_value, _, manager_cross_entropy, _ = self.get_state_partition(state=state, lstm_state=lstm_state)
 			has_queried_partitioner = True
 		else:
 			has_queried_partitioner = False
 			
-		new_state, value, action, reward, terminal, neglog_prob, entropy = super().act(act_function, state, concat)
+		new_state, value, action, reward, terminal, cross_entropy, entropy = super().act(act_function, state, concat)
 		if has_queried_partitioner:
-			self.batch.add_agent_action(agent_id=0, state=state, concat=None, action=manager_action, neglog_prob=manager_neglog_prob, reward=reward, value=manager_value, lstm_state=lstm_state, memorize_step=False)
-		return new_state, value, action, reward, terminal, neglog_prob, entropy
+			self.batch.add_agent_action(agent_id=0, state=state, concat=None, action=manager_action, cross_entropy=manager_cross_entropy, reward=reward, value=manager_value, lstm_state=lstm_state, memorize_step=False)
+		return new_state, value, action, reward, terminal, cross_entropy, entropy
 		
 	def bootstrap(self, state, concat=None):
 		id, _, value, _, _, _ = self.get_state_partition(state=state, lstm_state=self.lstm_state)
@@ -91,12 +91,12 @@ class ReinforcementLearningPartitioner(BasicManager):
 		# replay values
 		lstm_state = batch.get_step_action('lstm_states', 0)
 		for i in range(batch.size):
-			state, concat, reward, action, neglog_prob = batch.get_step_action(['states','concats','rewards','actions','neglog_probs'], i)
+			state, concat, reward, action, cross_entropy = batch.get_step_action(['states','concats','rewards','actions','cross_entropys'], i)
 			if self.query_partitioner(i):
-				agent_id, manager_action, manager_value, _, manager_neglog_prob, _ = self.get_state_partition(state=state, lstm_state=lstm_state)
-				new_batch.add_agent_action(agent_id=0, state=state, concat=None, action=manager_action, neglog_prob=manager_neglog_prob, reward=reward, value=manager_value, lstm_state=lstm_state, memorize_step=False)
+				agent_id, manager_action, manager_value, _, manager_cross_entropy, _ = self.get_state_partition(state=state, lstm_state=lstm_state)
+				new_batch.add_agent_action(agent_id=0, state=state, concat=None, action=manager_action, cross_entropy=manager_cross_entropy, reward=reward, value=manager_value, lstm_state=lstm_state, memorize_step=False)
 			new_values, new_lstm_state = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
-			new_batch.add_agent_action(agent_id=agent_id, state=state, concat=concat, action=action, neglog_prob=neglog_prob, reward=reward, value=new_values[0], lstm_state=lstm_state, memorize_step=True)
+			new_batch.add_agent_action(agent_id=agent_id, state=state, concat=concat, action=action, cross_entropy=cross_entropy, reward=reward, value=new_values[0], lstm_state=lstm_state, memorize_step=True)
 			lstm_state = new_lstm_state
 			
 		if 'manager_value' in batch.bootstrap:
