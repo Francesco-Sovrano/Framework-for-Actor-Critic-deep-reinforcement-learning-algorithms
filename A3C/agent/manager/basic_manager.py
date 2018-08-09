@@ -177,7 +177,7 @@ class BasicManager(object):
 		states = batch.states
 		concats = batch.concats
 		actions = batch.actions
-		cross_entropys = batch.cross_entropys
+		cross_entropies = batch.cross_entropies
 		values = batch.values
 		rewards = batch.rewards
 		dcr = batch.discounted_cumulative_rewards
@@ -198,7 +198,7 @@ class BasicManager(object):
 				model.train(
 					states=states[i], concats=concats[i],
 					actions=actions[i], values=values[i],
-					cross_entropys=cross_entropys[i],
+					cross_entropies=cross_entropies[i],
 					rewards=rewards[i],
 					discounted_cumulative_rewards=dcr[i],
 					generalized_advantage_estimators=gae[i],

@@ -91,7 +91,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		# replay values
 		lstm_state = batch.get_step_action('lstm_states', 0)
 		for i in range(batch.size):
-			state, concat, reward, action, cross_entropy = batch.get_step_action(['states','concats','rewards','actions','cross_entropys'], i)
+			state, concat, reward, action, cross_entropy = batch.get_step_action(['states','concats','rewards','actions','cross_entropies'], i)
 			if self.query_partitioner(i):
 				agent_id, manager_action, manager_value, _, manager_cross_entropy, _ = self.get_state_partition(state=state, lstm_state=lstm_state)
 				new_batch.add_agent_action(agent_id=0, state=state, concat=None, action=manager_action, cross_entropy=manager_cross_entropy, reward=reward, value=manager_value, lstm_state=lstm_state, memorize_step=False)

@@ -9,7 +9,7 @@ class ExperienceBatch(object):
 		self.states = [deque() for _ in range(model_size)] # do NOT use [deque]*model_size
 		self.concats = [deque() for _ in range(model_size)]
 		self.actions = [deque() for _ in range(model_size)]
-		self.cross_entropys = [deque() for _ in range(model_size)]
+		self.cross_entropies = [deque() for _ in range(model_size)]
 		self.rewards = [deque() for _ in range(model_size)]
 		self.values = [deque() for _ in range(model_size)]
 		self.lstm_states = [deque() for _ in range(model_size)]
@@ -53,7 +53,7 @@ class ExperienceBatch(object):
 		self.rewards[agent_id].append(reward)
 		self.values[agent_id].append(value)
 		self.actions[agent_id].append(action)
-		self.cross_entropys[agent_id].append(cross_entropy)
+		self.cross_entropies[agent_id].append(cross_entropy)
 		if memorize_step:
 			self.agent_position_list.append( (agent_id, len(self.states[agent_id])-1) ) # (agent_id, batch_position)
 			self.size += 1

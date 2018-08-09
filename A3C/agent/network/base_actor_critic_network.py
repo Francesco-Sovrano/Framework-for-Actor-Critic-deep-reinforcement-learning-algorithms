@@ -126,12 +126,11 @@ class BaseAC_Network(object):
 			lstm_outputs = tf.reshape(lstm_outputs, [-1,self._lstm_units]) # shape: (batch, lstm_units)
 			return lstm_outputs, lstm_state
 			
-	def get_clipped_log(self, input):
-		return tf.log(tf.clip_by_value(input,1e-8,1))
-
-	def get_random_choice(self, input, depth):
-		samples = tf.multinomial(self.get_clipped_log(input), 1)
-		return tf.reshape(tf.one_hot(indices=samples, depth=depth), [-1,depth])
+	def sample_one_hot_actions(self, logits):
+		u = tf.random_uniform(tf.shape(logits))
+		samples = tf.argmax(logits - tf.log(-tf.log(u)), axis=-1)
+		one_hot_actions = tf.one_hot(samples, logits.get_shape().as_list()[-1])
+		return one_hot_actions
 	
 	def _policy_layers(self, input, reuse=False): # Policy (output)
 		with tf.variable_scope("base_policy{0}".format(self._id), reuse=reuse) as scope:
@@ -164,7 +163,7 @@ class BaseAC_Network(object):
 			else:
 				logits = tf.layers.dense(inputs=input, units=self.policy_length, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 				policy_batch = tf.contrib.layers.softmax(logits)
-				action_batch = self.get_random_choice(policy_batch, self.policy_length)
+				action_batch = self.sample_one_hot_actions(logits)
 				# action_batch = tf.stop_gradient(action_batch) # tf.stop_gradient stops the accumulated gradient from flowing through that operator in the backward direction
 				# softmax_cross_entropy_with_logits_v2 stops labels gradient
 				self.cross_entropy_batch = tf.nn.softmax_cross_entropy_with_logits_v2(labels=action_batch, logits=logits)
@@ -257,13 +256,13 @@ class BaseAC_Network(object):
 		return self._session.run(fetches=[self.value_batch, self._lstm_state], feed_dict=feed_dict)
 		#return value_batch, lstm_state
 				
-	def train(self, states, actions, rewards, values, cross_entropys, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state=None, concats=None, reward_prediction_states=None, reward_prediction_target=None):
+	def train(self, states, actions, rewards, values, cross_entropies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state=None, concats=None, reward_prediction_states=None, reward_prediction_target=None):
 		self.train_count += len(states)
-		feed_dict = self.build_feed(states, actions, rewards, values, cross_entropys, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target)
+		feed_dict = self.build_feed(states, actions, rewards, values, cross_entropies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target)
 		self._session.run(fetches=self.train_op, feed_dict=feed_dict, options=tf.RunOptions.NO_TRACE) # Calculate gradients and copy them to global network
 		
-	def build_feed(self, states, actions, rewards, values, cross_entropys, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target):
-		cross_entropys = np.reshape(cross_entropys,[-1,self.policy_length if self.policy_depth == 0 else self.policy_depth])
+	def build_feed(self, states, actions, rewards, values, cross_entropies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target):
+		cross_entropies = np.reshape(cross_entropies,[-1,self.policy_length if self.policy_depth == 0 else self.policy_depth])
 		values = np.reshape(values,[-1,1])
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 			advantages = np.reshape(generalized_advantage_estimators,[-1,1])
@@ -276,7 +275,7 @@ class BaseAC_Network(object):
 					self.cumulative_reward_batch: cumulative_rewards,
 					self.advantage_batch: advantages,
 					self.old_value_batch: values,
-					self.old_cross_entropy_batch: cross_entropys,
+					self.old_cross_entropy_batch: cross_entropies,
 					self._initial_lstm_state: lstm_state if lstm_state is not None else self._empty_lstm_state
 				}
 		if self._concat_size > 0:
