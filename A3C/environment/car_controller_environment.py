@@ -30,7 +30,7 @@ class CarControllerEnvironment(Environment):
 		self.max_noise_diameter = 0.4 # diameter in meters
 		self.min_speed = 0.05 # meters per step (assuming a step each 0.1 seconds -> 1.8km/h)
 		self.max_speed = 0.2 # meters per step (assuming a step each 0.1 seconds -> 7.2km/h)
-		self.max_speed_change_per_step = self.max_speed-self.min_speed
+		self.max_speed_change_per_step = 0.01
 		self.gamma = 10
 		self.max_steering_degree = 30
 		self.max_compensation_degree = 15
@@ -41,6 +41,22 @@ class CarControllerEnvironment(Environment):
 		self.noise_per_step = self.max_noise_diameter/self.max_step
 		# evaluator stuff
 		self.episodes = deque()
+	
+	def reset(self):
+		self.path = self.build_random_path()
+		self.noisy_point = self.car_point = (0,0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
+		self.car_angle = np.pi/2 + 0.01		
+		self.noisy_progress = self.car_progress = 0
+		self.noisy_waypoint = self.car_waypoint = 1
+		
+		self.speed = self.min_speed + (self.max_speed-self.min_speed)*np.random.random() # random initial speed in [min_speed,max_speed]
+		self.steering_angle = 0		
+		self.cumulative_reward = 0
+		self.step = 0
+		self.last_action = [0,0]
+		self.last_reward = 0
+		self.last_state = self.get_state(self.car_point, self.car_waypoint)
+		self.avg_speed_per_steps = 0
 		
 	def build_random_path(self):
 		# setup environment
@@ -57,23 +73,7 @@ class CarControllerEnvironment(Environment):
 		
 	def is_terminal_position(self, position):
 		return position >= self.positions_number
-		
-	def reset(self):
-		self.path = self.build_random_path()
-		self.noisy_point = self.car_point = (0,0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
-		self.car_angle = np.pi/2 + 0.01		
-		self.noisy_progress = self.car_progress = 0
-		self.noisy_waypoint = self.car_waypoint = 1
-		
-		self.speed = self.min_speed
-		self.steering_angle = 0		
-		self.cumulative_reward = 0
-		self.step = 0
-		self.last_action = [0,0]
-		self.last_reward = 0
-		self.last_state = self.get_state(self.car_point, self.car_waypoint)
-		self.avg_speed_per_steps = 0
-		
+			
 	def get_car_position_and_next_waypoint(self, car_point):
 		car_x, car_y = car_point
 		def get_distance(position):
@@ -195,8 +195,8 @@ class CarControllerEnvironment(Environment):
 		yct = yc[position_id:min(position_id+self.positions_number,2*self.positions_number)] if position_id < len(xc) else []
 		return (xct,yct)
 		
-	def get_frame_info(self, network, observation, value, action, reward, cross_entropy, entropy):
-		state_info = "reward={}, speed={}, steering_angle={}, agent={}, value={}, cross_entropy={}, entropy={}\n".format(reward, self.speed, self.steering_angle, network.agent_id, value, cross_entropy, entropy)
+	def get_frame_info(self, network, observation, value, action, reward, cross_entropy):
+		state_info = "reward={}, speed={}, steering_angle={}, agent={}, value={}, cross_entropy={}\n".format(reward, self.speed, self.steering_angle, network.agent_id, value, cross_entropy)
 		action_info = "action={}\n".format(action)
 		frame_info = { "log": state_info + action_info }
 		if flags.save_episode_screen:

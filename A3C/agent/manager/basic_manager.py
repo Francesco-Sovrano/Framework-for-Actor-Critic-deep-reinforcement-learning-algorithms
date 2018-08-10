@@ -141,14 +141,14 @@ class BasicManager(object):
 		agent_id = self.agent_id
 		agent = self.get_model(agent_id)
 		lstm_state = self.lstm_state
-		action_batch, value_batch, entropy_batch, cross_entropy_batch, self.lstm_state = agent.run_action_and_value(states=[state], concats=[concat], lstm_state=lstm_state)
-		action, value, entropy, cross_entropy = action_batch[0], value_batch[0], entropy_batch[0], cross_entropy_batch[0]
+		action_batch, value_batch, cross_entropy_batch, self.lstm_state = agent.run_action_and_value(states=[state], concats=[concat], lstm_state=lstm_state)
+		action, value, cross_entropy = action_batch[0], value_batch[0], cross_entropy_batch[0]
 		new_state, reward, terminal = act_function(action)
 		if flags.clip_reward:
 			reward = np.clip(reward, flags.min_reward, flags.max_reward)
 
 		self.batch.add_agent_action(agent_id, state, concat, action, cross_entropy, reward, value, lstm_state)
-		return new_state, value, action, reward, terminal, cross_entropy, entropy
+		return new_state, value, action, reward, terminal, cross_entropy
 					
 	def compute_cumulative_reward(self, batch):
 		# prepare batch

@@ -46,7 +46,7 @@ def build():
 # Last Action-Reward: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
 	tf.app.flags.DEFINE_boolean("use_concatenation", True, "Whether to concatenate an extra 1D vector to the flatten output of the network initial tower.")
 # Reward Prediction: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
-	tf.app.flags.DEFINE_boolean("predict_reward", True, "Whether to predict rewards. This is useful with sparse rewards.")
+	tf.app.flags.DEFINE_boolean("predict_reward", False, "Whether to predict rewards. This is useful with sparse rewards.")
 	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 128, "Maximum number of batches stored in the reward prediction buffer")
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
@@ -63,7 +63,7 @@ def build():
 # Actor-Critic parameters
 	# Learning rate for Critic is half of Actor's, so multiply by 0.5 (default)
 	tf.app.flags.DEFINE_float("value_coefficient", 0.5, "value coefficient for tuning Critic learning rate") # default is 0.5, for openAI is 0.25
-	tf.app.flags.DEFINE_float("entropy_beta", 0.01, "entropy regularization constant") # default is 0.001, for openAI is 0.01
+	tf.app.flags.DEFINE_float("entropy_beta", 0.001, "entropy regularization constant") # default is 0.001, for openAI is 0.01
 	tf.app.flags.DEFINE_integer("parallel_size", 4, "parallel thread size")
 	tf.app.flags.DEFINE_integer("max_batch_size", 8, "maximum batch size") # default is 60, for openAI is 128
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
