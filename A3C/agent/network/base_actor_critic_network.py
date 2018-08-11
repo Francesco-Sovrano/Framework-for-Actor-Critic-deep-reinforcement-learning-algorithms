@@ -76,8 +76,8 @@ class BaseAC_Network(object):
 	def _build_reward_prediction(self, reuse=False):
 		self.reward_prediction_labels = self._reward_prediction_target_placeholder("reward_prediction_target",1)
 		self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state",3)
+		output = self._convolutive_layers(self.reward_prediction_state_batch, reuse=True) # do it outside reward_prediction variable scope
 		with tf.variable_scope("reward_prediction{0}".format(self._id), reuse=reuse) as scope:
-			output = self._convolutive_layers(self.reward_prediction_state_batch, reuse=True)
 			output = tf.reshape(output,[1,-1])
 			logits = tf.layers.dense(inputs=output, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			# policy = tf.contrib.layers.softmax(logits)
