@@ -2,7 +2,7 @@ from collections import deque
 import numpy as np
 
 class ExperienceBatch(object):
-	__slot__ = ('bootstrap','agent_position_list','total_reward','size')
+	# __slots__ = ('bootstrap','agent_position_list','total_reward','size')
 
 	def __init__(self, model_size):
 		# action info
@@ -22,12 +22,10 @@ class ExperienceBatch(object):
 		self.total_reward = 0
 		self.size = 0
 
-	def finalize(self):
-		for key in self.__dict__:
-			self.__dict__[key] = np.array(self.__dict__[key])
-			# if len(self.__dict__[key].shape)==1:
-				# self.__dict__[key] = np.expand_dims(self.__dict__[key], axis=0)
-		return self
+	# def finalize(self):
+		# for key in self.__dict__:
+			# self.__dict__[key] = np.array(self.__dict__[key])
+		# return self
 
 	def get_step_action(self, action, step):
 		id, pos = self.get_agent_and_pos(step)
@@ -39,7 +37,7 @@ class ExperienceBatch(object):
 		id, pos = self.get_agent_and_pos(step)
 		for (key, value) in feed_dict.items():
 			q = self.__dict__[key][id]
-			if len(q) <= pos:
+			if len(q) <= pos: # add missing steps
 				q.extend([None]*(pos-len(q)+1))
 			q[pos] = value
 		

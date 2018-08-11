@@ -50,10 +50,9 @@ class CarControllerEnvironment(Environment):
 		self.noisy_waypoint = self.car_waypoint = 1
 		
 		self.speed = self.min_speed + (self.max_speed-self.min_speed)*np.random.random() # random initial speed in [min_speed,max_speed]
-		self.steering_angle = 0		
+		self.steering_angle = 0
 		self.cumulative_reward = 0
 		self.step = 0
-		self.last_action = [0,0]
 		self.last_reward = 0
 		self.last_state = self.get_state(self.car_point, self.car_waypoint)
 		self.avg_speed_per_steps = 0
@@ -143,7 +142,6 @@ class CarControllerEnvironment(Environment):
 		state = self.get_state(self.car_point, self.car_waypoint)
 		# update last action/state/reward
 		self.last_state = state
-		self.last_action = action_vector
 		self.last_reward = car_reward
 		# update cumulative reward
 		self.cumulative_reward += noisy_reward
@@ -164,7 +162,7 @@ class CarControllerEnvironment(Environment):
 		return state, noisy_reward, terminal
 		
 	def get_concatenation(self):
-		return np.concatenate( (self.last_action, [self.last_reward]), -1)
+		return [self.steering_angle, self.speed, self.last_reward]
 		
 	def get_reward(self, car_speed, car_point, car_progress, car_position):
 		if car_position > car_progress: # is moving toward next position

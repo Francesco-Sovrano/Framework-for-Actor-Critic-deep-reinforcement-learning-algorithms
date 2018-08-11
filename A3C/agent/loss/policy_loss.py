@@ -13,11 +13,11 @@ class PolicyLoss(object):
 
 	def __init__(self, cliprange, cross_entropy, old_cross_entropy, advantage, entropy, entropy_beta):
 		self.cliprange = cliprange
-		self.cross_entropy = cross_entropy
-		self.old_cross_entropy = old_cross_entropy
 		self.advantage = advantage
-		self.entropy = entropy
 		self.entropy_beta = entropy_beta
+		self.entropy = tf.maximum(0.,entropy) if flags.non_negative_entropies else entropy
+		self.cross_entropy = tf.maximum(0.,cross_entropy) if flags.non_negative_entropies else cross_entropy
+		self.old_cross_entropy = tf.maximum(0.,old_cross_entropy) if flags.non_negative_entropies else old_cross_entropy
 		
 	def get(self):
 		if flags.policy_loss == 'vanilla':

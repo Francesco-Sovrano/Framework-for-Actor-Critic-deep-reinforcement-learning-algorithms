@@ -233,15 +233,14 @@ class BasicManager(object):
 		
 	def add_to_reward_prediction_buffer(self, batch):
 		batch_size = batch.size
-		if batch_size <= 1:
+		if batch_size <= 3:
 			return
-		rp_frame_length = min(3, batch_size-1) # in [1,3]
 		should_save_batch = self.should_save_batch(batch)
-		for i in range(rp_frame_length, batch_size):
+		for i in range(3, batch_size):
 			reward = batch.get_step_action('rewards', i)
 			type_id = 1 if reward > 0 else 0
 			if should_save_batch or not self.reward_prediction_buffer.id_is_full(type_id):
-				states = np.array([batch.get_step_action('states', j)  for j in range(i-rp_frame_length, i)]) # cast list to np.array to avoid tensorflow memory leaks
+				states = [batch.get_step_action('states', j)  for j in range(i-3, i)]
 				target = np.zeros((1,3))
 				if reward == 0:
 					target[0][0] = 1 # zero
@@ -249,7 +248,7 @@ class BasicManager(object):
 					target[0][1] = 1 # positive
 				else:
 					target[0][2] = 1 # negative
-				self.reward_prediction_buffer.put(batch=RewardPredictionBatch(states, target), type_id=type_id)
+				self.reward_prediction_buffer.put(batch=RewardPredictionBatch(states, target), type_id=type_id)  # target must have the same batch size of states to avoid tensorflow memory leaks
 			
 	def add_to_replay_buffer(self, batch):
 		batch_size = batch.size
@@ -267,6 +266,8 @@ class BasicManager(object):
 		# reward prediction
 		if flags.predict_reward:
 			self.add_to_reward_prediction_buffer(batch) # do it before training, this way there will be at least one batch in the reward_prediction_buffer
+			if self.reward_prediction_buffer.is_empty():
+				return # cannot train without reward prediction, wait until reward_prediction_buffer is not empty
 		# train
 		self.train(batch)
 		# experience replay

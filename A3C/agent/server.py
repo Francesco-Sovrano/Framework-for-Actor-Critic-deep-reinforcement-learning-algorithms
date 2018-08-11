@@ -12,7 +12,7 @@ import os
 import logging
 import time
 import sys
-import _pickle as pickle
+import _pickle as pickle # CPickle
 
 from environment.environment import Environment
 from agent.client import Worker

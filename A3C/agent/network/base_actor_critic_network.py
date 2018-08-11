@@ -54,7 +54,7 @@ class BaseAC_Network(object):
 		with tf.device(self._device), tf.variable_scope(scope_name) as scope:
 			self._build_base()
 			if self.predict_reward:
-				self._build_reward_prediction()
+				self.reward_prediction_cross_entropy = self._build_reward_prediction()
 		# Get keys
 		self.train_keys = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope_name)
 		self.update_keys = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope_name) # for batch normalization
@@ -73,14 +73,15 @@ class BaseAC_Network(object):
 		self.value_batch = self._value_layers(lstm)
 		print( "    [{}]Value shape: {}".format(self._id, self.value_batch.get_shape()) )
 		
-	def _build_reward_prediction(self):
-		self.reward_prediction_labels = self._reward_prediction_target_placeholder("reward_prediction_target")
-		self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state")
-		output = self._convolutive_layers(self.reward_prediction_state_batch, reuse=True)
-		output = tf.layers.flatten(output)
-		logits = tf.layers.dense(inputs=output, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
-		# policy = tf.contrib.layers.softmax(logits)
-		self.reward_prediction_cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.reward_prediction_labels, logits=logits)
+	def _build_reward_prediction(self, reuse=False):
+		self.reward_prediction_labels = self._reward_prediction_target_placeholder("reward_prediction_target",1)
+		self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state",3)
+		with tf.variable_scope("reward_prediction{0}".format(self._id), reuse=reuse) as scope:
+			output = self._convolutive_layers(self.reward_prediction_state_batch, reuse=True)
+			output = tf.reshape(output,[1,-1])
+			logits = tf.layers.dense(inputs=output, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
+			# policy = tf.contrib.layers.softmax(logits)
+			return tf.nn.softmax_cross_entropy_with_logits_v2(labels=self.reward_prediction_labels, logits=logits)
 		
 	def _convolutive_layers(self, input, reuse=False):
 		with tf.variable_scope("base_conv{0}".format(self._id), reuse=reuse) as scope:
@@ -105,7 +106,7 @@ class BaseAC_Network(object):
 
 			# self._lstm_cell = tf.contrib.model_pruning.MaskedBasicLSTMCell(num_units=self._lstm_units, forget_bias=1.0, state_is_tuple=True, activation=None)
 			self._lstm_cell = tf.contrib.rnn.LSTMCell(num_units=self._lstm_units)
-			self._initial_lstm_state = tf.contrib.rnn.LSTMStateTuple(self._lstm_state_placeholder("lstm_tuple_1"), self._lstm_state_placeholder("lstm_tuple_2"))
+			self._initial_lstm_state = tf.contrib.rnn.LSTMStateTuple(self._lstm_state_placeholder("lstm_tuple_1",1), self._lstm_state_placeholder("lstm_tuple_2",1))
 			self._empty_lstm_state = (np.zeros([1,self._lstm_units]),np.zeros([1,self._lstm_units]))
 			lstm_outputs, lstm_state = tf.nn.dynamic_rnn(cell=self._lstm_cell, inputs=input, initial_state=self._initial_lstm_state, sequence_length=step_size, time_major = False, scope = scope)
 			# Dropout: https://www.nature.com/articles/s41586-018-0102-6
@@ -268,26 +269,26 @@ class BaseAC_Network(object):
 			} )
 		return feed_dict
 		
-	def _lstm_state_placeholder(self, name=None):
-		return tf.placeholder(dtype=tf.float32, shape=[1, self._lstm_units], name=name)
+	def _lstm_state_placeholder(self, name=None, batch_size=None):
+		return tf.placeholder(dtype=tf.float32, shape=[batch_size, self._lstm_units], name=name)
 		
-	def _state_placeholder(self, name=None):
-		return tf.placeholder(dtype=tf.float32, shape=np.concatenate([[None], self._state_shape], 0), name=name)
+	def _reward_prediction_target_placeholder(self, name=None, batch_size=None):
+		return tf.placeholder(dtype=tf.float32, shape=[batch_size,3], name=name)
 		
-	def _entropy_placeholder(self, name=None):
+	def _state_placeholder(self, name=None, batch_size=None):
+		return tf.placeholder(dtype=tf.float32, shape=np.concatenate([[batch_size], self._state_shape], 0), name=name)
+		
+	def _entropy_placeholder(self, name=None, batch_size=None):
 		if self.policy_depth == 0:
-			return tf.placeholder(dtype=tf.float32, shape=[None,self.policy_length], name=name)
+			return tf.placeholder(dtype=tf.float32, shape=[batch_size,self.policy_length], name=name)
 		else:
-			return tf.placeholder(dtype=tf.float32, shape=[None,self.policy_depth], name=name)
+			return tf.placeholder(dtype=tf.float32, shape=[batch_size,self.policy_depth], name=name)
 			
-	def _action_placeholder(self, name=None):
-		return tf.placeholder(dtype=tf.float32, shape=[None,self.policy_length], name=name)
+	def _action_placeholder(self, name=None, batch_size=None):
+		return tf.placeholder(dtype=tf.float32, shape=[batch_size,self.policy_length], name=name)
 		
-	def _value_placeholder(self, name=None):
-		return tf.placeholder(dtype=tf.float32, shape=[None,1], name=name)
+	def _value_placeholder(self, name=None, batch_size=None):
+		return tf.placeholder(dtype=tf.float32, shape=[batch_size,1], name=name)
 		
-	def _concat_placeholder(self, name=None):
-		return tf.placeholder(dtype=tf.float32, shape=[None, self.concat_size], name=name)
-		
-	def _reward_prediction_target_placeholder(self, name=None):
-		return tf.placeholder(dtype=tf.float32, shape=[1,3], name=name)
+	def _concat_placeholder(self, name=None, batch_size=None):
+		return tf.placeholder(dtype=tf.float32, shape=[batch_size,self.concat_size], name=name)
