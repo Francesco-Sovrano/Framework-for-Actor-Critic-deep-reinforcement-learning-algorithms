@@ -33,8 +33,9 @@ class RogueEnvironment(environment.Environment):
 		self.game = RogueBox(flags.env_path, flags.state_generator, flags.reward_generator, flags.steps_per_episode, flags.match_count_for_evaluation)
 
 	def reset(self):
-		(self.last_action, (self.last_reward, new_state, _, _)) = self.game.reset()
+		(action, (self.last_reward, new_state, _, _)) = self.game.reset()
 		self.last_state = new_state["value"]
+		self.last_action = np.zeros(self.get_action_shape()[0])
 		
 	def stop(self):
 		self.game.stop()
@@ -84,6 +85,6 @@ class RogueEnvironment(environment.Environment):
 		terminal = (win or lose)
 		# store last results
 		self.last_state = state
-		self.last_action = action
+		self.last_action = action_vector
 		self.last_reward = reward
 		return state, reward, terminal

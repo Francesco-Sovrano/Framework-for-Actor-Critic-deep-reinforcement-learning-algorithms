@@ -22,10 +22,7 @@ class Environment(object):
 		return self.get_action_shape()[0]+1
 		
 	def get_concatenation(self):
-		concatenation = np.zeros(self.get_concatenation_size())
-		concatenation[self.last_action]=1
-		concatenation[-1] = self.last_reward
-		return concatenation
+		return np.concatenate((self.last_action,[self.last_reward]), -1)
 
 	def __init__(self):
 		pass

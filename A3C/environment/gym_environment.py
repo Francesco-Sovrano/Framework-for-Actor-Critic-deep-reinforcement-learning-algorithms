@@ -29,7 +29,7 @@ class GymEnvironment(environment.Environment):
 		self.stop()
 		self.last_state = self.game.reset()
 		self.last_state = self.normalize(self.last_state)
-		self.last_action = 0
+		self.last_action = np.zeros(self.get_action_shape()[0])
 		self.last_reward = 0
 		self.cumulative_reward = 0
 		self.step = 0
@@ -87,7 +87,7 @@ class GymEnvironment(environment.Environment):
 		state = self.normalize(state)
 		# store last results
 		self.last_state = state
-		self.last_action = action
+		self.last_action = action_vector
 		self.last_reward = reward
 		# complete step
 		self.cumulative_reward += reward

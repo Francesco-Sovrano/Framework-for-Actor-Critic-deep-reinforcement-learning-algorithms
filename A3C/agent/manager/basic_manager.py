@@ -33,7 +33,6 @@ class BasicManager(object):
 			self.initialize_gradient_optimizer()
 	# Build agents
 		self.model_list = []
-		self._model_usage_list = deque()
 		self.build_agents(state_shape=state_shape, action_shape=action_shape, concat_size=concat_size)
 	# Build experience buffer
 		if flags.replay_ratio > 0:
@@ -43,6 +42,9 @@ class BasicManager(object):
 	# Bind optimizer to global
 		if not self.is_global_network():
 			self.bind_to_global(self.global_network)
+	# Statistics
+		self._model_usage_list = deque()
+		self._loss_list = [{"total_loss": deque(), "policy_loss": deque(), "value_loss": deque()} for _ in range(self.model_size)]
 			
 	def is_global_network(self):
 		return self.global_network is None
@@ -100,20 +102,30 @@ class BasicManager(object):
 		return self.model_list[id]
 		
 	def get_statistics(self):
-		if self.model_size == 1:
-			return {}
 		stats = {}
-		total_usage = 0
-		usage_matrix = {}
-		for u in self._model_usage_list:
-			if not (u in usage_matrix):
-				usage_matrix[u] = 0
-			usage_matrix[u] += 1
-			total_usage += 1
+		# build loss statistics
 		for i in range(self.model_size):
-			stats['model_{}'.format(i)] = 0
-		for key, value in usage_matrix.items():
-			stats['model_{}'.format(key)] = value/total_usage if total_usage != 0 else 0
+			if len(self._loss_list[i]["total_loss"]) > 0:
+				stats['loss_total{}'.format(i)] = sum(self._loss_list[i]["total_loss"])/len(self._loss_list[i]["total_loss"])
+				stats['loss_policy{}'.format(i)] = sum(self._loss_list[i]["policy_loss"])/len(self._loss_list[i]["policy_loss"])
+				stats['loss_value{}'.format(i)] = sum(self._loss_list[i]["value_loss"])/len(self._loss_list[i]["value_loss"])
+			else:
+				stats['loss_total{}'.format(i)] = 0
+				stats['loss_policy{}'.format(i)] = 0
+				stats['loss_value{}'.format(i)] = 0
+		# build models usage statistics
+		if self.model_size > 1:
+			total_usage = 0
+			usage_matrix = {}
+			for u in self._model_usage_list:
+				if not (u in usage_matrix):
+					usage_matrix[u] = 0
+				usage_matrix[u] += 1
+				total_usage += 1
+			for i in range(self.model_size):
+				stats['model_{}'.format(i)] = 0
+			for key, value in usage_matrix.items():
+				stats['model_{}'.format(key)] = value/total_usage if total_usage != 0 else 0
 		return stats
 		
 	def add_to_statistics(self, id):
@@ -195,7 +207,7 @@ class BasicManager(object):
 					rp_states = None
 					rp_target = None
 				# train
-				model.train(
+				total_loss, policy_loss, value_loss = model.train(
 					states=states[i], concats=concats[i],
 					actions=actions[i], values=values[i],
 					cross_entropies=cross_entropies[i],
@@ -206,24 +218,32 @@ class BasicManager(object):
 					reward_prediction_states=rp_states,
 					reward_prediction_target=rp_target
 				)
+				# loss statistics
+				self._loss_list[i]["total_loss"].append(total_loss)
+				self._loss_list[i]["policy_loss"].append(policy_loss)
+				self._loss_list[i]["value_loss"].append(value_loss)
+				if len(self._loss_list[i]["total_loss"]) > flags.match_count_for_evaluation: # remove old statistics
+					self._loss_list[i]["total_loss"].popleft()
+					self._loss_list[i]["policy_loss"].popleft()
+					self._loss_list[i]["value_loss"].popleft()
 				
 	def bootstrap(self, state, concat=None):
 		value_batch, _ = self.estimate_value(agent_id=self.agent_id, states=[state], concats=[concat], lstm_state=self.lstm_state)
-		self.batch.bootstrap['agent_id'] = self.agent_id
-		self.batch.bootstrap['state'] = state
-		self.batch.bootstrap['concat'] = concat
-		self.batch.bootstrap['value'] = value_batch[0]
-				
-	def replay_value(self, batch): # replay values, lstm states
-		lstm_state = batch.get_step_action('lstm_states', 0)
-		for i in range(batch.size):
-			concat, state = batch.get_step_action(['concats','states'], i)
-			new_values, new_lstm_state = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
-			batch.set_step_action({'lstm_states':lstm_state,'values':new_values[0]}, i)
-			lstm_state = new_lstm_state
+		bootstrap = self.batch.bootstrap
+		bootstrap['lstm_state'] = self.lstm_state
+		bootstrap['agent_id'] = self.agent_id
+		bootstrap['state'] = state
+		bootstrap['concat'] = concat
+		bootstrap['value'] = value_batch[0]
+		
+	def replay_value(self, batch):
+		for i in range(self.model_size):
+			states = batch.states[i]
+			if len(states)>0:
+				batch.values[i], _ = self.estimate_value(agent_id=i, states=states, concats=batch.concats[i], lstm_state=None)
 		if 'value' in batch.bootstrap:
 			bootstrap = batch.bootstrap
-			values, _ = self.estimate_value(agent_id=bootstrap['agent_id'], states=[bootstrap['state']], concats=[bootstrap['concat']], lstm_state=lstm_state)
+			values, _ = self.estimate_value(agent_id=bootstrap["agent_id"], states=[bootstrap["state"]], concats=[bootstrap["concat"]], lstm_state=None)
 			bootstrap['value'] = values[0]
 		return self.compute_cumulative_reward(batch)
 		
