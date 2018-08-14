@@ -236,14 +236,17 @@ class BasicManager(object):
 		bootstrap['concat'] = concat
 		bootstrap['value'] = value_batch[0]
 		
-	def replay_value(self, batch):
-		for i in range(self.model_size):
-			states = batch.states[i]
-			if len(states)>0:
-				batch.values[i], _ = self.estimate_value(agent_id=i, states=states, concats=batch.concats[i], lstm_state=None)
+	def replay_value(self, batch): # replay values and lstm states
+		lstm_state = batch.get_step_action('lstm_states', 0)
+		for i in range(batch.size):
+			concat, state = batch.get_step_action(['concats','states'], i)
+			agent_id, _ = batch.get_agent_and_pos(i)
+			new_values, new_lstm_state = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
+			batch.set_step_action({'lstm_states':lstm_state,'values':new_values[0]}, i)
+			lstm_state = new_lstm_state
 		if 'value' in batch.bootstrap:
 			bootstrap = batch.bootstrap
-			values, _ = self.estimate_value(agent_id=bootstrap["agent_id"], states=[bootstrap["state"]], concats=[bootstrap["concat"]], lstm_state=None)
+			values, _ = self.estimate_value(agent_id=bootstrap['agent_id'], states=[bootstrap['state']], concats=[bootstrap['concat']], lstm_state=lstm_state)
 			bootstrap['value'] = values[0]
 		return self.compute_cumulative_reward(batch)
 		

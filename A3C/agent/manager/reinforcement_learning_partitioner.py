@@ -104,17 +104,24 @@ class ReinforcementLearningPartitioner(BasicManager):
 		self.batch.bootstrap['manager_value'] = value
 		super().bootstrap(state, concat)
 		
-	def replay_value(self, batch):
-		batch = super().replay_value(batch) # do it before replaying bootstrap
+	def replay_value(self, batch): # replay values and lstm states
+		lstm_state = batch.lstm_states[0][0]
+		for i in range(len(batch.states[0])):
+			state = batch.states[0][i]
+			concat = batch.concats[0][i]
+			new_values, new_lstm_state = self.estimate_value(agent_id=0, states=[state], concats=[concat], lstm_state=lstm_state)
+			batch.lstm_states[0][i] = lstm_state
+			batch.values[0][i] = new_values[0]
+			lstm_state = new_lstm_state
 		if 'manager_value' in batch.bootstrap:
 			bootstrap = batch.bootstrap
 			if self.query_partitioner(batch.size):
-				new_values, _ = self.estimate_value(agent_id=0, states=[bootstrap['state']], concats=[bootstrap['manager_concat']], lstm_state=None)
+				new_values, _ = self.estimate_value(agent_id=0, states=[bootstrap['state']], concats=[bootstrap['manager_concat']], lstm_state=lstm_state)
 				bootstrap['manager_value'] = new_values[0]
 			else:
 				bootstrap['manager_value'] = (batch.values[0][-1] - batch.rewards[0][-1])/flags.gamma
-		return batch
-			
+		return super().replay_value(batch)
+		
 	def compute_cumulative_reward(self, batch):
 		manager_discounted_cumulative_reward = 0.0
 		manager_generalized_advantage_estimator = 0.0
