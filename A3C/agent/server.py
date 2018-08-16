@@ -41,11 +41,10 @@ class Application(object):
 		self.device = "/cpu:0"
 		if flags.use_gpu:
 			self.device = "/gpu:0"
-		# config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True) # prepare session
-		# if flags.use_gpu:
-			# config.gpu_options.allow_growth = True
-		# self.sess = tf.Session(config=config)
-		self.sess = tf.Session()
+		config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True) # prepare session
+		if flags.use_gpu:
+			config.gpu_options.allow_growth = True
+		self.sess = tf.Session(config=config)
 		self.global_step = 0
 		self.stop_requested = False
 		self.terminate_reqested = False
@@ -60,7 +59,7 @@ class Application(object):
 		for i in range(flags.parallel_size):
 			self.trainers.append( Worker(thread_index=i+1, session=self.sess, global_network=self.global_network, device=self.device) )
 		# initialize variables
-		self.sess.run(tf.global_variables_initializer(), options=tf.RunOptions.NO_TRACE) # do it before loading checkpoint
+		self.sess.run(tf.global_variables_initializer()) # do it before loading checkpoint
 		# load checkpoint
 		self.load_checkpoint()
 		
@@ -174,7 +173,7 @@ class Application(object):
 			self.elapsed_time = 0.0
 			self.next_save_steps = flags.save_interval_step
 			print("Could not find old checkpoint")
-		self.sess.graph.finalize()
+		# self.sess.graph.finalize()
 			
 	def save(self):
 		""" Save checkpoint. 

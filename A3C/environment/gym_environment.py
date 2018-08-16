@@ -29,7 +29,7 @@ class GymEnvironment(environment.Environment):
 		self.stop()
 		self.last_state = self.game.reset()
 		self.last_state = self.normalize(self.last_state)
-		self.last_action = np.zeros(self.get_action_shape()[0])
+		self.last_action = np.zeros(self.get_concatenation_size()-1)
 		self.last_reward = 0
 		self.cumulative_reward = 0
 		self.step = 0
@@ -40,7 +40,7 @@ class GymEnvironment(environment.Environment):
 		return state
 			
 	def get_action_shape(self):
-		return (self.real_actions.n,1)
+		return (1,self.real_actions.n) # take 1 action of n possible types
 		
 	def get_state_shape(self):
 		shape = self.game.observation_space.shape

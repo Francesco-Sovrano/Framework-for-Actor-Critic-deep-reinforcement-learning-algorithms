@@ -29,7 +29,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 			session=self.session, 
 			id='{0}_{1}'.format(self.id, 0), 
 			state_shape=state_shape, 
-			action_shape=(agents_count,1), 
+			action_shape=(1,agents_count), 
 			concat_size=agents_count+1,
 			entropy_beta=flags.entropy_beta, 
 			clip=self.clip[0], 
@@ -85,13 +85,13 @@ class ReinforcementLearningPartitioner(BasicManager):
 			self.agent_id, manager_action, manager_value, manager_cross_entropy, self.manager_lstm_state = self.get_state_partition(state=state, concat=manager_concat, lstm_state=lstm_state)
 			
 			self.last_manager_action = manager_action
-			self.query_reward = 0
 			# N.B.: the query reward is unknown since bootstrap or a new query starts
-			self.batch.add_agent_action(agent_id=0, state=state, concat=manager_concat, action=manager_action, cross_entropy=manager_cross_entropy, reward=None, value=manager_value, lstm_state=lstm_state, memorize_step=False)
+			self.batch.add_agent_action(agent_id=0, state=state, concat=manager_concat, action=manager_action, cross_entropy=manager_cross_entropy, reward=0, value=manager_value, lstm_state=lstm_state, memorize_step=False)
 			
 		new_state, value, action, reward, terminal, cross_entropy = super().act(act_function, state, concat)
-		self.query_reward += reward
-		self.last_manager_reward = self.batch.rewards[0][-1] = self.query_reward # keep query reward updated
+		# keep query reward updated
+		self.batch.rewards[0][-1] += reward
+		self.last_manager_reward = self.batch.rewards[0][-1]
 		return new_state, value, action, reward, terminal, cross_entropy
 		
 	def bootstrap(self, state, concat=None):

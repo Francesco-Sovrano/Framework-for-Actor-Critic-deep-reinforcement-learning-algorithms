@@ -44,7 +44,8 @@ class BasicManager(object):
 			self.bind_to_global(self.global_network)
 	# Statistics
 		self._model_usage_list = deque()
-		self._loss_list = [{"total_loss": deque(), "policy_loss": deque(), "value_loss": deque()} for _ in range(self.model_size)]
+		if flags.print_loss:
+			self._loss_list = [{"total_loss": deque(), "policy_loss": deque(), "value_loss": deque()} for _ in range(self.model_size)]
 			
 	def is_global_network(self):
 		return self.global_network is None
@@ -104,15 +105,16 @@ class BasicManager(object):
 	def get_statistics(self):
 		stats = {}
 		# build loss statistics
-		for i in range(self.model_size):
-			if len(self._loss_list[i]["total_loss"]) > 0:
-				stats['loss_total{}'.format(i)] = sum(self._loss_list[i]["total_loss"])/len(self._loss_list[i]["total_loss"])
-				stats['loss_policy{}'.format(i)] = sum(self._loss_list[i]["policy_loss"])/len(self._loss_list[i]["policy_loss"])
-				stats['loss_value{}'.format(i)] = sum(self._loss_list[i]["value_loss"])/len(self._loss_list[i]["value_loss"])
-			else:
-				stats['loss_total{}'.format(i)] = 0
-				stats['loss_policy{}'.format(i)] = 0
-				stats['loss_value{}'.format(i)] = 0
+		if flags.print_loss:
+			for i in range(self.model_size):
+				if len(self._loss_list[i]["total_loss"]) > 0:
+					stats['loss_total{}'.format(i)] = sum(self._loss_list[i]["total_loss"])/len(self._loss_list[i]["total_loss"])
+					stats['loss_policy{}'.format(i)] = sum(self._loss_list[i]["policy_loss"])/len(self._loss_list[i]["policy_loss"])
+					stats['loss_value{}'.format(i)] = sum(self._loss_list[i]["value_loss"])/len(self._loss_list[i]["value_loss"])
+				else:
+					stats['loss_total{}'.format(i)] = 0
+					stats['loss_policy{}'.format(i)] = 0
+					stats['loss_value{}'.format(i)] = 0
 		# build models usage statistics
 		if self.model_size > 1:
 			total_usage = 0
@@ -219,18 +221,20 @@ class BasicManager(object):
 					reward_prediction_target=rp_target
 				)
 				# loss statistics
-				self._loss_list[i]["total_loss"].append(total_loss)
-				self._loss_list[i]["policy_loss"].append(policy_loss)
-				self._loss_list[i]["value_loss"].append(value_loss)
-				if len(self._loss_list[i]["total_loss"]) > flags.match_count_for_evaluation: # remove old statistics
-					self._loss_list[i]["total_loss"].popleft()
-					self._loss_list[i]["policy_loss"].popleft()
-					self._loss_list[i]["value_loss"].popleft()
+				if flags.print_loss:
+					self._loss_list[i]["total_loss"].append(total_loss)
+					self._loss_list[i]["policy_loss"].append(policy_loss)
+					self._loss_list[i]["value_loss"].append(value_loss)
+					if len(self._loss_list[i]["total_loss"]) > flags.match_count_for_evaluation: # remove old statistics
+						self._loss_list[i]["total_loss"].popleft()
+						self._loss_list[i]["policy_loss"].popleft()
+						self._loss_list[i]["value_loss"].popleft()
 				
 	def bootstrap(self, state, concat=None):
-		value_batch, _ = self.estimate_value(agent_id=self.agent_id, states=[state], concats=[concat], lstm_state=self.lstm_state)
+		lstm_state = self.lstm_state
+		value_batch, _ = self.estimate_value(agent_id=self.agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
 		bootstrap = self.batch.bootstrap
-		bootstrap['lstm_state'] = self.lstm_state
+		bootstrap['lstm_state'] = lstm_state
 		bootstrap['agent_id'] = self.agent_id
 		bootstrap['state'] = state
 		bootstrap['concat'] = concat
@@ -246,7 +250,8 @@ class BasicManager(object):
 			lstm_state = new_lstm_state
 		if 'value' in batch.bootstrap:
 			bootstrap = batch.bootstrap
-			values, _ = self.estimate_value(agent_id=bootstrap['agent_id'], states=[bootstrap['state']], concats=[bootstrap['concat']], lstm_state=lstm_state)
+			agent_id = bootstrap['agent_id']
+			values, _ = self.estimate_value(agent_id=agent_id, states=[bootstrap['state']], concats=[bootstrap['concat']], lstm_state=lstm_state)
 			bootstrap['value'] = values[0]
 		return self.compute_cumulative_reward(batch)
 		
@@ -283,6 +288,7 @@ class BasicManager(object):
 		type_id = 1 if batch_reward > 0 else 0
 		if not self.experience_buffer.id_is_full(type_id) or self.should_save_batch(batch):
 			self.experience_buffer.put(batch, type_id)
+		# self.experience_buffer.put(batch, 1 if batch_reward > 0 else 0)
 		
 	def process_batch(self, global_step):
 		batch = self.compute_cumulative_reward(self.batch)

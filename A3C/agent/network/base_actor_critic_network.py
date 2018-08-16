@@ -24,8 +24,8 @@ class BaseAC_Network(object):
 		self._session = session
 		self._id = id # model id
 		self._device = device # gpu or cpu
-		self.policy_length = action_shape[0] # the dimension of the policy vector
-		self.policy_depth = action_shape[1] if len(action_shape) > 1 else 0 # dimension of the softmax: 0 for none, 1 if you want a single softmax for the whole policy, 2 or more if you want a softmax (with dimension self.policy_depth) for any policy element
+		self.policy_size = action_shape[0] # number of actions to take
+		self.policy_depth = action_shape[1] if len(action_shape) > 1 else 0 # number of discrete action types: set 0 for continuous control
 		self.concat_size = concat_size # the size of the vector concatenated with the CNN output before entering the LSTM
 		self._state_shape = state_shape # the shape of the input
 		# lstm units
@@ -35,20 +35,6 @@ class BaseAC_Network(object):
 	
 	def _create_network(self):
 		print( "Building network {}".format(self._id) )
-		# Batch placeholders
-		self.state_batch = self._state_placeholder("state")
-		self.concat_batch = self._concat_placeholder("concat")
-		self.old_value_batch = self._value_placeholder("old_value")
-		self.old_cross_entropy_batch = self._entropy_placeholder("old_cross_entropy")
-		self.cumulative_reward_batch = self._value_placeholder("cumulative_reward")
-		self.old_action_batch = self._action_placeholder("old_action_batch")
-		# self.episode_reward = self._singleton_placeholder("episode_reward")
-		# self.min_value = tf.Variable(float("+inf"), trainable=False)
-		# self.max_value = tf.Variable(float("-inf"), trainable=False)
-		# self.min_op = tf.assign(self.min_value, tf.minimum(self.min_value, self.episode_reward))
-		# self.max_op = tf.assign(self.max_value, tf.maximum(self.max_value, self.episode_reward))
-		print( "    [{}]Input shape: {}".format(self._id, self.state_batch.get_shape()) )
-		print( "    [{}]Concatenation shape: {}".format(self._id, self.concat_batch.get_shape()) )
 		# Build nets
 		scope_name = "net_{0}".format(self._id)
 		with tf.device(self._device), tf.variable_scope(scope_name) as scope:
@@ -57,9 +43,18 @@ class BaseAC_Network(object):
 				self.reward_prediction_cross_entropy = self._build_reward_prediction()
 		# Get keys
 		self.train_keys = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope_name)
-		# self.update_keys = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope_name) # for batch normalization
+		self.update_keys = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope_name) # for batch normalization
 		
 	def _build_base(self):
+		# [Placeholders]
+		self.state_batch = self._state_placeholder("state")
+		print( "    [{}]Input shape: {}".format(self._id, self.state_batch.get_shape()) )
+		self.concat_batch = self._concat_placeholder("concat")
+		print( "    [{}]Concatenation shape: {}".format(self._id, self.concat_batch.get_shape()) )
+		self.old_value_batch = self._value_placeholder("old_value")
+		self.old_cross_entropy_batch = self._entropy_placeholder("old_cross_entropy")
+		self.cumulative_reward_batch = self._value_placeholder("cumulative_reward")
+		self.old_action_batch = self._action_placeholder("old_action_batch")
 		# [CNN tower]
 		tower = self._convolutive_layers(self.state_batch)
 		print( "    [{}]Tower shape: {}".format(self._id, tower.get_shape()) )
@@ -84,7 +79,7 @@ class BaseAC_Network(object):
 			input = tf.reshape(input,[1,-1])
 			logits = tf.layers.dense(inputs=input, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			print( "    [{}]Reward prediction logits shape: {}".format(self._id, logits.get_shape()) )
-			# policies = tf.contrib.layers.softmax(logits)
+			# policies = tf.nn.softmax(logits)
 			return self.get_cross_entropy(samples=self.reward_prediction_labels, distributions=logits)
 		
 	def _convolutive_layers(self, input):
@@ -93,10 +88,12 @@ class BaseAC_Network(object):
 			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=32, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.relu) # xavier initializer
 			input = tf.layers.conv2d( inputs=input, filters=16, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
 			input = tf.layers.conv2d( inputs=input, filters=8, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
-			# input = tf.layers.batch_normalization(inputs=input, renorm=True, training=self._training) # renorm because minibaches are too small
+			input = tf.layers.batch_normalization(inputs=input, renorm=True, training=self._training) # renorm because minibaches are too small
 			return input
 	
 	def _lstm_layers(self, input, concat):
+		self._initial_lstm_state = tf.contrib.rnn.LSTMStateTuple(self._lstm_state_placeholder("lstm_tuple_1",1), self._lstm_state_placeholder("lstm_tuple_2",1))
+		self._empty_lstm_state = (np.zeros([1, self._lstm_units]), np.zeros([1, self._lstm_units]))
 		with tf.variable_scope("base_lstm{0}".format(self._id), reuse=tf.AUTO_REUSE) as scope:
 			input = tf.layers.flatten(input) # shape: (batch,w*h*depth)
 			# input = tf.contrib.model_pruning.masked_fully_connected(inputs=input, num_outputs=self._lstm_units, activation_fn=tf.nn.relu) # xavier initializer
@@ -109,31 +106,25 @@ class BaseAC_Network(object):
 				input = tf.reshape(input, [1, -1, self._lstm_units]) # shape: (1, batch, lstm_units)
 
 			# self._lstm_cell = tf.contrib.model_pruning.MaskedBasicLSTMCell(num_units=self._lstm_units, forget_bias=1.0, state_is_tuple=True, activation=None)
-			self._lstm_cell = tf.contrib.rnn.LSTMCell(num_units=self._lstm_units)
-			self._initial_lstm_state = tf.contrib.rnn.LSTMStateTuple(self._lstm_state_placeholder("lstm_tuple_1",1), self._lstm_state_placeholder("lstm_tuple_2",1))
-			self._empty_lstm_state = (np.zeros([1,self._lstm_units], dtype=np.float32),np.zeros([1,self._lstm_units], dtype=np.float32))
-			lstm_outputs, lstm_state = tf.nn.dynamic_rnn(cell=self._lstm_cell, inputs=input, initial_state=self._initial_lstm_state, sequence_length=step_size, time_major = False, scope = scope)
+			self._lstm_cell = tf.contrib.rnn.BasicLSTMCell(self._lstm_units, state_is_tuple=True) # use BasicLSTMCell instead of LSTMCell
+			lstm_outputs, lstm_state = tf.nn.dynamic_rnn(cell=self._lstm_cell, inputs=input, initial_state=self._initial_lstm_state, sequence_length=step_size, time_major=False, scope=scope)
 			# Dropout: https://www.nature.com/articles/s41586-018-0102-6
-			lstm_outputs = tf.layers.dropout(inputs=lstm_outputs, rate=0.5)			
+			lstm_outputs = tf.layers.dropout(inputs=lstm_outputs, rate=0.5)
 			lstm_outputs = tf.reshape(lstm_outputs, [-1,self._lstm_units]) # shape: (batch, lstm_units)
 			return lstm_outputs, lstm_state
 
 	def _value_layers(self, input): # Value (output)
 		with tf.variable_scope("base_value{0}".format(self._id), reuse=tf.AUTO_REUSE) as scope:
 			input = tf.layers.dense(inputs=input, units=1, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
-			# input = tf.clip_by_value(input, 0,1)
-			# min = tf.where(tf.equal(self.min_value,float("+inf")), 0., self.min_value)
-			# max = tf.where(tf.equal(self.max_value,float("-inf")), 0., self.max_value)
-			# input = min + input*(max-min)
 			return tf.reshape(input,[-1]) # flatten
 			
 	def _policy_layers(self, input): # Policy (output)
 		with tf.variable_scope("base_policy{0}".format(self._id), reuse=tf.AUTO_REUSE) as scope:
 			if self.policy_depth < 1: # continuous control
 				# mean
-				mu = tf.layers.dense(inputs=input, units=self.policy_length, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
+				mu = tf.layers.dense(inputs=input, units=self.policy_size, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
 				# standard deviation
-				sigma = tf.layers.dense(inputs=input, units=self.policy_length, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
+				sigma = tf.layers.dense(inputs=input, units=self.policy_size, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
 				# clip mu and sigma in order to avoid numeric instabilities
 				clipped_mu = tf.clip_by_value(mu, 0,1)
 				clipped_sigma = tf.clip_by_value(sigma, 1e-4,np.sqrt(0.5)) # sigma MUST be greater than 0
@@ -144,26 +135,37 @@ class BaseAC_Network(object):
 				# compute entropies
 				cross_entropy_batch = -policy_distributions.log_prob(action_batch) # probability density function
 			else: # discrete control
-				logits = tf.layers.dense(inputs=input, units=self.policy_length, activation=None, kernel_initializer=tf.initializers.variance_scaling)
-				# policy_distributions = tf.contrib.layers.softmax(logits)
-				policy_distributions = logits
+				policy_distributions = []
+				for _ in range(self.policy_size):
+					policy_distributions.append(tf.layers.dense(inputs=input, units=self.policy_depth, activation=None, kernel_initializer=tf.initializers.variance_scaling))
+				shape = [-1,self.policy_size,self.policy_depth] if self.policy_size > 1 else [-1,self.policy_depth]
+				policy_distributions = tf.reshape(policy_distributions, shape)
 				# sample action batch in forward direction, use old action in backward direction
-				action_batch = self.sample_one_hot_actions(logits)
-				# softmax_cross_entropy_with_logits_v2 stops labels gradient
+				action_batch = self.sample_one_hot_actions(policy_distributions)
 				cross_entropy_batch = self.get_cross_entropy(samples=action_batch, distributions=policy_distributions)
 			return action_batch, cross_entropy_batch, policy_distributions
 
 	def get_cross_entropy(self, samples, distributions):
-		return tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.identity(samples), logits=distributions) # deep-copy labels using tf.identity because tf.nn.softmax_cross_entropy_with_logits_v2 stops labels gradient even if labels == logits
-		# return -tf.reduce_sum(samples*tf.log(tf.clip_by_value(distributions, 1e-20, 1.0)), axis=-1) # Avoid NaN with clipping when value in pi becomes zero
+		return tf.nn.softmax_cross_entropy_with_logits_v2(labels=samples, logits=distributions)
+
+	def get_entropy(self, distributions):
+		logits = distributions
+		a0 = logits - tf.reduce_max(logits, axis=-1, keepdims=True)
+		ea0 = tf.exp(a0)
+		z0 = tf.reduce_sum(ea0, axis=-1, keepdims=True)
+		p0 = ea0 / z0
+		return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=-1)
 			
 	def sample_one_hot_actions(self, logits):
-		print( "    [{}]Logits shape: {}".format(self._id, logits.get_shape()) )
-		samples = tf.multinomial(logits, 1)
-		print( "    [{}]Samples shape: {}".format(self._id, samples.get_shape()) )
-		depth = logits.get_shape().as_list()[-1]
+		logits_shape = logits.get_shape()
+		print("    [{}]Logits shape: {}".format(self._id, logits_shape))
+		u = tf.random_uniform(tf.shape(logits))
+		samples = tf.argmax(logits - tf.log(-tf.log(u)), axis=-1)
+		print("    [{}]Samples shape: {}".format(self._id, samples.get_shape()))
+		depth = logits_shape.as_list()[-1]
 		one_hot_actions = tf.one_hot(samples, depth)
-		return tf.layers.flatten(one_hot_actions)
+		one_hot_actions.set_shape(logits_shape)
+		return one_hot_actions
 		
 	def prepare_loss(self):
 		# Get new entropy by using old actions and new policy_distribution
@@ -171,25 +173,12 @@ class BaseAC_Network(object):
 			cross_entropy_batch = -self.policy_distributions.log_prob(self.old_action_batch) # probability density function
 			entropy_batch = self.policy_distributions.entropy()
 		else: # discrete control
-			policy_batch = tf.contrib.layers.softmax(self.policy_distributions)
 			cross_entropy_batch = self.get_cross_entropy(samples=self.old_action_batch, distributions=self.policy_distributions)
-			entropy_batch = self.get_cross_entropy(samples=policy_batch, distributions=self.policy_distributions)
+			entropy_batch = self.get_entropy(self.policy_distributions)
 		with tf.device(self._device):
 			# Build losses
-			self.policy_loss = PolicyLoss(
-				cliprange=self.clip,
-				cross_entropy=cross_entropy_batch,
-				old_cross_entropy=self.old_cross_entropy_batch,
-				advantage=self.cumulative_reward_batch - self.old_value_batch,
-				entropy=entropy_batch,
-				entropy_beta=self.entropy_beta
-			)
-			self.value_loss = ValueLoss(
-				cliprange=self.clip, 
-				value=self.value_batch, 
-				old_value=self.old_value_batch, 
-				reward=self.cumulative_reward_batch
-			)
+			self.policy_loss = PolicyLoss(cliprange=self.clip, cross_entropy=cross_entropy_batch, old_cross_entropy=self.old_cross_entropy_batch, advantage=self.cumulative_reward_batch-self.old_value_batch, entropy=entropy_batch, entropy_beta=self.entropy_beta)
+			self.value_loss = ValueLoss(cliprange=self.clip, value=self.value_batch, old_value=self.old_value_batch, reward=self.cumulative_reward_batch)
 			# Compute total loss
 			self.policy_loss = self.policy_loss.get()
 			self.value_loss = flags.value_coefficient*self.value_loss.get()
@@ -197,28 +186,24 @@ class BaseAC_Network(object):
 			if self.predict_reward:
 				self.total_loss += tf.reduce_sum(self.reward_prediction_cross_entropy)
 			
-	def bind_sync(self, src_network):
+	def bind_sync(self, src_network, name=None):
 		src_vars = src_network.get_vars()
 		dst_vars = self.get_vars()
 		sync_ops = []
-		with tf.device(self._device):
-			# update trainable variables
+		with tf.device(self._device), tf.name_scope(name, "sync{0}".format(self._id),[]) as name:
 			for(src_var, dst_var) in zip(src_vars, dst_vars):
-				sync_op = tf.assign(ref=dst_var, value=src_var, use_locking=False) # no need for locking
+				sync_op = tf.assign(dst_var, src_var)
 				sync_ops.append(sync_op)
-			return tf.group(*sync_ops)
-
+			return tf.group(*sync_ops, name=name)
+				
 	def sync(self, sync):
 		self._session.run(fetches=sync)
 
-	def minimize_local(self, optimizer, global_step, global_var_list):
-		"""
-		minimize loss and apply gradients to global vars.
-		"""
-		# with tf.device(self._device) and tf.control_dependencies(self.update_keys): # control_dependencies is for batch normalization
-		with tf.device(self._device):
-			loss = self.total_loss
-			local_var_list = self.get_vars()
+	def minimize_local(self, optimizer, global_step, global_var_list): # minimize loss and apply gradients to global vars.
+		loss = self.total_loss
+		local_var_list = self.get_vars()
+		with tf.device(self._device) and tf.control_dependencies(self.update_keys): # control_dependencies is for batch normalization
+		# with tf.device(self._device):
 			var_refs = [v._ref() for v in local_var_list]
 			local_gradients = tf.gradients(loss, var_refs, gate_gradients=False, aggregation_method=None, colocate_gradients_with_ops=False)
 			if flags.grad_norm_clip > 0:
@@ -230,20 +215,18 @@ class BaseAC_Network(object):
 		return self.train_keys # get model variables
 		
 	def run_action_and_value(self, states, concats=None, lstm_state=None):
-		feed_dict = { 
-				self.state_batch : states,
-				self._initial_lstm_state: lstm_state if lstm_state is not None else self._empty_lstm_state
-			}
+		if lstm_state is None:
+			lstm_state = self._empty_lstm_state
+		feed_dict = { self.state_batch : states, self._initial_lstm_state : lstm_state }
 		if self.concat_size > 0:
 			feed_dict.update( { self.concat_batch : concats } )
-		# return action_batch, value_batch, entropy_batch, cross_entropy_batch, lstm_state
+		# return action_batch, value_batch, cross_entropy_batch, lstm_state
 		return self._session.run(fetches=[self.action_batch, self.value_batch, self.cross_entropy_batch, self._lstm_state], feed_dict=feed_dict)
 				
 	def run_value(self, states, concats=None, lstm_state=None):
-		feed_dict = { 
-				self.state_batch : states, 
-				self._initial_lstm_state: lstm_state if lstm_state is not None else self._empty_lstm_state
-			}
+		if lstm_state is None:
+			lstm_state = self._empty_lstm_state
+		feed_dict = { self.state_batch : states, self._initial_lstm_state : lstm_state }
 		if self.concat_size > 0:
 			feed_dict.update( { self.concat_batch : concats } )
 		#return value_batch, lstm_state
@@ -256,20 +239,20 @@ class BaseAC_Network(object):
 		return total_loss, policy_loss, value_loss
 		
 	def build_feed(self, states, actions, rewards, values, cross_entropies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target):
-		cross_entropies = np.reshape(cross_entropies,[-1,self.policy_length if self.policy_depth == 0 else self.policy_depth])
-		values = np.reshape(values,[-1,1])
+		if self.policy_size > 1:
+			cross_entropies = np.reshape(cross_entropies,[-1,self.policy_size])
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
-			advantages = np.reshape(generalized_advantage_estimators,[-1,1])
+			advantages = np.reshape(generalized_advantage_estimators,[-1])
+			values = np.reshape(values,[-1])
 			cumulative_rewards = advantages + values
-		else:
-			cumulative_rewards = np.reshape(discounted_cumulative_rewards,[-1,1])
-			# advantages = cumulative_rewards - values
+		if lstm_state is None:
+			lstm_state = self._empty_lstm_state
 		feed_dict={
 				self.state_batch: states,
 				self.cumulative_reward_batch: cumulative_rewards,
 				self.old_value_batch: values,
 				self.old_cross_entropy_batch: cross_entropies,
-				self._initial_lstm_state: lstm_state if lstm_state is not None else self._empty_lstm_state,
+				self._initial_lstm_state : lstm_state,
 				self.old_action_batch: actions
 			}
 		if self.concat_size > 0:
@@ -291,16 +274,21 @@ class BaseAC_Network(object):
 		return tf.placeholder(dtype=tf.float32, shape=np.concatenate([[batch_size], self._state_shape], 0), name=name)
 		
 	def _entropy_placeholder(self, name=None, batch_size=None):
-		if self.policy_depth == 0:
-			return tf.placeholder(dtype=tf.float32, shape=[batch_size,self.policy_length], name=name)
-		else:
-			return tf.placeholder(dtype=tf.float32, shape=[batch_size,self.policy_depth], name=name)
+		shape = [batch_size]
+		if self.policy_size > 1:
+			shape.append(self.policy_size)
+		return tf.placeholder(dtype=tf.float32, shape=shape, name=name)
 			
 	def _action_placeholder(self, name=None, batch_size=None):
-		return tf.placeholder(dtype=tf.float32, shape=[batch_size,self.policy_length], name=name)
+		shape = [batch_size]
+		if self.policy_size > 1:
+			shape.append(self.policy_size)
+		if self.policy_depth > 1:
+			shape.append(self.policy_depth)
+		return tf.placeholder(dtype=tf.float32, shape=shape, name=name)
 		
 	def _value_placeholder(self, name=None, batch_size=None):
-		return tf.placeholder(dtype=tf.float32, shape=[batch_size,1], name=name)
+		return tf.placeholder(dtype=tf.float32, shape=[batch_size], name=name)
 		
 	def _concat_placeholder(self, name=None, batch_size=None):
 		return tf.placeholder(dtype=tf.float32, shape=[batch_size,self.concat_size], name=name)

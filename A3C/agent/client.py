@@ -81,9 +81,14 @@ class Worker(object):
 	def prepare(self): # initialize a new episode
 		self.terminal = False
 		self.episode_reward = 0
-		self.frame_info_list = []
 		self.environment.reset()
 		self.local_network.reset()
+		# frame info
+		self.frame_info_list = []
+		if flags.show_episodes == 'none':
+			self.save_frame_info = False
+		else:
+			self.save_frame_info = flags.show_episodes != 'random' or np.random.randint(0, 100) == 0
 
 	def stop(self): # stop current episode
 		self.environment.stop()
@@ -173,12 +178,12 @@ class Worker(object):
 			# Statistics
 			self.print_statistics()
 			# Frames
-			if flags.show_all_episodes:
-				self.print_frames(global_step)
-			elif flags.show_best_episodes:
+			if flags.show_episodes == 'best':
 				if self.episode_reward > self.max_reward:
 					self.max_reward = self.episode_reward
 					self.print_frames(global_step)
+			elif self.save_frame_info:
+				self.print_frames(global_step)
 				
 	# run simulations
 	def run_batch(self, global_step):
@@ -197,7 +202,7 @@ class Worker(object):
 			)
 			self.episode_reward += reward
 			
-			if flags.show_best_episodes or flags.show_all_episodes:
+			if self.save_frame_info:
 				self.frame_info_list.append( self.environment.get_frame_info(network=self.local_network, observation=self.environment.get_screen(), value=value, action=action, reward=reward, cross_entropy=cross_entropy) )
 			
 		if self.terminal: # an episode has terminated

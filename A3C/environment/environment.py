@@ -19,7 +19,7 @@ class Environment(object):
 			return gym_environment.GymEnvironment(thread_index,env_type)
 		
 	def get_concatenation_size(self):
-		return self.get_action_shape()[0]+1
+		return np.prod(self.get_action_shape())+1
 		
 	def get_concatenation(self):
 		return np.concatenate((self.last_action,[self.last_reward]), -1)

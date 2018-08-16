@@ -21,7 +21,7 @@ class RogueEnvironment(environment.Environment):
 	__slots__ = ( 'thread_index','real_actions','game','last_action','last_reward','last_state' )
 		
 	def get_action_shape(self):
-		return (len(self.real_actions),1)
+		return (1,len(self.real_actions)) # take 1 action of n possible types
 		
 	def get_state_shape(self):
 		return self.game.state_generator._shape
@@ -35,7 +35,7 @@ class RogueEnvironment(environment.Environment):
 	def reset(self):
 		(action, (self.last_reward, new_state, _, _)) = self.game.reset()
 		self.last_state = new_state["value"]
-		self.last_action = np.zeros(self.get_action_shape()[0])
+		self.last_action = np.zeros(self.get_concatenation_size()-1)
 		
 	def stop(self):
 		self.game.stop()
