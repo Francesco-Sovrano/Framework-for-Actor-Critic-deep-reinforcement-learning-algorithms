@@ -43,7 +43,7 @@ class BaseAC_Network(object):
 				self.reward_prediction_cross_entropy = self._build_reward_prediction()
 		# Get keys
 		self.train_keys = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope_name)
-		self.update_keys = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope_name) # for batch normalization
+		# self.update_keys = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope_name) # for batch normalization
 		
 	def _build_base(self):
 		# [Placeholders]
@@ -73,7 +73,7 @@ class BaseAC_Network(object):
 		# Memory leak fix: https://github.com/tensorflow/tensorflow/issues/12704
 		self.reward_prediction_labels = self._reward_prediction_target_placeholder("reward_prediction_target",1)
 		self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state",3)
-		input = self._convolutive_layers(self.reward_prediction_state_batch) # do it outside reward_prediction variable scope
+		input = self._convolutive_layers(self.reward_prediction_state_batch, reuse=True) # do it outside reward_prediction variable scope
 		with tf.variable_scope("reward_prediction{0}".format(self._id), reuse=tf.AUTO_REUSE) as scope:
 			# input = tf.contrib.layers.maxout(inputs=input, num_units=1, axis=0)
 			input = tf.reshape(input,[1,-1])
@@ -82,19 +82,19 @@ class BaseAC_Network(object):
 			# policies = tf.nn.softmax(logits)
 			return self.get_cross_entropy(samples=self.reward_prediction_labels, distributions=logits)
 		
-	def _convolutive_layers(self, input):
-		with tf.variable_scope("base_conv{0}".format(self._id), reuse=tf.AUTO_REUSE) as scope:
+	def _convolutive_layers(self, input, reuse=False):
+		with tf.variable_scope("base_conv{0}".format(self._id), reuse=reuse) as scope:
 			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=16, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.relu) # xavier initializer
 			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=32, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.relu) # xavier initializer
 			input = tf.layers.conv2d( inputs=input, filters=16, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
 			input = tf.layers.conv2d( inputs=input, filters=8, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
-			input = tf.layers.batch_normalization(inputs=input, renorm=True, training=self._training) # renorm because minibaches are too small
+			# input = tf.layers.batch_normalization(inputs=input, renorm=True, training=self._training) # renorm because minibaches are too small
 			return input
 	
-	def _lstm_layers(self, input, concat):
+	def _lstm_layers(self, input, concat, reuse=False):
 		self._initial_lstm_state = tf.contrib.rnn.LSTMStateTuple(self._lstm_state_placeholder("lstm_tuple_1",1), self._lstm_state_placeholder("lstm_tuple_2",1))
 		self._empty_lstm_state = (np.zeros([1, self._lstm_units]), np.zeros([1, self._lstm_units]))
-		with tf.variable_scope("base_lstm{0}".format(self._id), reuse=tf.AUTO_REUSE) as scope:
+		with tf.variable_scope("base_lstm{0}".format(self._id), reuse=reuse) as scope:
 			input = tf.layers.flatten(input) # shape: (batch,w*h*depth)
 			# input = tf.contrib.model_pruning.masked_fully_connected(inputs=input, num_outputs=self._lstm_units, activation_fn=tf.nn.relu) # xavier initializer
 			input = tf.layers.dense(inputs=input, units=self._lstm_units, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
@@ -113,13 +113,13 @@ class BaseAC_Network(object):
 			lstm_outputs = tf.reshape(lstm_outputs, [-1,self._lstm_units]) # shape: (batch, lstm_units)
 			return lstm_outputs, lstm_state
 
-	def _value_layers(self, input): # Value (output)
-		with tf.variable_scope("base_value{0}".format(self._id), reuse=tf.AUTO_REUSE) as scope:
+	def _value_layers(self, input, reuse=False): # Value (output)
+		with tf.variable_scope("base_value{0}".format(self._id), reuse=reuse) as scope:
 			input = tf.layers.dense(inputs=input, units=1, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
 			return tf.reshape(input,[-1]) # flatten
 			
-	def _policy_layers(self, input): # Policy (output)
-		with tf.variable_scope("base_policy{0}".format(self._id), reuse=tf.AUTO_REUSE) as scope:
+	def _policy_layers(self, input, reuse=False): # Policy (output)
+		with tf.variable_scope("base_policy{0}".format(self._id), reuse=reuse) as scope:
 			if self.policy_depth < 1: # continuous control
 				# mean
 				mu = tf.layers.dense(inputs=input, units=self.policy_size, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
@@ -175,9 +175,10 @@ class BaseAC_Network(object):
 		else: # discrete control
 			cross_entropy_batch = self.get_cross_entropy(samples=self.old_action_batch, distributions=self.policy_distributions)
 			entropy_batch = self.get_entropy(self.policy_distributions)
+		self.advantage_batch = self.cumulative_reward_batch - self.old_value_batch
 		with tf.device(self._device):
 			# Build losses
-			self.policy_loss = PolicyLoss(cliprange=self.clip, cross_entropy=cross_entropy_batch, old_cross_entropy=self.old_cross_entropy_batch, advantage=self.cumulative_reward_batch-self.old_value_batch, entropy=entropy_batch, entropy_beta=self.entropy_beta)
+			self.policy_loss = PolicyLoss(cliprange=self.clip, cross_entropy=cross_entropy_batch, old_cross_entropy=self.old_cross_entropy_batch, advantage=self.advantage_batch, entropy=entropy_batch, entropy_beta=self.entropy_beta)
 			self.value_loss = ValueLoss(cliprange=self.clip, value=self.value_batch, old_value=self.old_value_batch, reward=self.cumulative_reward_batch)
 			# Compute total loss
 			self.policy_loss = self.policy_loss.get()
@@ -202,8 +203,8 @@ class BaseAC_Network(object):
 	def minimize_local(self, optimizer, global_step, global_var_list): # minimize loss and apply gradients to global vars.
 		loss = self.total_loss
 		local_var_list = self.get_vars()
-		with tf.device(self._device) and tf.control_dependencies(self.update_keys): # control_dependencies is for batch normalization
-		# with tf.device(self._device):
+		# with tf.device(self._device) and tf.control_dependencies(self.update_keys): # control_dependencies is for batch normalization
+		with tf.device(self._device):
 			var_refs = [v._ref() for v in local_var_list]
 			local_gradients = tf.gradients(loss, var_refs, gate_gradients=False, aggregation_method=None, colocate_gradients_with_ops=False)
 			if flags.grad_norm_clip > 0:

@@ -36,15 +36,15 @@ def build():
 # Loss clip range
 	tf.app.flags.DEFINE_float("clip", 0.2, "PPO/PVO initial clip range") # default is 0.2, for openAI is 0.1
 	tf.app.flags.DEFINE_boolean("clip_decay", True, "Whether to decay the clip range")
-	tf.app.flags.DEFINE_string("clip_annealing_function", "inverse_time_decay", "annealing function: exponential_decay, inverse_time_decay, natural_exp_decay")
-	tf.app.flags.DEFINE_integer("clip_decay_steps", 10**6, "decay clip every x steps")
-	tf.app.flags.DEFINE_float("clip_decay_rate", 0.25, "decay rate")
+	tf.app.flags.DEFINE_string("clip_annealing_function", "exponential_decay", "annealing function: exponential_decay, inverse_time_decay, natural_exp_decay")
+	tf.app.flags.DEFINE_integer("clip_decay_steps", 10**5, "decay clip every x steps")
+	tf.app.flags.DEFINE_float("clip_decay_rate", 0.96, "decay rate")
 # Learning rate
 	tf.app.flags.DEFINE_float("alpha", 3.5e-4, "initial learning rate") # default is 7.0e-4, for openAI is 2.5e-4
-	tf.app.flags.DEFINE_boolean("alpha_decay", False, "whether to decay the learning rate") # default is False
-	tf.app.flags.DEFINE_string("alpha_annealing_function", "inverse_time_decay", "annealing function: exponential_decay, inverse_time_decay, natural_exp_decay")
-	tf.app.flags.DEFINE_integer("alpha_decay_steps", 10**6, "decay alpha every x steps")
-	tf.app.flags.DEFINE_float("alpha_decay_rate", 0.25, "decay rate")
+	tf.app.flags.DEFINE_boolean("alpha_decay", True, "whether to decay the learning rate") # default is False
+	tf.app.flags.DEFINE_string("alpha_annealing_function", "exponential_decay", "annealing function: exponential_decay, inverse_time_decay, natural_exp_decay")
+	tf.app.flags.DEFINE_integer("alpha_decay_steps", 10**5, "decay alpha every x steps")
+	tf.app.flags.DEFINE_float("alpha_decay_rate", 0.96, "decay rate")
 # Last Action-Reward: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
 	tf.app.flags.DEFINE_boolean("use_concatenation", True, "Whether to concatenate an extra 1D vector to the flatten output of the network initial tower.")
 # Reward Prediction: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
@@ -65,7 +65,7 @@ def build():
 # Actor-Critic parameters
 	# Learning rate for Critic is half of Actor's, so multiply by 0.5 (default)
 	tf.app.flags.DEFINE_float("value_coefficient", 0.5, "value coefficient for tuning Critic learning rate") # default is 0.5, for openAI is 0.25
-	tf.app.flags.DEFINE_float("entropy_beta", 0.01, "entropy regularization constant") # default is 0.001, for openAI is 0.01
+	tf.app.flags.DEFINE_float("entropy_beta", 0.001, "entropy regularization constant") # default is 0.001, for openAI is 0.01
 	tf.app.flags.DEFINE_integer("parallel_size", 4, "parallel thread size")
 	tf.app.flags.DEFINE_integer("max_batch_size", 8, "maximum batch size") # default is 60, for openAI is 128
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.

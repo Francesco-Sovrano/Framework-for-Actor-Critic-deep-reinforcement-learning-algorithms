@@ -27,35 +27,43 @@ class CarControllerEnvironment(Environment):
 	def __init__(self, thread_index):
 		Environment.__init__(self)
 		self.thread_index = thread_index
+		self.seconds_per_step = 0.1 # a step every n seconds
+		# information about speed parameters: http://www.ijtte.com/uploads/2012-10-01/5ebd8343-9b9c-b1d4IJTTE%20vol2%20no3%20%287%29.pdf
+		self.min_speed = 0.1 # m/s
+		self.max_speed = 2.5 # m/s
+		# the fastest car has max_acceleration 9.25 m/s (https://en.wikipedia.org/wiki/List_of_fastest_production_cars_by_acceleration)
+		# the slowest car has max_acceleration 0.7 m/s (http://automdb.com/max_acceleration)
+		self.max_acceleration = 0.7 # m/s
+		# scale constant
 		self.max_distance_to_path = 0.1 # meters
 		self.max_noise_radius = 0.05 # radius in meters
-		self.min_speed = 0.05 # meters per step (assuming a step each 0.1 seconds -> 1.8km/h)
-		self.max_speed = 0.2 # meters per step (assuming a step each 0.1 seconds -> 7.2km/h)
-		self.max_speed_change_per_step = 0.01
-		self.gamma = 10
 		self.max_steering_degree = 30
 		self.max_compensation_degree = 15
-		self.max_steering_angle = convert_degree_to_radiant(self.max_steering_degree)
-		self.max_compensation_angle = convert_degree_to_radiant(self.max_compensation_degree)
 		self.path_length = 200
 		self.max_step = 150
-		self.noise_per_step = self.max_noise_radius/self.max_step
+		self.step_for_exact_position = 45
+		self.step_for_adjusted_position = 10
+		self.noise_per_step = self.max_noise_radius/self.step_for_exact_position
+		self.max_steering_angle = convert_degree_to_radiant(self.max_steering_degree)
+		self.max_compensation_angle = convert_degree_to_radiant(self.max_compensation_degree)
 		# evaluator stuff
 		self.episodes = deque()
 	
 	def reset(self):
 		self.path = self.build_random_path()
-		self.noisy_point = self.car_point = (0,0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
-		self.car_angle = np.pi/2 + 0.01
-		self.noisy_progress = self.car_progress = 0
-		self.noisy_waypoint = self.car_waypoint = 1
+		self.real_point = self.perceived_point = (0,0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
+		self.perceived_angle = np.pi/2 + 0.01
+		self.real_progress = self.perceived_progress = 0
+		self.real_waypoint = self.perceived_waypoint = 1
+		self.exact_position = True
+		self.adjusted_position = False
 		
-		self.speed = self.min_speed + (self.max_speed-self.min_speed)*np.random.random() # random initial speed in [min_speed,max_speed]
+		self.speed = self.min_speed + (self.max_speed-self.min_speed)*np.random.random() # random initial speed in [0,max_speed]
 		self.steering_angle = 0
 		self.cumulative_reward = 0
 		self.step = 0
 		self.last_reward = 0
-		self.last_state = self.get_state(self.car_point, self.car_waypoint)
+		self.last_state = self.get_state(self.perceived_point, self.perceived_waypoint)
 		self.avg_speed_per_steps = 0
 		
 	def get_point_from_position(self, position):
@@ -91,7 +99,6 @@ class CarControllerEnvironment(Environment):
 		car_position = result.x
 		# Find leftmost value greater than x: the next_waypoint
 		next_waypoint = bisect_right(self.positions, car_position)
-		# print(car_position, next_waypoint)
 		return car_position, next_waypoint
 
 	def compute_new_car_point_and_angle(self, car_point, car_angle, steering_angle, speed, add_noise=False):
@@ -99,83 +106,109 @@ class CarControllerEnvironment(Environment):
 		new_car_angle = car_angle + steering_angle
 		# change point
 		car_x, car_y = car_point
-		car_x += speed*np.cos(new_car_angle)
-		car_y += speed*np.sin(new_car_angle)
-		if add_noise: # add noise to point
-			car_x += (2*np.random.random()-1)*self.noise_per_step
-			car_y += (2*np.random.random()-1)*self.noise_per_step
+		space = speed*self.seconds_per_step
+		if add_noise:
+			space += (2*np.random.random()-1)*self.noise_per_step
+		car_x += space*np.cos(new_car_angle)
+		car_y += space*np.sin(new_car_angle)
 		return (car_x, car_y), new_car_angle
 
-	def compute_new_steering_angle(self, speed, steering_angle, car_point, car_angle, compensation_angle, next_waypoint):
+	def compute_new_steering_angle(self, speed, steering_angle, car_point, car_angle, action, next_waypoint): # action is in [0,1]
 		# get baseline angle
 		xs, ys = self.path
 		_, yc = shift_and_rotate(xs[next_waypoint], ys[next_waypoint], -car_point[0], -car_point[1], -car_angle) # point relative to car position
-		baseline_angle = self.get_angle_from_position(self.positions[next_waypoint]) + np.arctan(yc/(speed*self.gamma)) # use the tangent to the next waypoint as default direction -> more stable results
+		baseline_angle = self.get_angle_from_position(self.positions[next_waypoint]) + np.arctan(yc) # use the tangent to the next waypoint as default direction -> more stable results
 		# get new angle
+		compensation_angle = (2*action-1)*self.max_compensation_angle
 		new_angle = compensation_angle + baseline_angle
 		# get steering angle
 		steering_angle += new_angle - car_angle
 		# clip steering angle in [-max_steering_angle, max_steering_angle]
 		return np.clip(steering_angle,-self.max_steering_angle,self.max_steering_angle)
 		
-	def compute_new_speed(self, speed, step_acceleration):
-		speed += step_acceleration
+	def compute_new_speed(self, speed, action): # action is in [0,1]
+		speed += (2*action-1)*self.max_acceleration*self.seconds_per_step
 		return np.clip(speed, self.min_speed, self.max_speed)
 
 	def process(self, action_vector):
 		# compute new speed
-		step_acceleration = (2*action_vector[1]-1)*self.max_speed_change_per_step
-		self.speed = self.compute_new_speed(speed=self.speed, step_acceleration=step_acceleration)
+		self.speed = self.compute_new_speed(action=action_vector[1], speed=self.speed)
 		# compute new steering_angle
-		compensation_angle = (2*action_vector[0]-1)*self.max_compensation_angle
-		self.steering_angle = self.compute_new_steering_angle(speed=self.speed, steering_angle=self.steering_angle, compensation_angle=compensation_angle, car_point=self.car_point, car_angle=self.car_angle, next_waypoint=self.car_waypoint)
+		self.steering_angle = self.compute_new_steering_angle(action=action_vector[0], speed=self.speed, steering_angle=self.steering_angle, car_point=self.perceived_point, car_angle=self.perceived_angle, next_waypoint=self.perceived_waypoint)
 		# update perceived car point
-		self.car_point, self.car_angle = self.compute_new_car_point_and_angle(car_point=self.car_point, car_angle=self.car_angle, steering_angle=self.steering_angle, speed=self.speed)
+		self.perceived_point, self.perceived_angle = self.compute_new_car_point_and_angle(car_point=self.perceived_point, car_angle=self.perceived_angle, steering_angle=self.steering_angle, speed=self.speed, add_noise=False)
 		# update real car point
-		self.noisy_point, _ = self.compute_new_car_point_and_angle(car_point=self.noisy_point, car_angle=self.car_angle, steering_angle=self.steering_angle, speed=self.speed, add_noise=True)
+		self.real_point, _ = self.compute_new_car_point_and_angle(car_point=self.real_point, car_angle=self.perceived_angle, steering_angle=self.steering_angle, speed=self.speed, add_noise=True)
 		# update position and direction
-		car_position, car_waypoint = self.get_car_position_and_next_waypoint(self.car_point)
-		noisy_position, noisy_waypoint = self.get_car_position_and_next_waypoint(self.noisy_point)
+		perceived_position, perceived_waypoint = self.get_car_position_and_next_waypoint(self.perceived_point)
+		real_position, real_waypoint = self.get_car_position_and_next_waypoint(self.real_point)
 		# compute real reward
-		noisy_reward = self.get_reward(car_speed=self.speed, car_point=self.noisy_point, car_progress=self.noisy_progress, car_position=noisy_position)
-		if noisy_position > self.noisy_progress: # is moving toward next position
-			self.noisy_progress = noisy_position # progress update
-			self.noisy_waypoint = noisy_waypoint
+		real_reward = self.get_reward(car_speed=self.speed, car_point=self.real_point, car_progress=self.real_progress, car_position=real_position)
+		if real_position > self.real_progress: # is moving toward next position
+			self.real_progress = real_position # progress update
+			self.real_waypoint = real_waypoint
 		# compute perceived reward
-		car_reward = self.get_reward(car_speed=self.speed, car_point=self.car_point, car_progress=self.car_progress, car_position=car_position)
-		if car_position > self.car_progress: # is moving toward next position
-			self.car_progress = car_position # progress update
-			self.car_waypoint = car_waypoint
+		perceived_reward = self.get_reward(car_speed=self.speed, car_point=self.perceived_point, car_progress=self.perceived_progress, car_position=perceived_position)
+		if perceived_position > self.perceived_progress: # is moving toward next position
+			self.perceived_progress = perceived_position # progress update
+			self.perceived_waypoint = perceived_waypoint
 		# compute state (after updating progress)
-		state = self.get_state(self.car_point, self.car_waypoint)
+		state = self.get_state(self.perceived_point, self.perceived_waypoint)
 		# update last action/state/reward
 		self.last_state = state
-		self.last_reward = car_reward
+		self.last_reward = perceived_reward
 		# update cumulative reward
-		self.cumulative_reward += noisy_reward
+		self.cumulative_reward += real_reward
 		self.avg_speed_per_steps += self.speed
 		# update step
 		self.step += 1
-		terminal = self.is_terminal_position(self.car_waypoint) or self.is_terminal_position(self.noisy_waypoint) or self.step >= self.max_step
+		self.exact_position = self.step%self.step_for_exact_position == 0
+		if self.exact_position:
+			self.perceived_point = self.get_exact_position()
+		self.adjusted_position = (not self.exact_position) and self.step%self.step_for_adjusted_position == 0
+		if self.adjusted_position:
+			self.perceived_point = self.get_adjusted_position()
+		terminal = self.is_terminal_position(self.perceived_waypoint) or self.is_terminal_position(self.real_waypoint) or self.step >= self.max_step
 		if terminal: # populate statistics
 			stats = {
 				"avg_speed": self.avg_speed_per_steps/self.step,
 				"reward": self.cumulative_reward,
 				"step": self.step,
-				"completed": 1 if self.is_terminal_position(self.car_waypoint) else 0
+				"completed": 1 if self.is_terminal_position(self.perceived_waypoint) else 0
 			}
 			self.episodes.append(stats)
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
-		return state, noisy_reward, terminal
+		return state, real_reward, terminal
+	
+	def get_adjusted_position(self):
+		# get real y1 with respect to path
+		real_angle = self.get_angle_from_position(self.real_progress) # tangent to closest path point
+		real_x0, real_y0 = self.get_point_from_position(self.real_progress) # closest path point
+		_, real_y1 = shift_and_rotate(self.real_point[0], self.real_point[1], -real_x0, -real_y0, -real_angle) # point relative to car position
+		# get perceived x1 with respect to path
+		perceived_angle = self.get_angle_from_position(self.perceived_progress) # tangent to closest path point
+		perceived_x0, perceived_y0 = self.get_point_from_position(self.perceived_progress) # closest path point
+		perceived_x1, _ = shift_and_rotate(self.perceived_point[0], self.perceived_point[1], -perceived_x0, -perceived_y0, -perceived_angle) # point relative to car position
+		# update perceived point with real y1
+		return rotate_and_shift(perceived_x1, real_y1, perceived_x0, perceived_y0, perceived_angle) # absolute position
+
+	def get_exact_position(self):
+		return self.real_point
+		
+	def get_position_type(self):
+		return 0 if self.exact_position else 1 if self.adjusted_position else 2
+
+	def get_concatenation_size(self):
+		return 4
 		
 	def get_concatenation(self):
-		return [self.steering_angle, self.speed, self.last_reward]
+		return [self.steering_angle, self.speed, self.get_position_type(), self.last_reward]
 		
 	def get_reward(self, car_speed, car_point, car_progress, car_position):
 		if car_position > car_progress: # is moving toward next position
 			distance = euclidean_distance(car_point, self.get_point_from_position(car_position))
-			return car_speed*(1 - np.clip(distance/self.max_distance_to_path,0,1)) # always in [0,1] # smaller distances to path give higher rewards
+			return car_speed*self.seconds_per_step*(1 - np.clip(distance/self.max_distance_to_path,0,1)) # always in [0,1] # smaller distances to path give higher rewards
 		return -0.1 # is NOT moving toward next position
 		
 	def get_state(self, car_point, next_waypoint):
@@ -207,10 +240,10 @@ class CarControllerEnvironment(Environment):
 			fig, ax = plt.subplots(nrows=1, ncols=1, sharey=False, sharex=False, figsize=(10,10))
 			line, = ax.plot(self.path[0], self.path[1], lw=2)
 			# ax.plot(0,0,"ro")
-			ax.plot(self.noisy_point[0],self.noisy_point[1], marker='o', color='r', label='Real')
+			ax.plot(self.real_point[0],self.real_point[1], marker='o', color='r', label='Real')
 			ax.plot(self.car_point[0],self.car_point[1], marker='o', color='b', label='Perceived')
 			ax.legend()
-			fig.suptitle('Speed: {} \n Angle: {}'.format(self.speed,convert_radiant_to_degree(self.steering_angle)))
+			fig.suptitle('Speed: {0:.2f} m/s \n Angle: {1:.2f} deg \n Step: {2}'.format(self.speed,convert_radiant_to_degree(self.steering_angle), self.step))
 			fig.canvas.draw()
 			# Now we can save it to a numpy array.
 			data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
