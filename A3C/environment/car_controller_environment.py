@@ -231,8 +231,8 @@ class CarControllerEnvironment(Environment):
 	def get_screen(self):
 		return self.path
 		
-	def get_frame_info(self, network, observation, value, action, reward, cross_entropy):
-		state_info = "reward={}, speed={}, steering_angle={}, agent={}, value={}, cross_entropy={}\n".format(reward, self.speed, self.steering_angle, network.agent_id, value, cross_entropy)
+	def get_frame_info(self, network, observation, value, action, reward, policy):
+		state_info = "reward={}, speed={}, steering_angle={}, agent={}, value={}, policy={}\n".format(reward, self.speed, self.steering_angle, network.agent_id, value, policy)
 		action_info = "action={}\n".format(action)
 		frame_info = { "log": state_info + action_info }
 		if flags.save_episode_screen:
@@ -241,7 +241,7 @@ class CarControllerEnvironment(Environment):
 			line, = ax.plot(self.path[0], self.path[1], lw=2)
 			# ax.plot(0,0,"ro")
 			ax.plot(self.real_point[0],self.real_point[1], marker='o', color='r', label='Real')
-			ax.plot(self.car_point[0],self.car_point[1], marker='o', color='b', label='Perceived')
+			ax.plot(self.perceived_point[0],self.perceived_point[1], marker='o', color='b', label='Perceived')
 			ax.legend()
 			fig.suptitle('Speed: {0:.2f} m/s \n Angle: {1:.2f} deg \n Step: {2}'.format(self.speed,convert_radiant_to_degree(self.steering_angle), self.step))
 			fig.canvas.draw()

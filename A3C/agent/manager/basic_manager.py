@@ -149,20 +149,20 @@ class BasicManager(object):
 		self.batch = ExperienceBatch(self.model_size)
 		
 	def estimate_value(self, agent_id, states, concats=None, lstm_state=None):
-		return self.get_model(agent_id).run_value(states=states, concats=concats, lstm_state=lstm_state)
+		return self.get_model(agent_id).predict_value(states=states, concats=concats, lstm_state=lstm_state)
 		
 	def act(self, act_function, state, concat=None):
 		agent_id = self.agent_id
 		agent = self.get_model(agent_id)
 		lstm_state = self.lstm_state
-		action_batch, value_batch, cross_entropy_batch, self.lstm_state = agent.run_action_and_value(states=[state], concats=[concat], lstm_state=lstm_state)
-		action, value, cross_entropy = action_batch[0], value_batch[0], cross_entropy_batch[0]
+		action_batch, value_batch, policy_batch, self.lstm_state = agent.predict_action(states=[state], concats=[concat], lstm_state=lstm_state)
+		action, value, policy = action_batch[0], value_batch[0], policy_batch[0]
 		new_state, reward, terminal = act_function(action)
 		if flags.clip_reward:
 			reward = np.clip(reward, flags.min_reward, flags.max_reward)
 
-		self.batch.add_agent_action(agent_id, state, concat, action, cross_entropy, reward, value, lstm_state)
-		return new_state, value, action, reward, terminal, cross_entropy
+		self.batch.add_agent_action(agent_id, state, concat, action, policy, reward, value, lstm_state)
+		return new_state, value, action, reward, terminal, policy
 					
 	def compute_cumulative_reward(self, batch):
 		# prepare batch
@@ -191,7 +191,7 @@ class BasicManager(object):
 		states = batch.states
 		concats = batch.concats
 		actions = batch.actions
-		cross_entropies = batch.cross_entropies
+		policies = batch.policies
 		values = batch.values
 		rewards = batch.rewards
 		dcr = batch.discounted_cumulative_rewards
@@ -212,7 +212,7 @@ class BasicManager(object):
 				total_loss, policy_loss, value_loss = model.train(
 					states=states[i], concats=concats[i],
 					actions=actions[i], values=values[i],
-					cross_entropies=cross_entropies[i],
+					policies=policies[i],
 					rewards=rewards[i],
 					discounted_cumulative_rewards=dcr[i],
 					generalized_advantage_estimators=gae[i],

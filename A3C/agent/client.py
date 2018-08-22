@@ -195,7 +195,7 @@ class Worker(object):
 		while step < flags.max_batch_size and not self.terminal:
 			step += 1
 			state=self.environment.last_state
-			new_state, value, action, reward, self.terminal, cross_entropy = self.local_network.act( 
+			new_state, value, action, reward, self.terminal, policy = self.local_network.act( 
 				act_function=self.environment.process, 
 				state=state,
 				concat=self.environment.get_concatenation() if flags.use_concatenation else None
@@ -203,7 +203,7 @@ class Worker(object):
 			self.episode_reward += reward
 			
 			if self.save_frame_info:
-				self.frame_info_list.append( self.environment.get_frame_info(network=self.local_network, observation=self.environment.get_screen(), value=value, action=action, reward=reward, cross_entropy=cross_entropy) )
+				self.frame_info_list.append( self.environment.get_frame_info(network=self.local_network, observation=self.environment.get_screen(), value=value, action=action, reward=reward, policy=policy) )
 			
 		if self.terminal: # an episode has terminated
 			self.terminated_episodes += 1

@@ -62,6 +62,8 @@ class Application(object):
 		self.sess.run(tf.global_variables_initializer()) # do it before loading checkpoint
 		# load checkpoint
 		self.load_checkpoint()
+		# print graph summary
+		tf.summary.FileWriter('summary', self.sess.graph).close()
 		
 	def test_function(self, tester, count):
 		for _ in range(count):
