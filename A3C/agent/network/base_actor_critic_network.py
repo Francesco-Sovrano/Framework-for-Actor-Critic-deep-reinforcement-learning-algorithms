@@ -46,7 +46,7 @@ class BaseAC_Network(object):
 				self._build_reward_prediction()
 		# Get keys
 		self.train_keys = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope_name)
-		# self.update_keys = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope_name) # for batch normalization
+		self.update_keys = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope_name) # for batch normalization
 		# Sample action, after getting keys
 		self.action_batch = self.sample_actions()
 		print( "    [{}]Action shape: {}".format(self._id, self.action_batch.get_shape()) )
@@ -81,12 +81,13 @@ class BaseAC_Network(object):
 			self.reward_prediction_logits = tf.layers.dense(inputs=input, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			print( "    [{}]Reward prediction logits shape: {}".format(self._id, self.reward_prediction_logits.get_shape()) )
 		
+	# relu vs leaky_relu <https://www.reddit.com/r/MachineLearning/comments/4znzvo/what_are_the_advantages_of_relu_over_the/>
 	def _convolutive_layers(self, input, reuse=False):
 		with tf.variable_scope("base_conv{0}".format(self._id), reuse=reuse) as scope:
-			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=16, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.relu) # xavier initializer
-			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=32, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.relu) # xavier initializer
-			input = tf.layers.conv2d( inputs=input, filters=16, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
-			input = tf.layers.conv2d( inputs=input, filters=8, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
+			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=16, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.leaky_relu) # xavier initializer
+			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=32, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.leaky_relu) # xavier initializer
+			input = tf.layers.conv2d( inputs=input, filters=16, kernel_size=(3,3), padding='SAME', activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling )
+			input = tf.layers.conv2d( inputs=input, filters=8, kernel_size=(3,3), padding='SAME', activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling )
 			# input = tf.layers.batch_normalization(inputs=input, renorm=True, training=self._training) # renorm because minibaches are too small
 			return input
 	
@@ -95,8 +96,8 @@ class BaseAC_Network(object):
 		self.lstm_zero_state = (np.zeros([1, self._lstm_units], np.float32), np.zeros([1, self._lstm_units], np.float32))
 		with tf.variable_scope("base_lstm{0}".format(self._id), reuse=reuse) as scope:
 			input = tf.layers.flatten(input) # shape: (batch,w*h*depth)
-			# input = tf.contrib.model_pruning.masked_fully_connected(inputs=input, num_outputs=self._lstm_units, activation_fn=tf.nn.relu) # xavier initializer
-			input = tf.layers.dense(inputs=input, units=self._lstm_units, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
+			# input = tf.contrib.model_pruning.masked_fully_connected(inputs=input, num_outputs=self._lstm_units, activation_fn=tf.nn.leaky_relu) # xavier initializer
+			input = tf.layers.dense(inputs=input, units=self._lstm_units, activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling)
 			step_size = tf.shape(input)[:1] # shape: (batch)
 			if self.concat_size > 0:
 				input = tf.concat([input, concat], 1) # shape: (batch, concat_size+lstm_units)
@@ -120,13 +121,13 @@ class BaseAC_Network(object):
 		with tf.variable_scope("base_policy{0}".format(self._id), reuse=reuse) as scope:
 			if self.is_continuous_control():
 				# mean
-				mu = tf.layers.dense(inputs=input, units=self.policy_size, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
+				mu = tf.layers.dense(inputs=input, units=self.policy_size, activation=tf.nn.softsign, kernel_initializer=tf.contrib.layers.xavier_initializer()) # in (-1,1) # xavier initializer works better with softsign <https://stats.stackexchange.com/questions/319323/whats-the-difference-between-variance-scaling-initializer-and-xavier-initialize>
 				# standard deviation
-				sigma = tf.layers.dense(inputs=input, units=self.policy_size, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
-				# clip mu and sigma in order to avoid numeric instabilities
-				clipped_mu = tf.clip_by_value(mu, 0,1)
-				clipped_sigma = tf.clip_by_value(sigma, 1e-4,np.sqrt(0.5)) # sigma MUST be greater than 0
-				policy_batch = tf.stack([clipped_mu,clipped_sigma])
+				sigma = tf.layers.dense(inputs=input, units=self.policy_size, activation=tf.nn.softsign, kernel_initializer=tf.contrib.layers.xavier_initializer()) # in (-1,1) # xavier initializer works better with softsign <https://stats.stackexchange.com/questions/319323/whats-the-difference-between-variance-scaling-initializer-and-xavier-initialize>
+				sigma = tf.maximum(1e-4,tf.abs(sigma)) # in [0.0004,1) # sigma must be greater than 0
+				# sigma = (1+sigma)/2 # in (0,1) # sigma should be closer to 0 than 1, using this formula gradient can vanish/explode more easily <https://towardsdatascience.com/paper-summary-understanding-the-difficulty-of-training-deep-feed-forward-neural-networks-ee34f6447712>
+				# policy batch
+				policy_batch = tf.stack([mu, sigma])
 				policy_batch = tf.transpose(policy_batch, [1, 0, 2])
 			else: # discrete control
 				policy_batch = []
@@ -166,7 +167,7 @@ class BaseAC_Network(object):
 			if self.is_continuous_control():
 				new_policy_batch = tf.transpose(self.policy_batch, [1, 0, 2])
 				new_policy_distributions = tf.distributions.Normal(new_policy_batch[0], new_policy_batch[1], validate_args=False) # validate_args is computationally expensive
-				action_batch = tf.clip_by_value(new_policy_distributions.sample(), 0,1) # Sample action batch in forward direction, use old action in backward direction
+				action_batch = tf.clip_by_value(new_policy_distributions.sample(), -1,1) # Sample action batch in forward direction, use old action in backward direction
 			else: # discrete control
 				action_batch = self._categorical_sample(self.policy_batch) # Sample action batch in forward direction, use old action in backward direction
 			return action_batch
@@ -221,8 +222,8 @@ class BaseAC_Network(object):
 		self._session.run(fetches=sync)
 
 	def minimize_local(self, optimizer, global_step, global_var_list): # minimize loss and apply gradients to global vars.
-		# with tf.device(self._device) and tf.control_dependencies(self.update_keys): # control_dependencies is for batch normalization
-		with tf.device(self._device):
+		with tf.device(self._device) and tf.control_dependencies(self.update_keys): # control_dependencies is for batch normalization
+		# with tf.device(self._device):
 			var_refs = [v._ref() for v in self.get_vars()]
 			local_gradients = tf.gradients(self.total_loss, var_refs, gate_gradients=False, aggregation_method=None, colocate_gradients_with_ops=False)
 			if flags.grad_norm_clip > 0:

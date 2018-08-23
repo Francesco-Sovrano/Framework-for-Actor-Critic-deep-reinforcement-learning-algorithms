@@ -113,21 +113,21 @@ class CarControllerEnvironment(Environment):
 		car_y += space*np.sin(new_car_angle)
 		return (car_x, car_y), new_car_angle
 
-	def compute_new_steering_angle(self, speed, steering_angle, car_point, car_angle, action, next_waypoint): # action is in [0,1]
+	def compute_new_steering_angle(self, speed, steering_angle, car_point, car_angle, action, next_waypoint): # action is in (-1,1)
 		# get baseline angle
 		xs, ys = self.path
 		_, yc = shift_and_rotate(xs[next_waypoint], ys[next_waypoint], -car_point[0], -car_point[1], -car_angle) # point relative to car position
 		baseline_angle = self.get_angle_from_position(self.positions[next_waypoint]) + np.arctan(yc) # use the tangent to the next waypoint as default direction -> more stable results
 		# get new angle
-		compensation_angle = (2*action-1)*self.max_compensation_angle
+		compensation_angle = action*self.max_compensation_angle
 		new_angle = compensation_angle + baseline_angle
 		# get steering angle
 		steering_angle += new_angle - car_angle
 		# clip steering angle in [-max_steering_angle, max_steering_angle]
 		return np.clip(steering_angle,-self.max_steering_angle,self.max_steering_angle)
 		
-	def compute_new_speed(self, speed, action): # action is in [0,1]
-		speed += (2*action-1)*self.max_acceleration*self.seconds_per_step
+	def compute_new_speed(self, speed, action): # action is in (-1,1)
+		speed += action*self.max_acceleration*self.seconds_per_step
 		return np.clip(speed, self.min_speed, self.max_speed)
 
 	def process(self, action_vector):

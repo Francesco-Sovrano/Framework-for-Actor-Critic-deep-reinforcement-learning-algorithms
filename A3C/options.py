@@ -18,7 +18,7 @@ def build():
 	tf.app.flags.DEFINE_string("optimizer", "Adam", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is Adam, for vanilla A3C is RMSProp
 	tf.app.flags.DEFINE_float("grad_norm_clip", 0, "gradient norm clipping (0 for none)") # default is 40.0, for openAI is 0.5
 	# In information theory, the cross entropy between two probability distributions p and q over the same underlying set of events measures the average number of bits needed to identify an event drawn from the set.
-	tf.app.flags.DEFINE_boolean("non_negative_entropies", False, "Cross-entropy and entropy are used for policy loss and if this flag is true, then entropy=max(0,entropy). If cross-entropy measures the average number of bits needed to identify an event, then it cannot be negative.")
+	tf.app.flags.DEFINE_boolean("non_negative_entropies", True, "Cross-entropy and entropy are used for policy loss and if this flag is true, then entropy=max(0,entropy). If cross-entropy measures the average number of bits needed to identify an event, then it cannot be negative.")
 	tf.app.flags.DEFINE_string("policy_loss", "PPO", "policy loss function: vanilla, PPO, averagePPO") # usually averagePPO works with GAE
 	tf.app.flags.DEFINE_string("value_loss", "vanilla", "value loss function: vanilla, PVO, averagePVO") # usually averagePVO works with GAE
 # Partitioner parameters
