@@ -120,14 +120,15 @@ class BaseAC_Network(object):
 	def _policy_layers(self, input, reuse=False): # Policy (output)
 		with tf.variable_scope("base_policy{0}".format(self._id), reuse=reuse) as scope:
 			if self.is_continuous_control():
-				# mean
-				mu = tf.layers.dense(inputs=input, units=self.policy_size, activation=tf.nn.softsign, kernel_initializer=tf.contrib.layers.xavier_initializer()) # in (-1,1) # xavier initializer works better with softsign <https://stats.stackexchange.com/questions/319323/whats-the-difference-between-variance-scaling-initializer-and-xavier-initialize>
-				# standard deviation
-				sigma = tf.layers.dense(inputs=input, units=self.policy_size, activation=tf.nn.softsign, kernel_initializer=tf.contrib.layers.xavier_initializer()) # in (-1,1) # xavier initializer works better with softsign <https://stats.stackexchange.com/questions/319323/whats-the-difference-between-variance-scaling-initializer-and-xavier-initialize>
-				sigma = tf.maximum(1e-4,tf.abs(sigma)) # in [0.0004,1) # sigma must be greater than 0
-				# sigma = (1+sigma)/2 # in (0,1) # sigma should be closer to 0 than 1, using this formula gradient can vanish/explode more easily <https://towardsdatascience.com/paper-summary-understanding-the-difficulty-of-training-deep-feed-forward-neural-networks-ee34f6447712>
-				# policy batch
-				policy_batch = tf.stack([mu, sigma])
+				# build mean
+				mu = tf.layers.dense(inputs=input, units=self.policy_size, activation=None, kernel_initializer=tf.initializers.variance_scaling) # in (-inf,inf)
+				# build standard deviation
+				sigma = tf.layers.dense(inputs=input, units=self.policy_size, activation=None, kernel_initializer=tf.initializers.variance_scaling) # in (-inf,inf)
+				# clip mu and sigma to avoid numerical instabilities
+				clipped_mu = tf.clip_by_value(mu, -1,1) # in [-1,1]
+				clipped_sigma = tf.clip_by_value(tf.abs(sigma), 1e-4,1) # in [1e-4,1] # sigma must be greater than 0
+				# build policy batch
+				policy_batch = tf.stack([clipped_mu, clipped_sigma])
 				policy_batch = tf.transpose(policy_batch, [1, 0, 2])
 			else: # discrete control
 				policy_batch = []
