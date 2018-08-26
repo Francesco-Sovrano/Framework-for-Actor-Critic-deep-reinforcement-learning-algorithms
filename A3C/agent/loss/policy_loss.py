@@ -15,9 +15,9 @@ class PolicyLoss(object):
 		self.cliprange = cliprange
 		self.advantage = advantage
 		self.entropy_beta = entropy_beta
-		self.entropy = tf.maximum(0.,entropy) if flags.non_negative_entropies else entropy
-		self.cross_entropy = tf.maximum(0.,cross_entropy) if flags.non_negative_entropies else cross_entropy
-		self.old_cross_entropy = tf.maximum(0.,old_cross_entropy) if flags.non_negative_entropies else old_cross_entropy
+		self.entropy = tf.maximum(0.,entropy) if flags.only_non_negative_entropy else entropy
+		self.cross_entropy = tf.maximum(0.,cross_entropy) if flags.only_non_negative_entropy else cross_entropy
+		self.old_cross_entropy = tf.maximum(0.,old_cross_entropy) if flags.only_non_negative_entropy else old_cross_entropy
 		if len(cross_entropy.get_shape())>1:
 			self.entropy = tf.reduce_sum(self.entropy,-1)
 			self.cross_entropy = tf.reduce_sum(self.cross_entropy,-1)

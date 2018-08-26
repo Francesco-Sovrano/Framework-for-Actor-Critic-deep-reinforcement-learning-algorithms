@@ -13,6 +13,7 @@ pip install --upgrade pip
 # install common libraries
 pip install tensorflow numpy scipy sklearn
 pip install matplotlib seaborn imageio
+pip install nearpy
 # install gym
 pip install gym[atari]
 # install rogue

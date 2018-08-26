@@ -31,7 +31,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 			state_shape=state_shape, 
 			action_shape=(1,agents_count), 
 			concat_size=agents_count+1,
-			entropy_beta=flags.entropy_beta, 
+			entropy_beta=flags.partitioner_entropy_beta, 
 			clip=self.clip[0], 
 			device=self.device, 
 			predict_reward=flags.predict_reward,
@@ -50,7 +50,8 @@ class ReinforcementLearningPartitioner(BasicManager):
 				clip=self.clip[i+1], 
 				device=self.device, 
 				predict_reward=flags.predict_reward,
-				training = self.training
+				training = self.training,
+				parent_id = self.manager.id
 			)
 			self.model_list.append(agent)
 			
