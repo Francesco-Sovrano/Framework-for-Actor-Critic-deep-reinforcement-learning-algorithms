@@ -51,12 +51,20 @@ def build():
 # Reward Prediction: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
 	tf.app.flags.DEFINE_boolean("predict_reward", False, "Whether to predict rewards. This is useful with sparse rewards.") # N.B.: Cause of memory leaks! (probably because of tf scope reuse)
 	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 2**7, "Maximum number of batches stored in the reward prediction buffer")
+# Intrinsic rewards
+	tf.app.flags.DEFINE_boolean("use_feature_entropy_reward", False, "The more a visited state is uncommon, the higher is the intrinsic reward.")
+	tf.app.flags.DEFINE_float("entropy_reward_bonus_coefficient", 0.05, "Bonus coefficient for the feature entropy reward. Directly proportional.")
+	# Tang, Haoran, et al. "# Exploration: A study of count-based exploration for deep reinforcement learning." Advances in Neural Information Processing Systems. 2017.
+	tf.app.flags.DEFINE_boolean("use_count_based_exploration_reward", True, "States are mapped to hash codes (using Locality-sensitive hashing), which allows to count their occurrences with a hash table. These counts are then used to compute a reward bonus according to the classic count-based exploration theory.")
+	tf.app.flags.DEFINE_float("exploration_reward_bonus_coefficient", 0.1, "Bonus coefficient for the count-based exploration reward. Directly proportional.")
+	tf.app.flags.DEFINE_string("hash_function", "PCA", "PCA, Random") # default is PCA
+	tf.app.flags.DEFINE_integer("state_hash_size", 10, "The value for k controls the granularity: higher values lead to fewer collisions and are thus more likely to distinguish states.")
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
 	tf.app.flags.DEFINE_float("replay_ratio", 1, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4
 	tf.app.flags.DEFINE_integer("replay_step", 10**3, "Start replaying when global step is greater than replay_step.")
 	tf.app.flags.DEFINE_boolean("replay_value", False, "Whether to recompute values, advantages and discounted cumulative rewards") # default is True
-	tf.app.flags.DEFINE_integer("replay_buffer_size", 2**9, "Maximum number of batches stored in the experience replay buffer")
+	tf.app.flags.DEFINE_integer("replay_buffer_size", 2**6, "Maximum number of batches stored in the experience replay buffer")
 	tf.app.flags.DEFINE_integer("replay_start", 1, "Should be greater than 0 and lower than replay_buffer_size. Train on x batches before using experience replay") # default is 5000
 	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
 # Reward clip

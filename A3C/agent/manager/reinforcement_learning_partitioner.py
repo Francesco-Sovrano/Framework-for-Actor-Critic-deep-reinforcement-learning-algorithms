@@ -61,7 +61,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		self.gradient_optimizer[0] = eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True)
 		
 	def get_state_partition(self, state, concat=None, lstm_state=None):
-		action_batch, value_batch, policy_batch, lstm_state = self.manager.predict_action(states=[state], concats=[concat], lstm_state=lstm_state)
+		action_batch, value_batch, policy_batch, lstm_state, _ = self.manager.predict_action(states=[state], concats=[concat], lstm_state=lstm_state)
 		id = np.argwhere(action_batch[0]==1)[0][0]+1
 		self.add_to_statistics(id)
 		return id, action_batch[0], value_batch[0], policy_batch[0], lstm_state
@@ -83,14 +83,16 @@ class ReinforcementLearningPartitioner(BasicManager):
 			lstm_state = self.manager_lstm_state
 			manager_concat = self.get_manager_concatenation()
 			self.agent_id, manager_action, manager_value, manager_policy, self.manager_lstm_state = self.get_state_partition(state=state, concat=manager_concat, lstm_state=lstm_state)
-			
 			self.last_manager_action = manager_action
 			# N.B.: the query reward is unknown since bootstrap or a new query starts
 			self.batch.add_agent_action(agent_id=0, state=state, concat=manager_concat, action=manager_action, policy=manager_policy, reward=0, value=manager_value, lstm_state=lstm_state, memorize_step=False)
 			
-		new_state, value, action, reward, terminal, policy = super().act(act_function, state, concat)
+		new_state, value, action, reward, terminal, policy, feature_entropy = super().act(act_function, state, concat)
 		# keep query reward updated
-		self.batch.rewards[0][-1] += reward
+		if flags.use_feature_entropy_reward:
+			self.batch.rewards[0][-1] += -flags.entropy_reward_bonus_coefficient*feature_entropy # minimize differences between clusters
+		else:
+			self.batch.rewards[0][-1] += reward
 		self.last_manager_reward = self.batch.rewards[0][-1]
 		return new_state, value, action, reward, terminal, policy
 		

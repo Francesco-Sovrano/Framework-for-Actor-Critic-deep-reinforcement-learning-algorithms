@@ -48,22 +48,24 @@ class BaseAC_Network(object):
 		with tf.device(self.device):
 			self.state_batch = self._state_placeholder("state")
 			self.concat_batch = self._concat_placeholder("concat")
-			cnn = self._convolutive_layers(input=self.state_batch, name=parent_scope_name) # shared cnn layer
-			lstm, self.lstm_state = self._lstm_layers(input=cnn, name=scope_name)
-			self.policy_batch = self._policy_layers(input=lstm, name=scope_name)
-			self.value_batch = self._value_layers(input=lstm, name=scope_name)
+			self.cnn = self._convolutive_layers(input=self.state_batch, name=parent_scope_name) # shared with parent
+			self.lstm, self.lstm_state = self._lstm_layers(input=self.cnn, name=scope_name)
+			self.policy_batch = self._policy_layers(input=self.lstm, name=scope_name)
+			self.value_batch = self._value_layers(input=self.lstm, name=scope_name)
 			if self.predict_reward:
 				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state",3)
 				# reusing seems to cause memory leaks
-				reward_prediction_cnn = self._convolutive_layers(input=self.reward_prediction_state_batch, name=parent_scope_name) # shared cnn layer
+				reward_prediction_cnn = self._convolutive_layers(input=self.reward_prediction_state_batch, name=parent_scope_name) # shared with parent
 				self.reward_prediction_logits = self._reward_prediction_layers(input=reward_prediction_cnn, name=scope_name)
 		# Sample action, after getting keys
 		self.action_batch = self.sample_actions()
+		# Get cnn feature mean entropy
+		self.feature_entropy = self.get_feature_entropy(self.cnn, scope_name) # do NOT share with parent
 		# Print shapes
 		print( "    [{}]Input shape: {}".format(self.id, self.state_batch.get_shape()) )
 		print( "    [{}]Concatenation shape: {}".format(self.id, self.concat_batch.get_shape()) )
-		print( "    [{}]Tower shape: {}".format(self.id, cnn.get_shape()) )
-		print( "    [{}]LSTM shape: {}".format(self.id, lstm.get_shape()) )
+		print( "    [{}]Tower shape: {}".format(self.id, self.cnn.get_shape()) )
+		print( "    [{}]LSTM shape: {}".format(self.id, self.lstm.get_shape()) )
 		print( "    [{}]Policy shape: {}".format(self.id, self.policy_batch.get_shape()) )
 		print( "    [{}]Value shape: {}".format(self.id, self.value_batch.get_shape()) )
 		if self.predict_reward:
@@ -73,6 +75,23 @@ class BaseAC_Network(object):
 		# self.train_keys = list(set(self.train_keys))
 		# self.update_keys = list(set(self.update_keys))
 		
+	def get_feature_entropy(self, feature, scope_name): # feature entropy measures how much the input is uncommon
+		with tf.device(self.device):
+			batch_norm = self._batch_norm_layer(input=feature, name=scope_name)
+			feature_distribution = tf.distributions.Normal(batch_norm.moving_mean, tf.sqrt(batch_norm.moving_variance))
+			return -tf.reduce_mean(feature_distribution.log_prob(feature)) # probability density function
+		
+	def _batch_norm_layer(self, input, name):
+		with tf.variable_scope(name), tf.variable_scope("BatchNorm", reuse=tf.AUTO_REUSE) as scope:
+			print( "    [{}]Building scope: {}".format(self.id, scope.name) )
+			batch_norm = tf.layers.BatchNormalization(renorm=True, trainable=self.training) # renorm because minibaches are too small
+			batch_norm.apply(input,training=self.training)
+			# update keys
+			self.train_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope.name)
+			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope.name)
+			# return result
+			return batch_norm
+		
 	# relu vs leaky_relu <https://www.reddit.com/r/MachineLearning/comments/4znzvo/what_are_the_advantages_of_relu_over_the/>
 	def _convolutive_layers(self, input, name):
 		with tf.variable_scope(name), tf.variable_scope("CNN", reuse=tf.AUTO_REUSE) as scope:
@@ -81,7 +100,6 @@ class BaseAC_Network(object):
 			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=32, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.leaky_relu) # xavier initializer
 			input = tf.layers.conv2d( inputs=input, filters=16, kernel_size=(3,3), padding='SAME', activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling )
 			input = tf.layers.conv2d( inputs=input, filters=8, kernel_size=(3,3), padding='SAME', activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling )
-			# input = tf.layers.batch_normalization(inputs=input, renorm=True, training=self.training) # renorm because minibaches are too small
 			# update keys
 			self.train_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope.name)
 			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope.name)
@@ -268,8 +286,8 @@ class BaseAC_Network(object):
 		feed_dict = { self.state_batch : states, self.lstm_initial_state : lstm_state }
 		if self.concat_size > 0:
 			feed_dict.update( { self.concat_batch : concats } )
-		# return action_batch, value_batch, policy_batch, lstm_state
-		return self.session.run(fetches=[self.action_batch, self.value_batch, self.policy_batch, self.lstm_state], feed_dict=feed_dict)
+		# return action_batch, value_batch, policy_batch, lstm_state, feature_entropy
+		return self.session.run(fetches=[self.action_batch, self.value_batch, self.policy_batch, self.lstm_state, self.feature_entropy], feed_dict=feed_dict)
 				
 	def predict_value(self, states, concats=None, lstm_state=None):
 		if lstm_state is None:
