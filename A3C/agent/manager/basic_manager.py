@@ -9,7 +9,7 @@ import numpy as np
 from agent.network import *
 from agent.experience_buffer import Buffer
 from agent.batch import ExperienceBatch, RewardPredictionBatch
-from nearpy.hashes import RandomBinaryProjections
+from nearpy.hashes import RandomBinaryProjections, PCABinaryProjections
 
 import options
 flags = options.get()
