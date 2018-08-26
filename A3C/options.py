@@ -52,10 +52,10 @@ def build():
 	tf.app.flags.DEFINE_boolean("predict_reward", False, "Whether to predict rewards. This is useful with sparse rewards.") # N.B.: Cause of memory leaks! (probably because of tf scope reuse)
 	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 2**7, "Maximum number of batches stored in the reward prediction buffer")
 # Intrinsic rewards
-	tf.app.flags.DEFINE_boolean("use_feature_entropy_reward", False, "The more a visited state is uncommon, the higher is the intrinsic reward.")
-	tf.app.flags.DEFINE_float("entropy_reward_bonus_coefficient", 0.05, "Bonus coefficient for the feature entropy reward. Directly proportional.")
+	tf.app.flags.DEFINE_boolean("use_feature_entropy_reward", True, "The more a visited state is uncommon, the higher is the intrinsic reward.")
+	tf.app.flags.DEFINE_float("entropy_reward_bonus_coefficient", 0.1, "Bonus coefficient for the feature entropy reward. Directly proportional.")
 	# Tang, Haoran, et al. "# Exploration: A study of count-based exploration for deep reinforcement learning." Advances in Neural Information Processing Systems. 2017.
-	tf.app.flags.DEFINE_boolean("use_count_based_exploration_reward", True, "States are mapped to hash codes (using Locality-sensitive hashing), which allows to count their occurrences with a hash table. These counts are then used to compute a reward bonus according to the classic count-based exploration theory.")
+	tf.app.flags.DEFINE_boolean("use_count_based_exploration_reward", False, "States are mapped to hash codes (using Locality-sensitive hashing), which allows to count their occurrences with a hash table. These counts are then used to compute a reward bonus according to the classic count-based exploration theory.")
 	tf.app.flags.DEFINE_float("exploration_reward_bonus_coefficient", 0.1, "Bonus coefficient for the count-based exploration reward. Directly proportional.")
 	tf.app.flags.DEFINE_string("hash_function", "PCA", "PCA, Random") # default is PCA
 	tf.app.flags.DEFINE_integer("state_hash_size", 10, "The value for k controls the granularity: higher values lead to fewer collisions and are thus more likely to distinguish states.")

@@ -90,7 +90,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		new_state, value, action, reward, terminal, policy, feature_entropy = super().act(act_function, state, concat)
 		# keep query reward updated
 		if flags.use_feature_entropy_reward:
-			self.batch.rewards[0][-1] += -flags.entropy_reward_bonus_coefficient*feature_entropy # minimize differences between clusters
+			self.batch.rewards[0][-1] += -self.get_feature_entropy_reward(feature_entropy) # minimize differences between clusters
 		else:
 			self.batch.rewards[0][-1] += reward
 		self.last_manager_reward = self.batch.rewards[0][-1]

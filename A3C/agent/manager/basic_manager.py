@@ -189,10 +189,13 @@ class BasicManager(object):
 					self.hash_state_table[new_state_hash] += 1
 				final_reward += flags.exploration_reward_bonus_coefficient/np.sqrt(self.hash_state_table[new_state_hash])
 		if flags.use_feature_entropy_reward:
-			final_reward += flags.entropy_reward_bonus_coefficient*feature_entropy
+			final_reward += self.get_feature_entropy_reward(feature_entropy)
 
 		self.batch.add_agent_action(agent_id, state, concat, action, policy, final_reward, value, lstm_state)
 		return new_state, value, action, reward, terminal, policy, feature_entropy
+		
+	def get_feature_entropy_reward(self, feature_entropy):
+		return (1 - 1/np.sqrt(np.clip(feature_entropy,1e-8,None)))*flags.entropy_reward_bonus_coefficient
 					
 	def compute_cumulative_reward(self, batch):
 		# prepare batch

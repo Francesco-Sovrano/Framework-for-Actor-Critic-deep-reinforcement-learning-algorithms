@@ -54,7 +54,7 @@ class BaseAC_Network(object):
 			self.value_batch = self._value_layers(input=self.lstm, name=scope_name)
 			if self.predict_reward:
 				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state",3)
-				# reusing seems to cause memory leaks
+				# reusing with a different placeholder seems to cause memory leaks
 				reward_prediction_cnn = self._convolutive_layers(input=self.reward_prediction_state_batch, name=parent_scope_name) # shared with parent
 				self.reward_prediction_logits = self._reward_prediction_layers(input=reward_prediction_cnn, name=scope_name)
 		# Sample action, after getting keys
