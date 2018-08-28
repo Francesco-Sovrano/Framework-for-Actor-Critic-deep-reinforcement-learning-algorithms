@@ -60,7 +60,7 @@ class BaseAC_Network(object):
 		# Sample action, after getting keys
 		self.action_batch = self.sample_actions()
 		# Get cnn feature mean entropy
-		self.feature_entropy = self.get_feature_entropy(self.cnn, scope_name) # do NOT share with parent
+		self.feature_entropy = self.get_feature_entropy(self.lstm, scope_name) # do NOT share with parent
 		# Print shapes
 		print( "    [{}]Input shape: {}".format(self.id, self.state_batch.get_shape()) )
 		print( "    [{}]Concatenation shape: {}".format(self.id, self.concat_batch.get_shape()) )
@@ -79,7 +79,7 @@ class BaseAC_Network(object):
 		with tf.device(self.device):
 			batch_norm = self._batch_norm_layer(input=feature, name=scope_name)
 			feature_distribution = tf.distributions.Normal(batch_norm.moving_mean, tf.sqrt(batch_norm.moving_variance))
-			return -tf.reduce_mean(feature_distribution.log_prob(feature)) # probability density function
+			return -feature_distribution.log_prob(feature) # probability density function
 		
 	def _batch_norm_layer(self, input, name):
 		with tf.variable_scope(name), tf.variable_scope("BatchNorm", reuse=tf.AUTO_REUSE) as scope:
@@ -237,13 +237,14 @@ class BaseAC_Network(object):
 				new_policy_batch = tf.transpose(self.policy_batch, [1, 0, 2])
 				new_policy_distributions = tf.distributions.Normal(new_policy_batch[0], new_policy_batch[1], validate_args=False) # validate_args is computationally expensive
 				new_cross_entropy_batch = -new_policy_distributions.log_prob(self.old_action_batch) # probability density function
-				new_entropy_batch = new_policy_distributions.entropy()
+				# new_entropy_batch = new_policy_distributions.entropy()
 			else: # discrete control
 				# Old policy
 				old_cross_entropy_batch = self._categorical_cross_entropy(samples=self.old_action_batch, logits=self.old_policy_batch)
 				# New policy
 				new_cross_entropy_batch = self._categorical_cross_entropy(samples=self.old_action_batch, logits=self.policy_batch)
-				new_entropy_batch = self._categorical_entropy(self.policy_batch)
+				# new_entropy_batch = self._categorical_entropy(self.policy_batch)
+			new_entropy_batch = self.feature_entropy
 			# Build losses
 			self.policy_loss = PolicyLoss(cliprange=self.clip, cross_entropy=new_cross_entropy_batch, old_cross_entropy=old_cross_entropy_batch, advantage=self.advantage_batch, entropy=new_entropy_batch, entropy_beta=self.entropy_beta)
 			self.value_loss = ValueLoss(cliprange=self.clip, value=self.value_batch, old_value=self.old_value_batch, reward=self.cumulative_reward_batch)
@@ -286,8 +287,8 @@ class BaseAC_Network(object):
 		feed_dict = { self.state_batch : states, self.lstm_initial_state : lstm_state }
 		if self.concat_size > 0:
 			feed_dict.update( { self.concat_batch : concats } )
-		# return action_batch, value_batch, policy_batch, lstm_state, feature_entropy
-		return self.session.run(fetches=[self.action_batch, self.value_batch, self.policy_batch, self.lstm_state, self.feature_entropy], feed_dict=feed_dict)
+		# return action_batch, value_batch, policy_batch, lstm_state
+		return self.session.run(fetches=[self.action_batch, self.value_batch, self.policy_batch, self.lstm_state], feed_dict=feed_dict)
 				
 	def predict_value(self, states, concats=None, lstm_state=None):
 		if lstm_state is None:

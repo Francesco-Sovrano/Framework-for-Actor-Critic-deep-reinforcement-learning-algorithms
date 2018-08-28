@@ -19,7 +19,7 @@ from environment.environment import Environment
 class CarControllerEnvironment(Environment):
 
 	def get_state_shape(self):
-		return (1,10,2)
+		return (1,5,2)
 
 	def get_action_shape(self):
 		return (2,) # steering angle, continuous control without softmax
@@ -27,106 +27,96 @@ class CarControllerEnvironment(Environment):
 	def __init__(self, thread_index):
 		Environment.__init__(self)
 		self.thread_index = thread_index
+		self.max_step = 100
+		self.spline_number = 2
+		self.control_points_per_spline = 50
 		self.seconds_per_step = 0.1 # a step every n seconds
 		# information about speed parameters: http://www.ijtte.com/uploads/2012-10-01/5ebd8343-9b9c-b1d4IJTTE%20vol2%20no3%20%287%29.pdf
 		self.min_speed = 0.1 # m/s
-		self.max_speed = 2.5 # m/s
+		self.max_speed = 1.4 # m/s
+		self.max_speed_noise = 0.25 # m/s
 		# the fastest car has max_acceleration 9.25 m/s (https://en.wikipedia.org/wiki/List_of_fastest_production_cars_by_acceleration)
 		# the slowest car has max_acceleration 0.7 m/s (http://automdb.com/max_acceleration)
 		self.max_acceleration = 0.7 # m/s
-		# scale constant
+		self.horizon_distance = 2 # meters
 		self.max_distance_to_path = 0.1 # meters
-		self.max_noise_radius = 0.05 # radius in meters
 		self.max_steering_degree = 30
-		self.max_compensation_degree = 15
-		self.path_length = 200
-		self.max_step = 150
-		self.step_for_exact_position = 45
-		self.step_for_adjusted_position = 10
-		self.noise_per_step = self.max_noise_radius/self.step_for_exact_position
 		self.max_steering_angle = convert_degree_to_radiant(self.max_steering_degree)
-		self.max_compensation_angle = convert_degree_to_radiant(self.max_compensation_degree)
 		# evaluator stuff
 		self.episodes = deque()
 	
 	def reset(self):
 		self.path = self.build_random_path()
-		self.real_point = self.perceived_point = (0,0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
-		self.perceived_angle = np.pi/2 + 0.01
-		self.real_progress = self.perceived_progress = 0
-		self.real_waypoint = self.perceived_waypoint = 1
-		self.exact_position = True
-		self.adjusted_position = False
-		
+		self.car_point = (0,0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
+		self.car_progress, self.car_goal = self.get_car_position_and_goal(self.car_point)
 		self.speed = self.min_speed + (self.max_speed-self.min_speed)*np.random.random() # random initial speed in [0,max_speed]
+		self.car_angle = self.get_angle_from_position(self.car_progress)
 		self.steering_angle = 0
 		self.cumulative_reward = 0
 		self.step = 0
 		self.last_reward = 0
-		self.last_state = self.get_state(self.perceived_point, self.perceived_waypoint)
+		self.last_state = self.get_state(car_point=self.car_point, car_angle=self.car_angle, car_progress=self.car_progress, car_goal=self.car_goal)
 		self.avg_speed_per_steps = 0
 		
 	def get_point_from_position(self, position):
-		if position <= 1: # first spline 
-			return (poly(position,self.U1), poly(position,self.V1))
+		spline = int(np.ceil(position)-1)
+		if spline <= 0: # first spline 
+			return (poly(position,self.U[0]), poly(position,self.V[0]))
 		# second spline
-		return rotate_and_shift(poly(position-1,self.U2), poly(position-1,self.V2), self.middle_point[0], self.middle_point[1], self.theta)
+		return rotate_and_shift(poly(position-spline,self.U[spline]), poly(position-spline,self.V[spline]), self.middle_point[spline-1][0], self.middle_point[spline-1][1], self.theta[spline-1])
 		
 	def get_angle_from_position(self, position):
-		if position <= 1: # first spline
-			return angle(position, self.U1, self.V1)
+		spline = int(np.ceil(position)-1)
+		if spline <= 0: # first spline 
+			return angle(position, self.U[0], self.V[0])
 		# second spline
-		return angle(position-1, self.U2, self.V2)+self.theta
+		return angle(position-spline, self.U[spline], self.V[spline])+self.theta[spline-1]
 		
 	def build_random_path(self):
 		# setup environment
-		self.U1, self.V1 = generate_random_polynomial()
-		self.U2, self.V2 = generate_random_polynomial()
+		self.U = []
+		self.V = []
+		self.theta = []
+		self.middle_point = []
+		for i in range(self.spline_number):
+			U, V = generate_random_polynomial()
+			self.U.append(U)
+			self.V.append(V)
+			self.theta.append(angle(1, U, V))
+			self.middle_point.append(self.get_point_from_position(i+1))
 		# we generate all points for both polynomials, then we shall draw only a portion of them
-		self.positions = np.linspace(start=0, stop=2, num=self.path_length) # first spline is in [0,1] while the second one is in [1,2]
-		self.theta = angle(1, self.U1, self.V1)
-		self.middle_point = self.get_point_from_position(1)
+		self.positions = np.linspace(start=0, stop=self.spline_number, num=self.spline_number*self.control_points_per_spline) # first spline is in [0,1] while the second one is in [1,2]
 		xy = [self.get_point_from_position(pos) for pos in self.positions]
 		return list(zip(*xy))
 
 	def is_terminal_position(self, position):
-		return position >= self.path_length
+		return position >= self.spline_number*0.9
 
-	def get_car_position_and_next_waypoint(self, car_point):
+	def get_car_position_and_goal(self, car_point):
 		car_x, car_y = car_point
 		# Find the closest spline point
-		result = optimize.minimize_scalar(lambda pos: euclidean_distance(car_point, self.get_point_from_position(pos)), bounds=(0,2))
-		car_position = result.x
-		# Find leftmost value greater than x: the next_waypoint
-		next_waypoint = bisect_right(self.positions, car_position)
-		return car_position, next_waypoint
+		car_closest_position = optimize.minimize_scalar(lambda pos: euclidean_distance(car_point, self.get_point_from_position(pos)), method='bounded', bounds=(0,self.spline_number))
+		car_position = car_closest_position.x
+		# Find closest control point on horizon
+		closest_goal = optimize.minimize_scalar(lambda pos: np.absolute(euclidean_distance(car_point, self.get_point_from_position(pos))-self.horizon_distance), method='bounded', bounds=(car_position,self.spline_number))
+		goal = closest_goal.x
+		return car_position, goal
 
-	def compute_new_car_point_and_angle(self, car_point, car_angle, steering_angle, speed, add_noise=False):
+	def move_car(self, car_point, car_angle, steering_angle, speed, add_noise=False):
 		# get new car angle
 		new_car_angle = car_angle + steering_angle
 		# change point
 		car_x, car_y = car_point
-		space = speed*self.seconds_per_step
-		if add_noise:
-			space += (2*np.random.random()-1)*self.noise_per_step
-		car_x += space*np.cos(new_car_angle)
-		car_y += space*np.sin(new_car_angle)
-		return (car_x, car_y), new_car_angle
+		speed_noise = (2*np.random.random()-1)*self.max_speed_noise if add_noise else 0
+		space = (speed+speed_noise)*self.seconds_per_step
+		dir_x, dir_y = get_heading_vector(angle=new_car_angle, space=space)
+		return (car_x+dir_x, car_y+dir_y), new_car_angle
 
-	def compute_new_steering_angle(self, speed, steering_angle, car_point, car_angle, action, next_waypoint): # action is in (-1,1)
-		# get baseline angle
-		xs, ys = self.path
-		_, yc = shift_and_rotate(xs[next_waypoint], ys[next_waypoint], -car_point[0], -car_point[1], -car_angle) # point relative to car position
-		baseline_angle = self.get_angle_from_position(self.positions[next_waypoint]) + np.arctan(yc) # use the tangent to the next waypoint as default direction -> more stable results
-		# get new angle
-		compensation_angle = action*self.max_compensation_angle
-		new_angle = compensation_angle + baseline_angle
-		# get steering angle
-		steering_angle += new_angle - car_angle
-		# clip steering angle in [-max_steering_angle, max_steering_angle]
-		return np.clip(steering_angle,-self.max_steering_angle,self.max_steering_angle)
+	def compute_new_steering_angle(self, action, speed, steering_angle, car_point, car_angle, car_goal): # action is in [-1,1]
+		# get new steering angle
+		return action*self.max_steering_angle # in [-max_steering_angle, max_steering_angle]
 		
-	def compute_new_speed(self, speed, action): # action is in (-1,1)
+	def compute_new_speed(self, action, speed): # action is in [-1,1]
 		speed += action*self.max_acceleration*self.seconds_per_step
 		return np.clip(speed, self.min_speed, self.max_speed)
 
@@ -134,76 +124,44 @@ class CarControllerEnvironment(Environment):
 		# compute new speed
 		self.speed = self.compute_new_speed(action=action_vector[1], speed=self.speed)
 		# compute new steering_angle
-		self.steering_angle = self.compute_new_steering_angle(action=action_vector[0], speed=self.speed, steering_angle=self.steering_angle, car_point=self.perceived_point, car_angle=self.perceived_angle, next_waypoint=self.perceived_waypoint)
-		# update perceived car point
-		self.perceived_point, self.perceived_angle = self.compute_new_car_point_and_angle(car_point=self.perceived_point, car_angle=self.perceived_angle, steering_angle=self.steering_angle, speed=self.speed, add_noise=False)
-		# update real car point
-		self.real_point, _ = self.compute_new_car_point_and_angle(car_point=self.real_point, car_angle=self.perceived_angle, steering_angle=self.steering_angle, speed=self.speed, add_noise=True)
+		self.steering_angle = self.compute_new_steering_angle(action=action_vector[0], speed=self.speed, steering_angle=self.steering_angle, car_point=self.car_point, car_angle=self.car_angle, car_goal=self.car_goal)
+		# move car
+		self.car_point, self.car_angle = self.move_car(car_point=self.car_point, car_angle=self.car_angle, steering_angle=self.steering_angle, speed=self.speed, add_noise=True)
 		# update position and direction
-		perceived_position, perceived_waypoint = self.get_car_position_and_next_waypoint(self.perceived_point)
-		real_position, real_waypoint = self.get_car_position_and_next_waypoint(self.real_point)
-		# compute real reward
-		real_reward = self.get_reward(car_speed=self.speed, car_point=self.real_point, car_progress=self.real_progress, car_position=real_position)
-		if real_position > self.real_progress: # is moving toward next position
-			self.real_progress = real_position # progress update
-			self.real_waypoint = real_waypoint
+		car_position, car_goal = self.get_car_position_and_goal(self.car_point)
 		# compute perceived reward
-		perceived_reward = self.get_reward(car_speed=self.speed, car_point=self.perceived_point, car_progress=self.perceived_progress, car_position=perceived_position)
-		if perceived_position > self.perceived_progress: # is moving toward next position
-			self.perceived_progress = perceived_position # progress update
-			self.perceived_waypoint = perceived_waypoint
+		reward = self.get_reward(car_speed=self.speed, car_point=self.car_point, car_progress=self.car_progress, car_position=car_position)
+		if car_position > self.car_progress: # is moving toward next position
+			self.car_progress = car_position # progress update
+			self.car_goal = car_goal
 		# compute state (after updating progress)
-		state = self.get_state(self.perceived_point, self.perceived_waypoint)
+		state = self.get_state(car_point=self.car_point, car_angle=self.car_angle, car_progress=self.car_progress, car_goal=self.car_goal)
 		# update last action/state/reward
 		self.last_state = state
-		self.last_reward = perceived_reward
+		self.last_reward = reward
 		# update cumulative reward
-		self.cumulative_reward += real_reward
+		self.cumulative_reward += reward
 		self.avg_speed_per_steps += self.speed
 		# update step
 		self.step += 1
-		self.exact_position = self.step%self.step_for_exact_position == 0
-		if self.exact_position:
-			self.perceived_point = self.get_exact_position()
-		self.adjusted_position = (not self.exact_position) and self.step%self.step_for_adjusted_position == 0
-		if self.adjusted_position:
-			self.perceived_point = self.get_adjusted_position()
-		terminal = self.is_terminal_position(self.perceived_waypoint) or self.is_terminal_position(self.real_waypoint) or self.step >= self.max_step
+		terminal = self.is_terminal_position(self.car_goal) or self.step >= self.max_step
 		if terminal: # populate statistics
 			stats = {
 				"avg_speed": self.avg_speed_per_steps/self.step,
 				"reward": self.cumulative_reward,
 				"step": self.step,
-				"completed": 1 if self.is_terminal_position(self.perceived_waypoint) else 0
+				"completed": 1 if self.is_terminal_position(self.car_goal) else 0
 			}
 			self.episodes.append(stats)
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
-		return state, real_reward, terminal
+		return state, reward, terminal
 	
-	def get_adjusted_position(self):
-		# get real y1 with respect to path
-		real_angle = self.get_angle_from_position(self.real_progress) # tangent to closest path point
-		real_x0, real_y0 = self.get_point_from_position(self.real_progress) # closest path point
-		_, real_y1 = shift_and_rotate(self.real_point[0], self.real_point[1], -real_x0, -real_y0, -real_angle) # point relative to car position
-		# get perceived x1 with respect to path
-		perceived_angle = self.get_angle_from_position(self.perceived_progress) # tangent to closest path point
-		perceived_x0, perceived_y0 = self.get_point_from_position(self.perceived_progress) # closest path point
-		perceived_x1, _ = shift_and_rotate(self.perceived_point[0], self.perceived_point[1], -perceived_x0, -perceived_y0, -perceived_angle) # point relative to car position
-		# update perceived point with real y1
-		return rotate_and_shift(perceived_x1, real_y1, perceived_x0, perceived_y0, perceived_angle) # absolute position
-
-	def get_exact_position(self):
-		return self.real_point
-		
-	def get_position_type(self):
-		return 0 if self.exact_position else 1 if self.adjusted_position else 2
-
 	def get_concatenation_size(self):
-		return 4
+		return 3
 		
 	def get_concatenation(self):
-		return [self.steering_angle, self.speed, self.get_position_type(), self.last_reward]
+		return [self.steering_angle, self.speed, self.last_reward]
 		
 	def get_reward(self, car_speed, car_point, car_progress, car_position):
 		if car_position > car_progress: # is moving toward next position
@@ -211,48 +169,49 @@ class CarControllerEnvironment(Environment):
 			return car_speed*self.seconds_per_step*(1 - np.clip(distance/self.max_distance_to_path,0,1)) # always in [0,1] # smaller distances to path give higher rewards
 		return -0.1 # is NOT moving toward next position
 		
-	def get_state(self, car_point, next_waypoint):
-		if next_waypoint >= self.path_length:
-			next_waypoint = self.path_length-1
-		xs, ys = self.path
-		next_x, next_y = xs[next_waypoint], ys[next_waypoint]
-		car_x, car_y = car_point
+	def get_state(self, car_point, car_angle, car_progress, car_goal):
 		shape = self.get_state_shape()
 		state = np.zeros(shape)
-		state[0][0] = [car_x, car_y]
-		state[0][1] = [next_x, next_y]
-		i = 0
-		for i in range(4):
-			state[0][2+i] = [self.U1[i],self.V1[i]]
-		for i in range(4):
-			state[0][6+i] = [self.U2[i],self.V2[i]]
+		car_x, car_y = car_point
+		control_distance = (car_goal - car_progress)/shape[1]
+		for i in range(shape[1]):
+			# get points coordinates relative to car (car is zero)
+			xa, ya = self.get_point_from_position(car_progress + (i+1)*control_distance)
+			state[0][i] = shift_and_rotate(xa, ya, -car_x, -car_y, -car_angle) # point relative to car position
 		return state
 		
-	def get_screen(self):
-		return self.path
+	def get_screen(self): # RGB array
+		# First set up the figure, the axis, and the plot element we want to animate
+		fig, ax = plt.subplots(nrows=1, ncols=1, sharey=False, sharex=False, figsize=(10,10))
+		ax.plot(self.path[0], self.path[1], lw=2, label='Path')
+		# ax.plot(0,0,"ro")
+		car_x, car_y = self.car_point
+		ax.plot(car_x, car_y, marker='o', color='g', label='Car')
+		dir_x, dir_y = get_heading_vector(angle=self.car_angle)
+		ax.plot([car_x, car_x+dir_x],[car_y, car_y+dir_y], color='g', label='Heading Vector')
+		waypoint_x, waypoint_y = self.get_point_from_position(self.car_goal)
+		ax.plot(waypoint_x, waypoint_y, marker='o', color='r', label='Waypoint')
+		# progress_x, progress_y = self.get_point_from_position(self.car_progress)
+		# ax.plot(progress_x, progress_y, marker='o', color='y', label='Progress')
+		ax.legend()
+		fig.suptitle('Speed: {0:.2f} m/s \n Angle: {1:.2f} deg \n Step: {2}'.format(self.speed,convert_radiant_to_degree(self.steering_angle), self.step))
+		fig.canvas.draw()
+		# Now we can save it to a numpy array.
+		data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+		data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+		# Release memory
+		plt.close(fig)
+		# plt.close(ax)
+		# gc.collect()
+		return data # RGB array
 		
 	def get_frame_info(self, network, observation, value, action, reward, policy):
 		state_info = "reward={}, speed={}, steering_angle={}, agent={}, value={}, policy={}\n".format(reward, self.speed, self.steering_angle, network.agent_id, value, policy)
+		state_info += "state={}\n".format(self.last_state)
 		action_info = "action={}\n".format(action)
 		frame_info = { "log": state_info + action_info }
 		if flags.save_episode_screen:
-			# First set up the figure, the axis, and the plot element we want to animate
-			fig, ax = plt.subplots(nrows=1, ncols=1, sharey=False, sharex=False, figsize=(10,10))
-			line, = ax.plot(self.path[0], self.path[1], lw=2)
-			# ax.plot(0,0,"ro")
-			ax.plot(self.real_point[0],self.real_point[1], marker='o', color='r', label='Real')
-			ax.plot(self.perceived_point[0],self.perceived_point[1], marker='o', color='b', label='Perceived')
-			ax.legend()
-			fig.suptitle('Speed: {0:.2f} m/s \n Angle: {1:.2f} deg \n Step: {2}'.format(self.speed,convert_radiant_to_degree(self.steering_angle), self.step))
-			fig.canvas.draw()
-			# Now we can save it to a numpy array.
-			data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
-			data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-			frame_info["screen"] = { "value": data, "type": 'RGB' }
-			# Release memory
-			plt.close(fig)
-			# plt.close(ax)
-			# gc.collect()
+			frame_info["screen"] = { "value": observation, "type": 'RGB' }
 		return frame_info
 		
 	def get_statistics(self):
@@ -339,6 +298,9 @@ def convert_degree_to_radiant(degree):
 	
 def convert_radiant_to_degree(radiant):
 	return radiant*180/np.pi
+	
+def get_heading_vector(angle, space=1):
+	return (space*np.cos(angle), space*np.sin(angle))
 	
 def euclidean_distance(a,b):
 	return math.sqrt(sum([(j-k)**2 for (j,k) in zip(a,b)]))

@@ -9,7 +9,6 @@ import numpy as np
 from agent.network import *
 from agent.experience_buffer import Buffer
 from agent.batch import ExperienceBatch, RewardPredictionBatch
-from nearpy.hashes import RandomBinaryProjections, PCABinaryProjections
 
 import options
 flags = options.get()
@@ -47,16 +46,6 @@ class BasicManager(object):
 		self._model_usage_list = deque()
 		if flags.print_loss:
 			self._loss_list = [{"total_loss": deque(), "policy_loss": deque(), "value_loss": deque()} for _ in range(self.model_size)]
-	# State hash table for count-based exploration
-		if flags.use_count_based_exploration_reward:
-			self.hash_state_table = {}
-			self.hash_size = np.prod(state_shape)
-			if flags.hash_function == 'Random':
-				self.hasher = RandomBinaryProjections(hash_name='rbp', projection_count=flags.state_hash_size) # Create a random binary hash with k bits <https://github.com/pixelogik/NearPy>
-				self.hasher.reset(self.hash_size)
-			else:
-				self.hash_buffer = Buffer(size=2**(flags.state_hash_size+1))
-				self.hasher = None
 			
 	def is_global_network(self):
 		return self.global_network is None
@@ -167,35 +156,14 @@ class BasicManager(object):
 		agent_id = self.agent_id
 		agent = self.get_model(agent_id)
 		lstm_state = self.lstm_state
-		action_batch, value_batch, policy_batch, self.lstm_state, feature_entropy = agent.predict_action(states=[state], concats=[concat], lstm_state=lstm_state)
+		action_batch, value_batch, policy_batch, self.lstm_state = agent.predict_action(states=[state], concats=[concat], lstm_state=lstm_state)
 		action, value, policy = action_batch[0], value_batch[0], policy_batch[0]
 		new_state, reward, terminal = act_function(action)
 		if flags.clip_reward:
 			reward = np.clip(reward, flags.min_reward, flags.max_reward)
-		
-		final_reward = reward
-		if flags.use_count_based_exploration_reward:
-			reshaped_new_state = new_state.reshape((self.hash_size,1))
-			if flags.hash_function == 'PCA' and not self.hash_buffer.is_full():
-				self.hash_buffer.put(reshaped_new_state)
-				if self.hash_buffer.is_full():
-					self.hasher = PCABinaryProjections(hash_name='pbp', projection_count=flags.state_hash_size, training_set=self.hash_buffer.get_batches()) # Create a random binary hash with k bits <https://github.com/pixelogik/NearPy>
-			if self.hasher is not None:
-				# count function
-				new_state_hash = self.hasher.hash_vector(reshaped_new_state)[0]
-				if new_state_hash not in self.hash_state_table:
-					self.hash_state_table[new_state_hash] = 1
-				else:
-					self.hash_state_table[new_state_hash] += 1
-				final_reward += flags.exploration_reward_bonus_coefficient/np.sqrt(self.hash_state_table[new_state_hash])
-		if flags.use_feature_entropy_reward:
-			final_reward += self.get_feature_entropy_reward(feature_entropy)
 
-		self.batch.add_agent_action(agent_id, state, concat, action, policy, final_reward, value, lstm_state)
-		return new_state, value, action, reward, terminal, policy, feature_entropy
-		
-	def get_feature_entropy_reward(self, feature_entropy):
-		return (1 - 1/np.sqrt(np.clip(feature_entropy,1e-8,None)))*flags.entropy_reward_bonus_coefficient
+		self.batch.add_agent_action(agent_id, state, concat, action, policy, reward, value, lstm_state)
+		return new_state, value, action, reward, terminal, policy
 					
 	def compute_cumulative_reward(self, batch):
 		# prepare batch
