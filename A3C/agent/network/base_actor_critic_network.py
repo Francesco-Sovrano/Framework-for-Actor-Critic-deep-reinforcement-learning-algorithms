@@ -23,7 +23,8 @@ class BaseAC_Network(object):
 		self.session = session
 		self.device = device # gpu or cpu
 		self.id = id # model id
-		self.parent_id = parent_id if parent_id != None else id # used for sharing layers with other models in hierarchy, if any
+		self.parent_id = parent_id if parent_id is not None else id # used for sharing layers with other models in hierarchy, if any
+		self.is_root = self.parent_id == self.id
 		self.policy_size = action_shape[0] # number of actions to take
 		self.policy_depth = action_shape[1] if len(action_shape) > 1 else 0 # number of discrete action types: set 0 for continuous control
 		self.concat_size = concat_size # the size of the vector concatenated with the CNN output before entering the LSTM
@@ -39,28 +40,39 @@ class BaseAC_Network(object):
 	def _create_network(self):
 		print( "Building network {}".format(self.id) )
 		# Initialize keys collections
-		self.train_keys = []
+		self.shared_keys = []
 		self.update_keys = []
 		# Initialize scope names
 		scope_name = "Net{0}".format(self.id)
 		parent_scope_name = "Net{0}".format(self.parent_id)
 		# Build nets
 		with tf.device(self.device):
+			# [Input]
 			self.state_batch = self._state_placeholder("state")
 			self.concat_batch = self._concat_placeholder("concat")
-			self.cnn = self._convolutive_layers(input=self.state_batch, name=parent_scope_name) # shared with parent
-			self.lstm, self.lstm_state = self._lstm_layers(input=self.cnn, name=scope_name)
-			self.policy_batch = self._policy_layers(input=self.lstm, name=scope_name)
-			self.value_batch = self._value_layers(input=self.lstm, name=scope_name)
+			self.old_value_batch = self._value_placeholder("old_value")
+			self.old_policy_batch = self._policy_placeholder("old_policy")
+			self.old_action_batch = self._action_placeholder("old_action_batch")
+			self.cumulative_reward_batch = self._value_placeholder("cumulative_reward")
+			# [Batch Normalization]
+			# _, self.state_batch_norm = self._batch_norm_layer(input=self.state_batch, scope="Global", name="State", share_trainables=False) # global
+			# _, self.concat_batch_norm = self._batch_norm_layer(input=self.concat_batch, scope="Global", name="Concat{}".format(1 if self.is_root else 0), share_trainables=False) # global
+			# [Advantage]
+			self.advantage_batch = tf.stop_gradient(self.cumulative_reward_batch - self.old_value_batch) # stopping gradient
+			# [Layer]
+			self.cnn = self._convolutive_layers(input=self.state_batch, scope=parent_scope_name) # shared with parent
+			self.lstm, self.lstm_state = self._lstm_layers(input=self.cnn, concat=self.concat_batch, scope=scope_name)
+			self.policy_batch = self._policy_layers(input=self.lstm, scope=scope_name)
+			self.value_batch = self._value_layers(input=self.lstm, scope=scope_name)
 			if self.predict_reward:
 				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state",3)
 				# reusing with a different placeholder seems to cause memory leaks
-				reward_prediction_cnn = self._convolutive_layers(input=self.reward_prediction_state_batch, name=parent_scope_name) # shared with parent
-				self.reward_prediction_logits = self._reward_prediction_layers(input=reward_prediction_cnn, name=scope_name)
+				reward_prediction_cnn = self._convolutive_layers(input=self.reward_prediction_state_batch, scope=parent_scope_name) # shared with parent
+				self.reward_prediction_logits = self._reward_prediction_layers(input=reward_prediction_cnn, scope=scope_name)
 		# Sample action, after getting keys
 		self.action_batch = self.sample_actions()
 		# Get cnn feature mean entropy
-		self.feature_entropy = self.get_feature_entropy(self.lstm, scope_name) # do NOT share with parent
+		self.feature_entropy = self.get_feature_entropy(input=self.lstm, scope=scope_name, name="LSTMFeatureEntropy", share_trainables=False)
 		# Print shapes
 		print( "    [{}]Input shape: {}".format(self.id, self.state_batch.get_shape()) )
 		print( "    [{}]Concatenation shape: {}".format(self.id, self.concat_batch.get_shape()) )
@@ -72,52 +84,63 @@ class BaseAC_Network(object):
 			print( "    [{}]Reward prediction logits shape: {}".format(self.id, self.reward_prediction_logits.get_shape()) )
 		print( "    [{}]Action shape: {}".format(self.id, self.action_batch.get_shape()) )
 		# Remove duplicates from keys collections
-		# self.train_keys = list(set(self.train_keys))
+		# self.shared_keys = list(set(self.shared_keys))
 		# self.update_keys = list(set(self.update_keys))
 		
-	def get_feature_entropy(self, feature, scope_name): # feature entropy measures how much the input is uncommon
-		with tf.device(self.device):
-			batch_norm = self._batch_norm_layer(input=feature, name=scope_name)
-			feature_distribution = tf.distributions.Normal(batch_norm.moving_mean, tf.sqrt(batch_norm.moving_variance))
-			return -feature_distribution.log_prob(feature) # probability density function
+	def split(self, input, value):
+		input_shape = tf.shape(input)
+		true_labels = tf.ones(input_shape)
+		false_labels = tf.zeros(input_shape)
+		mask = tf.where(tf.greater_equal(input, value), true_labels, false_labels)
+		greater_equal = mask*input
+		lower = input - greater_equal
+		return greater_equal, lower
 		
-	def _batch_norm_layer(self, input, name):
-		with tf.variable_scope(name), tf.variable_scope("BatchNorm", reuse=tf.AUTO_REUSE) as scope:
-			print( "    [{}]Building scope: {}".format(self.id, scope.name) )
-			batch_norm = tf.layers.BatchNormalization(renorm=True, trainable=self.training) # renorm because minibaches are too small
-			batch_norm.apply(input,training=self.training)
+	def get_feature_entropy(self, input, scope, name="", share_trainables=True): # feature entropy measures how much the input is uncommon
+		with tf.device(self.device):
+			batch_norm, _ = self._batch_norm_layer(input=input, scope=scope, name=name)
+			feature_distribution = tf.distributions.Normal(batch_norm.moving_mean, tf.sqrt(batch_norm.moving_variance))
+			return -feature_distribution.log_prob(input) # probability density function
+		
+	def _batch_norm_layer(self, input, scope, name="", share_trainables=True):
+		with tf.variable_scope(scope), tf.variable_scope("BatchNorm"+name, reuse=tf.AUTO_REUSE) as variable_scope:
+			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
+			batch_norm = tf.layers.BatchNormalization(renorm=True) # renorm because minibaches are too small
+			norm_input = batch_norm.apply(input,training=self.training)
 			# update keys
-			self.train_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope.name)
+			if share_trainables:
+				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
+			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
 			# return result
-			return batch_norm
+			return batch_norm, norm_input
 		
 	# relu vs leaky_relu <https://www.reddit.com/r/MachineLearning/comments/4znzvo/what_are_the_advantages_of_relu_over_the/>
-	def _convolutive_layers(self, input, name):
-		with tf.variable_scope(name), tf.variable_scope("CNN", reuse=tf.AUTO_REUSE) as scope:
-			print( "    [{}]Building scope: {}".format(self.id, scope.name) )
+	def _convolutive_layers(self, input, scope, name="", share_trainables=True):
+		with tf.variable_scope(scope), tf.variable_scope("CNN"+name, reuse=tf.AUTO_REUSE) as variable_scope:
+			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=16, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.leaky_relu) # xavier initializer
 			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=32, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.leaky_relu) # xavier initializer
 			input = tf.layers.conv2d( inputs=input, filters=16, kernel_size=(3,3), padding='SAME', activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling )
 			input = tf.layers.conv2d( inputs=input, filters=8, kernel_size=(3,3), padding='SAME', activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling )
 			# update keys
-			self.train_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope.name)
+			if share_trainables:
+				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
+			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
 			# return result
 			return input
 	
-	def _lstm_layers(self, input, name):
+	def _lstm_layers(self, input, concat, scope, name="", share_trainables=True):
 		self.lstm_initial_state0 = self._lstm_state_placeholder("lstm_tuple_0",1)
 		self.lstm_initial_state1 = self._lstm_state_placeholder("lstm_tuple_1",1)
 		self.lstm_zero_state = (np.zeros([1, self.lstm_units], np.float32), np.zeros([1, self.lstm_units], np.float32))
-		with tf.variable_scope(name), tf.variable_scope("LSTM", reuse=tf.AUTO_REUSE) as scope:
-			print( "    [{}]Building scope: {}".format(self.id, scope.name) )
+		with tf.variable_scope(scope), tf.variable_scope("LSTM"+name, reuse=tf.AUTO_REUSE) as variable_scope:
+			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			input = tf.layers.flatten(input) # shape: (batch,w*h*depth)
 			# input = tf.contrib.model_pruning.masked_fully_connected(inputs=input, num_outputs=self.lstm_units, activation_fn=tf.nn.leaky_relu) # xavier initializer
 			input = tf.layers.dense(inputs=input, units=self.lstm_units, activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling)
 			step_size = tf.shape(input)[:1] # shape: (batch)
 			if self.concat_size > 0:
-				input = tf.concat([input, self.concat_batch], 1) # shape: (batch, concat_size+lstm_units)
+				input = tf.concat([input, concat], 1) # shape: (batch, concat_size+lstm_units)
 				input = tf.reshape(input, [1, -1, self.lstm_units+self.concat_size]) # shape: (1, batch, concat_size+lstm_units)
 			else:
 				input = tf.reshape(input, [1, -1, self.lstm_units]) # shape: (1, batch, lstm_units)
@@ -129,25 +152,27 @@ class BaseAC_Network(object):
 			lstm_outputs = tf.layers.dropout(inputs=lstm_outputs, rate=0.5)
 			lstm_outputs = tf.reshape(lstm_outputs, [-1,self.lstm_units]) # shape: (batch, lstm_units)
 			# update keys
-			self.train_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope.name)
+			if share_trainables:
+				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
+			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
 			# return result
 			return lstm_outputs, lstm_state
 
-	def _value_layers(self, input, name):
-		with tf.variable_scope(name), tf.variable_scope("Value", reuse=tf.AUTO_REUSE) as scope:
-			print( "    [{}]Building scope: {}".format(self.id, scope.name) )
+	def _value_layers(self, input, scope, name="", share_trainables=True):
+		with tf.variable_scope(scope), tf.variable_scope("Value"+name, reuse=tf.AUTO_REUSE) as variable_scope:
+			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			input = tf.layers.dense(inputs=input, units=1, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			input = tf.reshape(input,[-1]) # flatten
 			# update keys
-			self.train_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope.name)
+			if share_trainables:
+				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
+			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
 			# return result
 			return input
 			
-	def _policy_layers(self, input, name):
-		with tf.variable_scope(name), tf.variable_scope("Policy", reuse=tf.AUTO_REUSE) as scope:
-			print( "    [{}]Building scope: {}".format(self.id, scope.name) )
+	def _policy_layers(self, input, scope, name="", share_trainables=True):
+		with tf.variable_scope(scope), tf.variable_scope("Policy"+name, reuse=tf.AUTO_REUSE) as variable_scope:
+			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			if self.is_continuous_control():
 				# build mean
 				mu = tf.layers.dense(inputs=input, units=self.policy_size, activation=None, kernel_initializer=tf.initializers.variance_scaling) # in (-inf,inf)
@@ -166,20 +191,22 @@ class BaseAC_Network(object):
 				shape = [-1,self.policy_size,self.policy_depth] if self.policy_size > 1 else [-1,self.policy_depth]
 				policy_batch = tf.reshape(policy_batch, shape)
 			# update keys
-			self.train_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope.name)
+			if share_trainables:
+				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
+			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
 			# return result
 			return policy_batch
 			
-	def _reward_prediction_layers(self, input, name):
-		with tf.variable_scope(name, reuse=tf.AUTO_REUSE), tf.variable_scope("RewardPrediction", reuse=tf.AUTO_REUSE) as scope:
-			print( "    [{}]Building scope: {}".format(self.id, scope.name) )
+	def _reward_prediction_layers(self, input, scope, name="", share_trainables=True):
+		with tf.variable_scope(scope), tf.variable_scope("RewardPrediction", reuse=tf.AUTO_REUSE) as variable_scope:
+			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			# input = tf.contrib.layers.maxout(inputs=input, num_units=1, axis=0)
 			input = tf.reshape(input,[1,-1])
 			input = tf.layers.dense(inputs=input, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			# update keys
-			self.train_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope.name)
+			if share_trainables:
+				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
+			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
 			# return result
 			return input
 
@@ -220,14 +247,8 @@ class BaseAC_Network(object):
 		
 	def prepare_loss(self):
 		with tf.device(self.device):
-			# Build placeholders
-			self.old_value_batch = self._value_placeholder("old_value")
-			self.old_policy_batch = self._policy_placeholder("old_policy")
-			self.old_action_batch = self._action_placeholder("old_action_batch")
-			self.cumulative_reward_batch = self._value_placeholder("cumulative_reward")
-			# Build advantage
-			# self.advantage_batch = self.cumulative_reward_batch - self.old_value_batch
-			self.advantage_batch = tf.stop_gradient(self.cumulative_reward_batch - self.old_value_batch) # stopping gradient
+			print( "Preparing loss {}".format(self.id) )
+			# [Entropy]
 			if self.is_continuous_control():
 				# Old policy
 				old_policy_batch = tf.transpose(self.old_policy_batch, [1, 0, 2])
@@ -245,10 +266,9 @@ class BaseAC_Network(object):
 				new_cross_entropy_batch = self._categorical_cross_entropy(samples=self.old_action_batch, logits=self.policy_batch)
 				# new_entropy_batch = self._categorical_entropy(self.policy_batch)
 			new_entropy_batch = self.feature_entropy
-			# Build losses
+			# [Loss]
 			self.policy_loss = PolicyLoss(cliprange=self.clip, cross_entropy=new_cross_entropy_batch, old_cross_entropy=old_cross_entropy_batch, advantage=self.advantage_batch, entropy=new_entropy_batch, entropy_beta=self.entropy_beta)
 			self.value_loss = ValueLoss(cliprange=self.clip, value=self.value_batch, old_value=self.old_value_batch, reward=self.cumulative_reward_batch)
-			# Compute total loss
 			self.policy_loss = self.policy_loss.get()
 			self.value_loss = flags.value_coefficient*self.value_loss.get()
 			self.total_loss = self.policy_loss + self.value_loss
@@ -257,8 +277,8 @@ class BaseAC_Network(object):
 			
 	def bind_sync(self, src_network, name=None):
 		with tf.device(self.device), tf.name_scope(name, "Sync{0}".format(self.id),[]) as name:
-			src_vars = src_network.get_vars()
-			dst_vars = self.get_vars()
+			src_vars = src_network.get_shared_keys()
+			dst_vars = self.get_shared_keys()
 			sync_ops = []
 			for(src_var, dst_var) in zip(src_vars, dst_vars):
 				sync_op = tf.assign(dst_var, src_var)
@@ -271,15 +291,15 @@ class BaseAC_Network(object):
 	def minimize_local(self, optimizer, global_step, global_var_list): # minimize loss and apply gradients to global vars.
 		with tf.device(self.device) and tf.control_dependencies(self.update_keys): # control_dependencies is for batch normalization
 		# with tf.device(self.device):
-			var_refs = [v._ref() for v in self.get_vars()]
+			var_refs = [v._ref() for v in self.get_shared_keys()]
 			local_gradients = tf.gradients(self.total_loss, var_refs, gate_gradients=False, aggregation_method=None, colocate_gradients_with_ops=False)
 			if flags.grad_norm_clip > 0:
 				local_gradients, _ = tf.clip_by_global_norm(local_gradients, flags.grad_norm_clip)
 			grads_and_vars = list(zip(local_gradients, global_var_list))
 			self.train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
-	def get_vars(self):
-		return self.train_keys # get model variables
+	def get_shared_keys(self):
+		return self.shared_keys # get model variables
 		
 	def predict_action(self, states, concats=None, lstm_state=None):
 		if lstm_state is None:
@@ -337,9 +357,6 @@ class BaseAC_Network(object):
 	def _reward_prediction_target_placeholder(self, name=None, batch_size=None):
 		return tf.placeholder(dtype=tf.float32, shape=[batch_size,3], name=name)
 		
-	def _state_placeholder(self, name=None, batch_size=None):
-		return tf.placeholder(dtype=tf.float32, shape=np.concatenate([[batch_size], self.state_shape], 0), name=name)
-		
 	def _policy_placeholder(self, name=None, batch_size=None):
 		if self.is_continuous_control():
 			shape = [batch_size,2,self.policy_size]
@@ -359,4 +376,11 @@ class BaseAC_Network(object):
 		return tf.placeholder(dtype=tf.float32, shape=[batch_size], name=name)
 		
 	def _concat_placeholder(self, name=None, batch_size=None):
-		return tf.placeholder(dtype=tf.float32, shape=[batch_size,self.concat_size], name=name)
+		input=[tf.zeros(self.concat_size)] # default value
+		shape=[batch_size,self.concat_size]
+		return tf.placeholder_with_default(input=input, shape=shape, name=name) # with default we can use batch normalization directly on it
+
+	def _state_placeholder(self, name=None, batch_size=None):
+		input=[tf.zeros(self.state_shape)] # default value
+		shape=np.concatenate([[batch_size], self.state_shape], 0)
+		return tf.placeholder_with_default(input=input, shape=shape, name=name) # with default we can use batch normalization directly on it

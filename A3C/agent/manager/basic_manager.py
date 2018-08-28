@@ -96,7 +96,7 @@ class BasicManager(object):
 			local_agent = self.get_model(i)
 			global_agent = global_network.get_model(i)
 			local_agent.prepare_loss()
-			local_agent.minimize_local(optimizer=global_network.gradient_optimizer[i], global_step=global_network.global_step[i], global_var_list=global_agent.get_vars())
+			local_agent.minimize_local(optimizer=global_network.gradient_optimizer[i], global_step=global_network.global_step[i], global_var_list=global_agent.get_shared_keys())
 			self.sync_list.append(local_agent.bind_sync(global_agent)) # for syncing local network with global one
 
 	def get_model(self, id):
@@ -135,10 +135,10 @@ class BasicManager(object):
 		if len(self._model_usage_list) > flags.match_count_for_evaluation:
 			self._model_usage_list.popleft() # remove old statistics
 		
-	def get_vars(self):
+	def get_shared_keys(self):
 		vars = []
 		for agent in self.model_list:
-			vars += agent.get_vars()
+			vars += agent.get_shared_keys()
 		return vars
 		
 	def reset(self):
