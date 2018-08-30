@@ -3,10 +3,9 @@ matplotlib.use('Agg',force=True) # no display
 from matplotlib import pyplot as plt
 plt.ioff() # non-interactive back-end
 
-import numpy as np
-import operator
-from scipy import optimize
 import gc
+import numpy as np
+from scipy import optimize
 from collections import deque
 from environment.environment import Environment
 
@@ -34,8 +33,8 @@ class CarControllerEnvironment(Environment):
 		self.max_distance_to_path = 0.1 # meters
 		# obstacles related stuff
 		self.max_obstacle_count = 3
-		self.obstacle_safe_distance = 0.5 # meters
-		self.max_obstacle_radius = 0.5 # meters
+		self.min_obstacle_radius = 0.35 # meters
+		self.max_obstacle_radius = 0.75 # meters
 		# information about speed parameters: http://www.ijtte.com/uploads/2012-10-01/5ebd8343-9b9c-b1d4IJTTE%20vol2%20no3%20%287%29.pdf
 		self.min_speed = 0.1 # m/s
 		self.max_speed = 1.4 # m/s
@@ -60,13 +59,13 @@ class CarControllerEnvironment(Environment):
 		self.path = self.build_random_path()
 		self.car_point = (0,0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
 		self.car_progress, self.car_goal = self.get_position_and_goal(point=self.car_point)
-		self.speed = self.min_speed + (self.max_speed-self.min_speed)*np.random.random() # random initial speed in [0,max_speed]
+		self.speed = self.min_speed + (self.max_speed-self.min_speed)*np.random.random() # in [min_speed,max_speed]
 		self.car_angle = self.get_angle_from_position(self.car_progress)
 		self.steering_angle = 0
 		self.step = 0
 		# get obstacles
 		self.obstacles = self.get_new_obstacles()
-		# init concat variabbles
+		# init concat variables
 		self.last_reward = 0
 		self.last_state = self.get_state(car_point=self.car_point, car_angle=self.car_angle, car_progress=self.car_progress, car_goal=self.car_goal, obstacles=self.obstacles)
 		# init log variables
@@ -74,19 +73,21 @@ class CarControllerEnvironment(Environment):
 		self.avg_speed_per_steps = 0
 			
 	def get_new_obstacles(self):
+		if self.max_obstacle_count <= 0:
+			return []
 		obstacles = []
 		presence_mask = np.random.randint(2, size=self.max_obstacle_count)
 		for i in range(self.max_obstacle_count):
 			if presence_mask[i] == 1: # obstacle is present
 				point = self.get_point_from_position(self.spline_number*np.random.random())
-				radius = self.max_obstacle_radius*np.random.random()
+				radius = self.min_obstacle_radius + (self.max_obstacle_radius-self.min_obstacle_radius)*np.random.random() # in [min_obstacle_radius,max_obstacle_radius]
 				obstacles.append((point,radius))
 		return obstacles
 				
 	def has_hit_obstacle(self, point, obstacles):
 		for obstacle in obstacles:
 			obstacle_point, obstacle_radius = obstacle
-			if euclidean_distance(obstacle_point,point) < self.obstacle_safe_distance+obstacle_radius:
+			if euclidean_distance(obstacle_point,point) <= obstacle_radius:
 				return True
 		return False
 		
@@ -190,9 +191,10 @@ class CarControllerEnvironment(Environment):
 				"avg_speed": self.avg_speed_per_steps/self.step,
 				"reward": self.cumulative_reward,
 				"step": self.step,
-				"completed": 1 if self.is_terminal_position(self.car_goal) else 0,
-				"hit": 1 if has_hit_obstacle else 0
+				"completed": 1 if self.is_terminal_position(self.car_goal) else 0
 			}
+			if self.max_obstacle_count > 0:
+				stats["hit"] = 1 if has_hit_obstacle else 0
 			self.episodes.append(stats)
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
@@ -237,29 +239,41 @@ class CarControllerEnvironment(Environment):
 		fig, ax = plt.subplots(nrows=1, ncols=1, sharey=False, sharex=False, figsize=(10,10))
 		# [Obstacles]
 		if len(self.obstacles) > 0:
-			obstacle_points = list(zip(*[point for (point,radius) in self.obstacles]))
-			ax.scatter(obstacle_points[0], obstacle_points[1], marker='o', color='b', label='Obstacle')
+			circles = [plt.Circle(point,radius,color='b') for (point,radius) in self.obstacles]
+			patch_collection = matplotlib.collections.PatchCollection(circles,match_original=True)
+			ax.add_collection(patch_collection)
 		# [Car]
 		car_x, car_y = self.car_point
-		ax.scatter(car_x, car_y, marker='o', color='g', label='Car')
+		car_handle = ax.scatter(car_x, car_y, marker='o', color='g', label='Car')
 		# [Heading Vector]
 		dir_x, dir_y = get_heading_vector(angle=self.car_angle)
-		ax.plot([car_x, car_x+dir_x],[car_y, car_y+dir_y], color='g', label='Heading Vector')
+		heading_vector_handle, = ax.plot([car_x, car_x+dir_x],[car_y, car_y+dir_y], color='g', alpha=0.5, label='Heading Vector')
 		# [Goal]
 		waypoint_x, waypoint_y = self.get_point_from_position(self.car_goal)
-		ax.scatter(waypoint_x, waypoint_y, marker='o', color='r', label='Goal')
+		goal_handle = ax.scatter(waypoint_x, waypoint_y, marker='o', color='r', label='Goal')
 		# [Path]
-		ax.plot(self.path[0], self.path[1], lw=2, label='Path')
+		path_handle, = ax.plot(self.path[0], self.path[1], lw=2, alpha=0.5, label='Path')
+		# Adjust ax limits in order to get the same scale factor on both x and y
+		a,b = ax.get_xlim()
+		c,d = ax.get_ylim()
+		max_length = max(d-c, b-a)
+		ax.set_xlim([a,a+max_length])
+		ax.set_ylim([c,c+max_length])
+		# Build legend
+		handles = [car_handle,heading_vector_handle,goal_handle,path_handle]
+		if len(self.obstacles) > 0:
+			# https://stackoverflow.com/questions/11423369/matplotlib-legend-circle-markers
+			handles.append(plt.Line2D(range(1), range(1), color="white", marker='o', markerfacecolor="blue", label='Obstacle'))
+		ax.legend(handles=handles)
 		# Draw plot
-		ax.legend()
 		fig.suptitle('Speed: {0:.2f} m/s \n Angle: {1:.2f} deg \n Step: {2}'.format(self.speed,convert_radiant_to_degree(self.steering_angle), self.step))
 		fig.canvas.draw()
 		# Save plot into RGB array
 		data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
 		data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
 		# Release memory
-		fig.clear()
-		# ax.cla()
+		# ax.clear()
+		# fig.clear()
 		plt.close(fig)
 		gc.collect()
 		return data # RGB array
@@ -279,24 +293,26 @@ class CarControllerEnvironment(Environment):
 		result["avg_step"] = 0
 		result["avg_speed"] = 0
 		result["avg_completed"] = 0
-		result["avg_hit"] = 0
+		if self.max_obstacle_count > 0:
+			result["avg_hit"] = 0
 		count = len(self.episodes)
 		if count>0:
 			result["avg_reward"] = sum(e["reward"] for e in self.episodes)/count
 			result["avg_step"] = sum(e["step"] for e in self.episodes)/count
 			result["avg_speed"] = sum(e["avg_speed"] for e in self.episodes)/count
 			result["avg_completed"] = sum(e["completed"] for e in self.episodes)/count
-			result["avg_hit"] = sum(e["hit"] for e in self.episodes)/count
+			if self.max_obstacle_count > 0:
+				result["avg_hit"] = sum(e["hit"] for e in self.episodes)/count
 		return result
 		
-def rot(x,y,theta):
+def rotate(x,y,theta):
 	return (x*np.cos(theta)-y*np.sin(theta), x*np.sin(theta)+y*np.cos(theta))
 
 def shift_and_rotate(xv,yv,dx,dy,theta):
-	return rot(xv+dx,yv+dy,theta)
+	return rotate(xv+dx,yv+dy,theta)
 
 def rotate_and_shift(xv,yv,dx,dy,theta):
-	(x,y) = rot(xv,yv,theta)
+	(x,y) = rotate(xv,yv,theta)
 	return (x+dx,y+dy)
 
 def generate_random_polynomial():
@@ -353,7 +369,7 @@ def convert_degree_to_radiant(degree):
 	return (degree/180)*np.pi
 	
 def convert_radiant_to_degree(radiant):
-	return radiant*180/np.pi
+	return radiant*(180/np.pi)
 	
 def get_heading_vector(angle, space=1):
 	return (space*np.cos(angle), space*np.sin(angle))

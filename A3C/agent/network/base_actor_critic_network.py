@@ -63,7 +63,7 @@ class BaseAC_Network(object):
 			self.cnn = self._convolutive_layers(input=self.state_batch, scope=parent_scope_name) # shared with parent
 			self.lstm, self.lstm_state = self._lstm_layers(input=self.cnn, concat=self.concat_batch, scope=scope_name)
 			self.policy_batch = self._policy_layers(input=self.lstm, scope=scope_name)
-			self.value_batch = self._value_layers(input=self.lstm, scope=scope_name)
+			self.value_batch = self._value_layers(input=self.lstm, scope=parent_scope_name) # shared with family
 			if self.predict_reward:
 				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state",3)
 				# reusing with a different placeholder seems to cause memory leaks
