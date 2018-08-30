@@ -89,6 +89,7 @@ class RogueBox:
 	
 	"""Start a rogue game and expose interface to communicate with it"""
 	def __init__(self, game_exe_path, state_generator, reward_generator, max_step_count, match_count_for_evaluation):
+		self.iterations_guard = 10000
 		self.rogue_path=game_exe_path
 		self.parser=RogueParser()
 		self.evaluator=RogueEvaluator(match_count_for_evaluation)
@@ -115,7 +116,7 @@ class RogueBox:
 		# wait until the rogue spawns
 		self.screen=self.get_empty_screen()
 		self._update_screen()
-		max_iter=1000
+		max_iter=self.iterations_guard
 		while self.game_over(self.screen):
 			self._update_screen()
 			max_iter -= 1
@@ -145,7 +146,7 @@ class RogueBox:
 		
 	def _update_screen(self):
 		"""update the virtual screen and the class variable"""
-		time.sleep(.001) # sleep for a while, no need for an active wait
+		time.sleep(1/self.iterations_guard) # sleep for a while, no need for an active wait
 		update=self.pipe.read(65536)
 		if update:
 			self.terminal.feed(update)
@@ -243,7 +244,7 @@ class RogueBox:
 		self.pipe.write(command.encode())
 		# self.pipe.write('\x12'.encode()) # workaround to fully refresh the screen output
 		new_screen=old_screen
-		max_iter=1000
+		max_iter=self.iterations_guard
 		while old_screen[-1] == new_screen[-1]: # after a command execution, the new screen is always different from the old one
 			# print (self.screen[-1])
 			self._update_screen()

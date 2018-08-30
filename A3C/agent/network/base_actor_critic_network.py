@@ -56,7 +56,7 @@ class BaseAC_Network(object):
 			self.cumulative_reward_batch = self._value_placeholder("cumulative_reward")
 			# [Batch Normalization]
 			# _, self.state_batch_norm = self._batch_norm_layer(input=self.state_batch, scope="Global", name="State", share_trainables=False) # global
-			# _, self.concat_batch_norm = self._batch_norm_layer(input=self.concat_batch, scope="Global", name="Concat{}".format(1 if self.is_root else 0), share_trainables=False) # global
+			# _, self.concat_batch_norm = self._batch_norm_layer(input=self.concat_batch, scope="Global", name="Concat{}".format("Root" if self.is_root else "Leaf"), share_trainables=False) # global
 			# [Advantage]
 			self.advantage_batch = tf.stop_gradient(self.cumulative_reward_batch - self.old_value_batch) # stopping gradient
 			# [Layer]
@@ -103,7 +103,7 @@ class BaseAC_Network(object):
 			return -feature_distribution.log_prob(input) # probability density function
 		
 	def _batch_norm_layer(self, input, scope, name="", share_trainables=True):
-		with tf.variable_scope(scope), tf.variable_scope("BatchNorm"+name, reuse=tf.AUTO_REUSE) as variable_scope:
+		with tf.variable_scope(scope), tf.variable_scope("BatchNorm{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			batch_norm = tf.layers.BatchNormalization(renorm=True) # renorm because minibaches are too small
 			norm_input = batch_norm.apply(input,training=self.training)
@@ -116,7 +116,7 @@ class BaseAC_Network(object):
 		
 	# relu vs leaky_relu <https://www.reddit.com/r/MachineLearning/comments/4znzvo/what_are_the_advantages_of_relu_over_the/>
 	def _convolutive_layers(self, input, scope, name="", share_trainables=True):
-		with tf.variable_scope(scope), tf.variable_scope("CNN"+name, reuse=tf.AUTO_REUSE) as variable_scope:
+		with tf.variable_scope(scope), tf.variable_scope("CNN{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=16, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.leaky_relu) # xavier initializer
 			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=32, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.leaky_relu) # xavier initializer
@@ -133,7 +133,7 @@ class BaseAC_Network(object):
 		self.lstm_initial_state0 = self._lstm_state_placeholder("lstm_tuple_0",1)
 		self.lstm_initial_state1 = self._lstm_state_placeholder("lstm_tuple_1",1)
 		self.lstm_zero_state = (np.zeros([1, self.lstm_units], np.float32), np.zeros([1, self.lstm_units], np.float32))
-		with tf.variable_scope(scope), tf.variable_scope("LSTM"+name, reuse=tf.AUTO_REUSE) as variable_scope:
+		with tf.variable_scope(scope), tf.variable_scope("LSTM{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			input = tf.layers.flatten(input) # shape: (batch,w*h*depth)
 			# input = tf.contrib.model_pruning.masked_fully_connected(inputs=input, num_outputs=self.lstm_units, activation_fn=tf.nn.leaky_relu) # xavier initializer
@@ -159,7 +159,7 @@ class BaseAC_Network(object):
 			return lstm_outputs, lstm_state
 
 	def _value_layers(self, input, scope, name="", share_trainables=True):
-		with tf.variable_scope(scope), tf.variable_scope("Value"+name, reuse=tf.AUTO_REUSE) as variable_scope:
+		with tf.variable_scope(scope), tf.variable_scope("Value{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			input = tf.layers.dense(inputs=input, units=1, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			input = tf.reshape(input,[-1]) # flatten
@@ -171,7 +171,7 @@ class BaseAC_Network(object):
 			return input
 			
 	def _policy_layers(self, input, scope, name="", share_trainables=True):
-		with tf.variable_scope(scope), tf.variable_scope("Policy"+name, reuse=tf.AUTO_REUSE) as variable_scope:
+		with tf.variable_scope(scope), tf.variable_scope("Policy{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			if self.is_continuous_control():
 				# build mean

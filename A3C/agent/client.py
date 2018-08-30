@@ -203,7 +203,7 @@ class Worker(object):
 			self.episode_reward += reward
 			
 			if self.save_frame_info:
-				self.frame_info_list.append( self.environment.get_frame_info(network=self.local_network, observation=self.environment.get_screen(), value=value, action=action, reward=reward, policy=policy) )
+				self.frame_info_list.append( self.environment.get_frame_info(network=self.local_network, value=value, action=action, reward=reward, policy=policy) )
 			
 		if self.terminal: # an episode has terminated
 			self.terminated_episodes += 1

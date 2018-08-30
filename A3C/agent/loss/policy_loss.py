@@ -20,7 +20,7 @@ class PolicyLoss(object):
 		entropy_shape_length = len(entropy.get_shape())
 		if entropy_shape_length > 1:
 			axis = list(range(1,entropy_shape_length))
-			self.entropy = tf.reduce_sum(self.entropy, axis)
+			self.entropy = tf.reduce_mean(self.entropy, axis)
 		# cross entropy
 		self.cross_entropy = tf.maximum(0.,cross_entropy) if flags.only_non_negative_entropy else cross_entropy
 		self.old_cross_entropy = tf.maximum(0.,old_cross_entropy) if flags.only_non_negative_entropy else old_cross_entropy

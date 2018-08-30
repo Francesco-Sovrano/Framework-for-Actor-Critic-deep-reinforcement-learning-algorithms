@@ -57,21 +57,19 @@ class GymEnvironment(environment.Environment):
 		result["avg_steps"] = 0
 		count = len(self.episodes)
 		if count>0:
-			for e in self.episodes:
-				result["avg_steps"] += e["step"]
-				result["avg_reward"] += e["reward"]
-			result["avg_steps"] /= count
-			result["avg_reward"] /= count
+			result["avg_steps"] = sum(e["avg_steps"] for e in self.episodes)/count
+			result["avg_reward"] = sum(e["reward"] for e in self.episodes)/count
 		return result
 		
 	def get_screen(self):
 		return self.last_state
 		
-	def get_frame_info(self, network, observation, value, action, reward, policy):
+	def get_frame_info(self, network, value, action, reward, policy):
 		state_info = "reward={}, agent={}, value={}, policy={}\n".format(reward, network.agent_id, value, policy)
 		action_info = "action={}\n".format(action)
 		frame_info = { "log": state_info + action_info }
 		if flags.save_episode_screen:
+			observation = self.get_screen()
 			if self.use_ram: # ram
 				observation_info = "observation={}\n".format(np.array_str(observation.flatten()))
 				frame_info["log"] += observation_info

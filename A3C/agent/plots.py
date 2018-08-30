@@ -1,20 +1,20 @@
+import matplotlib
+matplotlib.use('Agg',force=True) # no display
+from matplotlib import pyplot as plt
+plt.ioff() # non-interactive back-end
+
 import math
 import datetime
 import re
 import numpy as np
+import gc
 
-import matplotlib
-matplotlib.use('Agg') # non-interactive backend
-import matplotlib.pyplot as plt
-import seaborn as sns # heatmap
+import seaborn as sns # heatmaps
+import imageio # GIFs
+from PIL import Image, ImageFont, ImageDraw # images
 
-import imageio # for making gifs
-
-from PIL import Image, ImageFont, ImageDraw, ImageEnhance
-
-# get command line args
 import options
-flags = options.get()
+flags = options.get() # get command line args
 
 def plot(logs, figure_file):
 	# Get plot types
@@ -26,7 +26,7 @@ def plot(logs, figure_file):
 		if log["length"] < 2:
 			continue
 		(step, obj) = next(log["data"])
-		log_keys = sorted(obj.keys(), key=lambda t: t[0]) # statistics keys sorted by name
+		log_keys = sorted(obj.keys()) # statistics keys sorted by name
 		for key in log_keys:
 			if key not in key_ids:
 				key_ids[key] = len(key_ids)
@@ -38,9 +38,9 @@ def plot(logs, figure_file):
 	# Create new figure and two subplots, sharing both axes
 	ncols=3 if max_stats_count >= 3 else max_stats_count
 	nrows=math.ceil(max_stats_count/ncols)
-	figure, plots = plt.subplots(nrows=nrows, ncols=ncols, sharey=False, sharex=False, figsize=(ncols*10,nrows*10))
+	figure, axes = plt.subplots(nrows=nrows, ncols=ncols, sharey=False, sharex=False, squeeze=False, figsize=(ncols*10,nrows*10))
 	
-	# Populate plots
+	# Populate axes
 	for log_id in range(len(logs)):
 		log = logs[log_id]
 		stat = stats[log_id]
@@ -87,7 +87,7 @@ def plot(logs, figure_file):
 				for key in stat: # foreach statistic
 					y[key]["data"].append(value_sum[key]/(data_per_plotpoint-bad_obj_count))
 					x[key].append(step)
-		# Populate plots
+		# Populate axes
 		print(name)
 		for j in range(ncols):
 			for i in range(nrows):
@@ -95,28 +95,30 @@ def plot(logs, figure_file):
 				if idx >= len(stat):
 					continue
 				key = stat[idx]
-				plot_id = key_ids[key]
-				if nrows == 1:
-					plot = plots[plot_id] if ncols > 1 else plots
-				else:
-					plot = plots[plot_id//ncols][plot_id%ncols]
+				ax_id = key_ids[key]
+				ax = axes[ax_id//ncols][ax_id%ncols]
 				# print stats
 				print("    ", y[key]["min"], " < ", key, " < ", y[key]["max"])
-				# plot
-				plot.set_ylabel(key)
-				plot.set_xlabel('step')
-				# plot.plot(x, y, linewidth=linewidth, markersize=markersize)
-				plot.plot(x[key], y[key]["data"], label=name)
-				plot.legend()
-				plot.grid(True)
-	# remove unused plot
-	for plot_id in range(len(key_ids), nrows*ncols):
-		plot = plots[plot_id//ncols][plot_id%ncols] # always nrows > 1
-		figure.delaxes(plot)
+				# ax
+				ax.set_ylabel(key)
+				ax.set_xlabel('step')
+				# ax.plot(x, y, linewidth=linewidth, markersize=markersize)
+				ax.plot(x[key], y[key]["data"], label=name)
+				ax.legend()
+				ax.grid(True)
+	# remove unused axes
+	for ax_id in range(len(key_ids), nrows*ncols):
+		ax = axes[ax_id//ncols][ax_id%ncols] # always nrows > 1
+		figure.delaxes(ax)
 		
 	figure.savefig(figure_file)
 	print("Plot figure saved in ", figure_file)
-	plt.close(figure) # release memory
+	# Release memory
+	figure.clear()
+	# for ax_id in range(nrows*ncols):
+		# axes[ax_id//ncols][ax_id%ncols].cla()
+	plt.close(figure)
+	gc.collect()
 
 def plot_files(log_files, figure_file):
 	logs = []
@@ -161,7 +163,11 @@ def heatmap(heatmap, figure_file):
 	figure, ax = plt.subplots(nrows=1, ncols=1)
 	sns.heatmap(data=heatmap, ax=ax)
 	figure.savefig(figure_file)
-	plt.close(figure) # release memory
+	# Release memory
+	figure.clear()
+	# ax.cla()
+	plt.close(figure)
+	gc.collect()
 	
 def ascii_image(string, file_name):
 	# find image size

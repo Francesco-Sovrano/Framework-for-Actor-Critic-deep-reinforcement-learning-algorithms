@@ -70,19 +70,9 @@ class RogueEvaluator:
 		count = len(self.episodes)
 		# victories = 0
 		if count>0:
-			for e in self.episodes:
-				result["avg_steps"] += e.step
-				result["avg_reward"] += e.reward
-				result["avg_tiles"] += e.tiles
-				result["avg_level"] += e.level
-				# if e.has_won:
-					# result["avg_success_steps"] += e.step
-					# victories +=1
-			result["avg_steps"] /= count
-			result["avg_reward"] /= count
-			result["avg_tiles"] /= count
-			result["avg_level"] /= count
-			# if victories > 0:
-				# result["avg_success_steps"] /= victories
+			result["avg_steps"] = sum(e.step for e in self.episodes)/count
+			result["avg_reward"] = sum(e.reward for e in self.episodes)/count
+			result["avg_tiles"] = sum(e.tiles for e in self.episodes)/count
+			result["avg_level"] = sum(e.level for e in self.episodes)/count
 		return result
 		
