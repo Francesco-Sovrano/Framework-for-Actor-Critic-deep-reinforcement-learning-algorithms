@@ -60,7 +60,7 @@ class BaseAC_Network(object):
 			# [Advantage]
 			self.advantage_batch = tf.stop_gradient(self.cumulative_reward_batch - self.old_value_batch) # stopping gradient
 			# [Layer]
-			self.cnn = self._convolutive_layers(input=self.state_batch, scope=parent_scope_name) # shared with parent
+			self.cnn = self._convolutive_layers(input=self.state_batch, scope=parent_scope_name) # shared with family
 			self.lstm, self.lstm_state = self._lstm_layers(input=self.cnn, concat=self.concat_batch, scope=scope_name)
 			self.policy_batch = self._policy_layers(input=self.lstm, scope=scope_name)
 			self.value_batch = self._value_layers(input=self.lstm, scope=parent_scope_name) # shared with family
@@ -72,7 +72,7 @@ class BaseAC_Network(object):
 		# Sample action, after getting keys
 		self.action_batch = self.sample_actions()
 		# Get cnn feature mean entropy
-		self.feature_entropy = self.get_feature_entropy(input=self.lstm, scope=scope_name, name="LSTMFeatureEntropy", share_trainables=False)
+		self.feature_entropy = self.get_feature_entropy(input=self.lstm, scope=scope_name, name="LSTM_FEntropy", share_trainables=False)
 		# Print shapes
 		print( "    [{}]Input shape: {}".format(self.id, self.state_batch.get_shape()) )
 		print( "    [{}]Concatenation shape: {}".format(self.id, self.concat_batch.get_shape()) )

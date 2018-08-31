@@ -3,13 +3,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# import gc
 import traceback
 import collections
 import os
 import logging
 import numpy as np
 import time
-
 import agent.plots as plt
 
 from environment.environment import Environment
@@ -19,9 +19,7 @@ from agent.manager import *
 import options
 flags = options.get()
 
-LOG_INTERVAL = 100
 PERFORMANCE_LOG_INTERVAL = 1000
-
 
 class Worker(object):
 	#__slots__ = ( 'reward_logger','max_reward','environment','local_network','global_network','terminal','local_t','prev_local_t','terminated_episodes','stats',
@@ -88,7 +86,7 @@ class Worker(object):
 		if flags.show_episodes == 'none':
 			self.save_frame_info = False
 		else:
-			self.save_frame_info = flags.show_episodes != 'random' or np.random.randint(0, 100) == 0
+			self.save_frame_info = flags.show_episodes != 'random' or np.random.random() <= flags.show_episode_probability
 
 	def stop(self): # stop current episode
 		self.environment.stop()
@@ -169,6 +167,7 @@ class Worker(object):
 		# Gif
 		if flags.save_episode_gif and len(gif_filenames) > 0:
 			plt.make_gif(file_list=gif_filenames, gif_path=episode_directory+'/episode.gif')
+		# gc.collect()
 		
 	def log(self, global_step, step):
 		# Speed

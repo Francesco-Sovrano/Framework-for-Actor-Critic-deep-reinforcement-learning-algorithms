@@ -1,13 +1,16 @@
 import matplotlib
 matplotlib.use('Agg',force=True) # no display
-from matplotlib import pyplot as plt
-plt.ioff() # non-interactive back-end
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.figure import Figure
+from matplotlib.patches import Circle
+from matplotlib.collections import PatchCollection
+from matplotlib.lines import Line2D
+from matplotlib.gridspec import GridSpec
 
 import math
 import datetime
 import re
 import numpy as np
-import gc
 
 import seaborn as sns # heatmaps
 import imageio # GIFs
@@ -38,8 +41,12 @@ def plot(logs, figure_file):
 	# Create new figure and two subplots, sharing both axes
 	ncols=3 if max_stats_count >= 3 else max_stats_count
 	nrows=math.ceil(max_stats_count/ncols)
-	figure, axes = plt.subplots(nrows=nrows, ncols=ncols, sharey=False, sharex=False, squeeze=False, figsize=(ncols*10,nrows*10))
-	
+	# First set up the figure and the axis
+	# fig, ax = matplotlib.pyplot.subplots(nrows=1, ncols=1, sharey=False, sharex=False, figsize=(10,10)) # this method causes memory leaks
+	figure = Figure(figsize=(7*nrows,7*ncols))
+	canvas = FigureCanvas(figure)
+	grid = GridSpec(ncols=ncols, nrows=nrows)
+	axes = [figure.add_subplot(grid[id//ncols, id%ncols]) for id in range(max_stats_count)]
 	# Populate axes
 	for log_id in range(len(logs)):
 		log = logs[log_id]
@@ -96,7 +103,7 @@ def plot(logs, figure_file):
 					continue
 				key = stat[idx]
 				ax_id = key_ids[key]
-				ax = axes[ax_id//ncols][ax_id%ncols]
+				ax = axes[ax_id]
 				# print stats
 				print("    ", y[key]["min"], " < ", key, " < ", y[key]["max"])
 				# ax
@@ -106,19 +113,8 @@ def plot(logs, figure_file):
 				ax.plot(x[key], y[key]["data"], label=name)
 				ax.legend()
 				ax.grid(True)
-	# remove unused axes
-	for ax_id in range(len(key_ids), nrows*ncols):
-		ax = axes[ax_id//ncols][ax_id%ncols] # always nrows > 1
-		figure.delaxes(ax)
-		
 	figure.savefig(figure_file)
 	print("Plot figure saved in ", figure_file)
-	# Release memory
-	figure.clear()
-	# for ax_id in range(nrows*ncols):
-		# axes[ax_id//ncols][ax_id%ncols].cla()
-	plt.close(figure)
-	gc.collect()
 
 def plot_files(log_files, figure_file):
 	logs = []
@@ -160,14 +156,12 @@ def parse(log_fname):
 				continue
 	
 def heatmap(heatmap, figure_file):
-	figure, ax = plt.subplots(nrows=1, ncols=1)
+	# fig, ax = matplotlib.pyplot.subplots(nrows=1, ncols=1, sharey=False, sharex=False, figsize=(10,10)) # this method causes memory leaks
+	figure = Figure()
+	canvas = FigureCanvas(figure)
+	ax = figure.add_subplot(111) # nrows=1, ncols=1, index=1
 	sns.heatmap(data=heatmap, ax=ax)
 	figure.savefig(figure_file)
-	# Release memory
-	figure.clear()
-	# ax.cla()
-	plt.close(figure)
-	gc.collect()
 	
 def ascii_image(string, file_name):
 	# find image size

@@ -1,9 +1,11 @@
 import matplotlib
 matplotlib.use('Agg',force=True) # no display
-from matplotlib import pyplot as plt
-plt.ioff() # non-interactive back-end
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.figure import Figure
+from matplotlib.patches import Circle
+from matplotlib.collections import PatchCollection
+from matplotlib.lines import Line2D
 
-import gc
 import numpy as np
 from scipy import optimize
 from collections import deque
@@ -33,8 +35,8 @@ class CarControllerEnvironment(Environment):
 		self.max_distance_to_path = 0.1 # meters
 		# obstacles related stuff
 		self.max_obstacle_count = 3
-		self.min_obstacle_radius = 0.35 # meters
-		self.max_obstacle_radius = 0.75 # meters
+		self.min_obstacle_radius = 0.15 # meters
+		self.max_obstacle_radius = 0.45 # meters
 		# information about speed parameters: http://www.ijtte.com/uploads/2012-10-01/5ebd8343-9b9c-b1d4IJTTE%20vol2%20no3%20%287%29.pdf
 		self.min_speed = 0.1 # m/s
 		self.max_speed = 1.4 # m/s
@@ -83,13 +85,12 @@ class CarControllerEnvironment(Environment):
 				radius = self.min_obstacle_radius + (self.max_obstacle_radius-self.min_obstacle_radius)*np.random.random() # in [min_obstacle_radius,max_obstacle_radius]
 				obstacles.append((point,radius))
 		return obstacles
-				
-	def has_hit_obstacle(self, point, obstacles):
-		for obstacle in obstacles:
-			obstacle_point, obstacle_radius = obstacle
-			if euclidean_distance(obstacle_point,point) <= obstacle_radius:
-				return True
-		return False
+		
+	def get_closest_obstacle(self, point, obstacles):
+		if len(obstacles) == 0:
+			return None
+		obstacle_distances_from_point = map(lambda obstacle: (obstacle, euclidean_distance(obstacle[0], point)-obstacle[1]), obstacles)
+		return sorted(obstacle_distances_from_point, key=lambda tup: tup[1])[0][0]
 		
 	def get_point_from_position(self, position):
 		spline = int(np.ceil(position)-1)
@@ -168,14 +169,11 @@ class CarControllerEnvironment(Environment):
 		# update position and direction
 		car_position, car_goal = self.get_position_and_goal(point=self.car_point)
 		# compute perceived reward
-		has_hit_obstacle = self.has_hit_obstacle(point=self.car_point, obstacles=self.obstacles)
-		reward = self.get_reward(car_speed=self.speed, car_point=self.car_point, car_progress=self.car_progress, car_position=car_position, has_hit_obstacle=has_hit_obstacle)
+		reward, dead = self.get_reward(car_speed=self.speed, car_point=self.car_point, car_progress=self.car_progress, car_position=car_position, obstacles=self.obstacles)
 		if car_position > self.car_progress: # is moving toward next position
 			self.car_progress = car_position # progress update
 			self.car_goal = car_goal
 		# compute new state (after updating progress)
-		# if not has_hit_obstacle: # do it before computing new state
-			# self.obstacles = self.get_new_obstacles()
 		state = self.get_state(car_point=self.car_point, car_angle=self.car_angle, car_progress=self.car_progress, car_goal=self.car_goal, obstacles=self.obstacles)
 		# update last action/state/reward
 		self.last_state = state
@@ -185,7 +183,7 @@ class CarControllerEnvironment(Environment):
 		self.avg_speed_per_steps += self.speed
 		# update step
 		self.step += 1
-		terminal = has_hit_obstacle or self.is_terminal_position(self.car_goal) or self.step >= self.max_step
+		terminal = dead or self.is_terminal_position(self.car_goal) or self.step >= self.max_step
 		if terminal: # populate statistics
 			stats = {
 				"avg_speed": self.avg_speed_per_steps/self.step,
@@ -194,7 +192,7 @@ class CarControllerEnvironment(Environment):
 				"completed": 1 if self.is_terminal_position(self.car_goal) else 0
 			}
 			if self.max_obstacle_count > 0:
-				stats["hit"] = 1 if has_hit_obstacle else 0
+				stats["hit"] = 1 if dead else 0
 			self.episodes.append(stats)
 			if len(self.episodes) > flags.match_count_for_evaluation:
 				self.episodes.popleft()
@@ -206,13 +204,24 @@ class CarControllerEnvironment(Environment):
 	def get_concatenation(self):
 		return [self.steering_angle, self.speed, max(self.last_reward,0)]
 		
-	def get_reward(self, car_speed, car_point, car_progress, car_position, has_hit_obstacle):
-		if has_hit_obstacle:
-			return -1
+	def get_reward(self, car_speed, car_point, car_progress, car_position, obstacles):
+		max_distance_to_path = self.max_distance_to_path
+		car_projection_point = self.get_point_from_position(car_position)
+		closest_obstacle = self.get_closest_obstacle(point=car_projection_point, obstacles=obstacles)
+		if closest_obstacle is not None:
+			obstacle_point, obstacle_radius = closest_obstacle
+			if euclidean_distance(obstacle_point, car_point) <= obstacle_radius: # collision
+				return (-1, True) # terminate episode
+			if euclidean_distance(obstacle_point, car_projection_point) <= obstacle_radius: # could collide obstacle
+				max_distance_to_path += obstacle_radius
 		if car_position > car_progress: # is moving toward next position
-			distance = euclidean_distance(car_point, self.get_point_from_position(car_position))
-			return car_speed*self.seconds_per_step*(1 - np.clip(distance/self.max_distance_to_path,0,1)) # always in [0,1] # smaller distances to path give higher rewards
-		return -0.1 # is NOT moving toward next position
+			distance = euclidean_distance(car_point, car_projection_point)
+			distance_ratio = np.clip(distance/max_distance_to_path, 0,1) # always in [0,1]
+			inverse_distance_ratio = 1 - distance_ratio
+			# smaller distances to path give higher rewards
+			return (car_speed*self.seconds_per_step*inverse_distance_ratio, False) # do not terminate episode
+		# else is NOT moving toward next position
+		return (-0.1, False) # do not terminate episode
 		
 	def get_state(self, car_point, car_angle, car_progress, car_goal, obstacles):
 		state = np.zeros(self.state_shape)
@@ -236,11 +245,14 @@ class CarControllerEnvironment(Environment):
 		
 	def get_screen(self): # RGB array
 		# First set up the figure and the axis
-		fig, ax = plt.subplots(nrows=1, ncols=1, sharey=False, sharex=False, figsize=(10,10))
+		# fig, ax = matplotlib.pyplot.subplots(nrows=1, ncols=1, sharey=False, sharex=False, figsize=(10,10)) # this method causes memory leaks
+		figure = Figure(figsize=(5,5))
+		canvas = FigureCanvas(figure)
+		ax = figure.add_subplot(111) # nrows=1, ncols=1, index=1
 		# [Obstacles]
 		if len(self.obstacles) > 0:
-			circles = [plt.Circle(point,radius,color='b') for (point,radius) in self.obstacles]
-			patch_collection = matplotlib.collections.PatchCollection(circles,match_original=True)
+			circles = [Circle(point,radius,color='b') for (point,radius) in self.obstacles]
+			patch_collection = PatchCollection(circles, match_original=True)
 			ax.add_collection(patch_collection)
 		# [Car]
 		car_x, car_y = self.car_point
@@ -250,7 +262,7 @@ class CarControllerEnvironment(Environment):
 		heading_vector_handle, = ax.plot([car_x, car_x+dir_x],[car_y, car_y+dir_y], color='g', alpha=0.5, label='Heading Vector')
 		# [Goal]
 		waypoint_x, waypoint_y = self.get_point_from_position(self.car_goal)
-		goal_handle = ax.scatter(waypoint_x, waypoint_y, marker='o', color='r', label='Goal')
+		goal_handle = ax.scatter(waypoint_x, waypoint_y, marker='o', color='r', label='Horizon')
 		# [Path]
 		path_handle, = ax.plot(self.path[0], self.path[1], lw=2, alpha=0.5, label='Path')
 		# Adjust ax limits in order to get the same scale factor on both x and y
@@ -263,19 +275,14 @@ class CarControllerEnvironment(Environment):
 		handles = [car_handle,heading_vector_handle,goal_handle,path_handle]
 		if len(self.obstacles) > 0:
 			# https://stackoverflow.com/questions/11423369/matplotlib-legend-circle-markers
-			handles.append(plt.Line2D(range(1), range(1), color="white", marker='o', markerfacecolor="blue", label='Obstacle'))
+			handles.append(Line2D(range(1), range(1), color="white", marker='o', markerfacecolor="blue", label='Obstacle'))
 		ax.legend(handles=handles)
 		# Draw plot
-		fig.suptitle('Speed: {0:.2f} m/s \n Angle: {1:.2f} deg \n Step: {2}'.format(self.speed,convert_radiant_to_degree(self.steering_angle), self.step))
-		fig.canvas.draw()
+		figure.suptitle('Speed: {0:.2f} m/s \n Angle: {1:.2f} deg \n Step: {2}'.format(self.speed,convert_radiant_to_degree(self.steering_angle), self.step))
+		canvas.draw()
 		# Save plot into RGB array
-		data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
-		data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-		# Release memory
-		# ax.clear()
-		# fig.clear()
-		plt.close(fig)
-		gc.collect()
+		data = np.fromstring(figure.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+		data = data.reshape(figure.canvas.get_width_height()[::-1] + (3,))
 		return data # RGB array
 		
 	def get_frame_info(self, network, value, action, reward, policy):
