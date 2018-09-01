@@ -90,7 +90,7 @@ class CarControllerEnvironment(Environment):
 		if len(obstacles) == 0:
 			return None
 		obstacle_distances_from_point = map(lambda obstacle: (obstacle, euclidean_distance(obstacle[0], point)-obstacle[1]), obstacles)
-		return sorted(obstacle_distances_from_point, key=lambda tup: tup[1])[0][0]
+		return min(obstacle_distances_from_point, key=lambda tup: tup[1])[0]
 		
 	def get_point_from_position(self, position):
 		spline = int(np.ceil(position)-1)

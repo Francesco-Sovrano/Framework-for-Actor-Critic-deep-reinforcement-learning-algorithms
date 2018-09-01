@@ -143,8 +143,10 @@ class BasicManager(object):
 		
 	def reset(self):
 		self.agent_id = 0
-		# self.lstm_state = [None for _ in range(self.model_size)] # do not mix lstm states from different agents
-		self.lstm_state = None
+		if flags.share_lstm_states:
+			self.lstm_state = None
+		else:
+			self.lstm_state = [None for _ in range(self.model_size)] # do not mix lstm states from different agents
 			
 	def initialize_new_batch(self):
 		self.batch = ExperienceBatch(self.model_size)
@@ -155,8 +157,12 @@ class BasicManager(object):
 	def act(self, act_function, state, concat=None):
 		agent_id = self.agent_id
 		agent = self.get_model(agent_id)
-		lstm_state = self.lstm_state
-		action_batch, value_batch, policy_batch, self.lstm_state = agent.predict_action(states=[state], concats=[concat], lstm_state=lstm_state)
+		if flags.share_lstm_states:		
+			lstm_state = self.lstm_state
+			action_batch, value_batch, policy_batch, self.lstm_state = agent.predict_action(states=[state], concats=[concat], lstm_state=lstm_state)
+		else:
+			lstm_state = self.lstm_state[agent_id]
+			action_batch, value_batch, policy_batch, self.lstm_state[agent_id] = agent.predict_action(states=[state], concats=[concat], lstm_state=lstm_state)
 		action, value, policy = action_batch[0], value_batch[0], policy_batch[0]
 		new_state, reward, terminal = act_function(action)
 		if flags.clip_reward:
@@ -233,7 +239,10 @@ class BasicManager(object):
 				
 	def bootstrap(self, state, concat=None):
 		agent_id = self.agent_id
-		lstm_state = self.lstm_state
+		if flags.share_lstm_states:
+			lstm_state = self.lstm_state
+		else:
+			lstm_state = self.lstm_state[agent_id]
 		value_batch, _ = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
 		bootstrap = self.batch.bootstrap
 		bootstrap['lstm_state'] = lstm_state
@@ -243,18 +252,28 @@ class BasicManager(object):
 		bootstrap['value'] = value_batch[0]
 		
 	def replay_value(self, batch): # replay values and lstm states
-		# lstm_state = [batch.lstm_states[i][0] if len(batch.lstm_states[i])>0 else None for i in range(self.model_size)]
-		lstm_state = batch.get_step_action('lstm_states', 0)
+		if flags.share_lstm_states:
+			lstm_state = batch.get_step_action('lstm_states', 0)
+		else:
+			lstm_state = [batch.lstm_states[i][0] if len(batch.lstm_states[i])>0 else None for i in range(self.model_size)]
 		for i in range(batch.size):
 			concat, state = batch.get_step_action(['concats','states'], i)
 			agent_id, _ = batch.get_agent_and_pos(i)
-			new_values, new_lstm_state = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
-			batch.set_step_action({'lstm_states':lstm_state,'values':new_values[0]}, i)
-			lstm_state = new_lstm_state
+			if flags.share_lstm_states:
+				new_values, new_lstm_state = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state)
+				batch.set_step_action({'lstm_states':lstm_state,'values':new_values[0]}, i)
+				lstm_state = new_lstm_state
+			else:
+				new_values, new_lstm_state = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], lstm_state=lstm_state[agent_id])
+				batch.set_step_action({'lstm_states':lstm_state[agent_id],'values':new_values[0]}, i)
+				lstm_state[agent_id] = new_lstm_state
 		if 'value' in batch.bootstrap:
 			bootstrap = batch.bootstrap
 			agent_id = bootstrap['agent_id']
-			values, _ = self.estimate_value(agent_id=agent_id, states=[bootstrap['state']], concats=[bootstrap['concat']], lstm_state=lstm_state)
+			if flags.share_lstm_states:
+				values, _ = self.estimate_value(agent_id=agent_id, states=[bootstrap['state']], concats=[bootstrap['concat']], lstm_state=lstm_state)
+			else:
+				values, _ = self.estimate_value(agent_id=agent_id, states=[bootstrap['state']], concats=[bootstrap['concat']], lstm_state=lstm_state[agent_id])
 			bootstrap['value'] = values[0]
 		return self.compute_cumulative_reward(batch)
 		
