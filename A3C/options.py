@@ -35,7 +35,6 @@ def build():
 	tf.app.flags.DEFINE_float("partitioner_learning_factor", 2, "Should be a number greater than 0. Usually the partitioner has an higher learning rate than the others. This factor is used to change the initial learning rate of the partitioner only.") # default is 2.0
 	tf.app.flags.DEFINE_string("partitioner_optimizer", "ProximalAdagrad", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is ProximalAdagrad
 	tf.app.flags.DEFINE_float("partitioner_entropy_beta", 0.001, "Entropy regularization constant. Usually the partitioner has an higher entropy beta than other agents.") # default is ProximalAdagrad
-	tf.app.flags.DEFINE_boolean("share_lstm_states", True, "Whether to share the LSTM states between partitioning agents")
 # Loss clip range
 	tf.app.flags.DEFINE_float("clip", 0.2, "PPO/PVO initial clip range") # default is 0.2, for openAI is 0.1
 	tf.app.flags.DEFINE_boolean("clip_decay", True, "Whether to decay the clip range")

@@ -60,15 +60,17 @@ class BaseAC_Network(object):
 			# [Advantage]
 			self.advantage_batch = tf.stop_gradient(self.cumulative_reward_batch - self.old_value_batch) # stopping gradient
 			# [Layer]
-			self.cnn = self._convolutive_layers(input=self.state_batch, scope=parent_scope_name) # shared with family
-			self.lstm, self.lstm_state = self._lstm_layers(input=self.cnn, concat=self.concat_batch, scope=scope_name)
-			self.policy_batch = self._policy_layers(input=self.lstm, scope=scope_name)
-			self.value_batch = self._value_layers(input=self.lstm, scope=parent_scope_name) # shared with family
+			self.cnn = self._cnn_layer(input=self.state_batch, scope=scope_name)
+			self.funnel = self._funnel_layer(input=self.cnn, units=self.lstm_units, scope=scope_name)
+			self.lstm, stateful_ops = self._lstm_layer(input=self.funnel, units=self.lstm_units, concat=self.concat_batch, scope=parent_scope_name, name="Root" if self.is_root else "Leaf") # shared with family
+			self.backup_lstm_state_op, self.restore_lstm_state_op, self.update_lstm_state_op, self.reset_lstm_state_op = stateful_ops
+			self.policy_batch = self._policy_layer(input=self.lstm, scope=scope_name)
+			self.value_batch = self._value_layer(input=self.lstm, scope=scope_name)
 			if self.predict_reward:
 				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state",3)
 				# reusing with a different placeholder seems to cause memory leaks
-				reward_prediction_cnn = self._convolutive_layers(input=self.reward_prediction_state_batch, scope=parent_scope_name) # shared with parent
-				self.reward_prediction_logits = self._reward_prediction_layers(input=reward_prediction_cnn, scope=scope_name)
+				reward_prediction_cnn = self._cnn_layer(input=self.reward_prediction_state_batch, scope=parent_scope_name) # shared with parent
+				self.reward_prediction_logits = self._reward_prediction_layer(input=reward_prediction_cnn, scope=scope_name)
 		# Sample action, after getting keys
 		self.action_batch = self.sample_actions()
 		# Get cnn feature mean entropy
@@ -77,17 +79,15 @@ class BaseAC_Network(object):
 		print( "    [{}]Input shape: {}".format(self.id, self.state_batch.get_shape()) )
 		print( "    [{}]Concatenation shape: {}".format(self.id, self.concat_batch.get_shape()) )
 		print( "    [{}]Tower shape: {}".format(self.id, self.cnn.get_shape()) )
+		print( "    [{}]Funnel shape: {}".format(self.id, self.funnel.get_shape()) )
 		print( "    [{}]LSTM shape: {}".format(self.id, self.lstm.get_shape()) )
 		print( "    [{}]Policy shape: {}".format(self.id, self.policy_batch.get_shape()) )
 		print( "    [{}]Value shape: {}".format(self.id, self.value_batch.get_shape()) )
 		if self.predict_reward:
 			print( "    [{}]Reward prediction logits shape: {}".format(self.id, self.reward_prediction_logits.get_shape()) )
 		print( "    [{}]Action shape: {}".format(self.id, self.action_batch.get_shape()) )
-		# Remove duplicates from keys collections
-		# self.shared_keys = list(set(self.shared_keys))
-		# self.update_keys = list(set(self.update_keys))
-		
-	def split(self, input, value):
+
+	def _separate(self, input, value):
 		input_shape = tf.shape(input)
 		true_labels = tf.ones(input_shape)
 		false_labels = tf.zeros(input_shape)
@@ -115,7 +115,7 @@ class BaseAC_Network(object):
 			return batch_norm, norm_input
 		
 	# relu vs leaky_relu <https://www.reddit.com/r/MachineLearning/comments/4znzvo/what_are_the_advantages_of_relu_over_the/>
-	def _convolutive_layers(self, input, scope, name="", share_trainables=True):
+	def _cnn_layer(self, input, scope, name="", share_trainables=True):
 		with tf.variable_scope(scope), tf.variable_scope("CNN{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=16, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.leaky_relu) # xavier initializer
@@ -129,36 +129,68 @@ class BaseAC_Network(object):
 			# return result
 			return input
 	
-	def _lstm_layers(self, input, concat, scope, name="", share_trainables=True):
-		self.lstm_initial_state0 = self._lstm_state_placeholder("lstm_tuple_0",1)
-		self.lstm_initial_state1 = self._lstm_state_placeholder("lstm_tuple_1",1)
-		self.lstm_zero_state = (np.zeros([1, self.lstm_units], np.float32), np.zeros([1, self.lstm_units], np.float32))
-		with tf.variable_scope(scope), tf.variable_scope("LSTM{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
+	def _funnel_layer(self, input, units, scope, name="", share_trainables=True):
+		with tf.variable_scope(scope), tf.variable_scope("Funnel{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			input = tf.layers.flatten(input) # shape: (batch,w*h*depth)
-			# input = tf.contrib.model_pruning.masked_fully_connected(inputs=input, num_outputs=self.lstm_units, activation_fn=tf.nn.leaky_relu) # xavier initializer
-			input = tf.layers.dense(inputs=input, units=self.lstm_units, activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling)
-			step_size = tf.shape(input)[:1] # shape: (batch)
-			if self.concat_size > 0:
-				input = tf.concat([input, concat], 1) # shape: (batch, concat_size+lstm_units)
-				input = tf.reshape(input, [1, -1, self.lstm_units+self.concat_size]) # shape: (1, batch, concat_size+lstm_units)
-			else:
-				input = tf.reshape(input, [1, -1, self.lstm_units]) # shape: (1, batch, lstm_units)
-			# lstm_cell = tf.contrib.model_pruning.MaskedBasicLSTMCell(num_units=self.lstm_units, forget_bias=1.0, state_is_tuple=True, activation=None)
-			lstm_cell = tf.contrib.rnn.BasicLSTMCell(self.lstm_units, state_is_tuple=True) # using BasicLSTMCell instead of LSTMCell
-			self.lstm_initial_state = tf.contrib.rnn.LSTMStateTuple(self.lstm_initial_state0, self.lstm_initial_state1)
-			lstm_outputs, lstm_state = tf.nn.dynamic_rnn(cell=lstm_cell, inputs=input, initial_state=self.lstm_initial_state, sequence_length=step_size, time_major=False)
-			# Dropout: https://www.nature.com/articles/s41586-018-0102-6
-			lstm_outputs = tf.layers.dropout(inputs=lstm_outputs, rate=0.5)
-			lstm_outputs = tf.reshape(lstm_outputs, [-1,self.lstm_units]) # shape: (batch, lstm_units)
+			# input = tf.contrib.model_pruning.masked_fully_connected(inputs=input, num_outputs=units, activation_fn=tf.nn.leaky_relu) # xavier initializer
+			input = tf.layers.dense(inputs=input, units=units, activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling)
 			# update keys
 			if share_trainables:
 				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
 			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
 			# return result
-			return lstm_outputs, lstm_state
+			return input
+	
+	# https://stackoverflow.com/questions/38441589/is-rnn-initial-state-reset-for-subsequent-mini-batches
+	def _lstm_state_variables(self, batch_size, units):
+		c = tf.Variable(tf.zeros([batch_size, units]), trainable=False)
+		h = tf.Variable(tf.zeros([batch_size, units]), trainable=False)
+		return tf.contrib.rnn.LSTMStateTuple(c,h)
+	
+	def _lstm_state_update_op(self, destination, source):
+		# Add an operation to update the train states with the last state tensors
+		c = tf.assign(destination[0],source[0])
+		h = tf.assign(destination[1],source[1])
+		# Return a tuple in order to combine all update_ops into a single operation.
+		# The tuple's actual value should not be used.
+		return (c,h)
+	
+	def _lstm_layer(self, input, units, concat, scope, name="", share_trainables=True): # Stateful RNNs
+		with tf.variable_scope(scope), tf.variable_scope("LSTM{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
+			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
+			sequence_length = [tf.shape(input)[0]]
+			if self.concat_size > 0:
+				input = tf.concat([input, concat], 1) # shape: (batch, concat_size+units)
+				input = tf.reshape(input, [-1, 1, units+self.concat_size]) # shape: (batch, 1, concat_size+units) # time_major format
+			else:
+				input = tf.reshape(input, [-1, 1, units]) # shape: (batch, 1, units) # time_major format
+			# Build LSTM cell
+			# lstm_cell = tf.contrib.model_pruning.MaskedBasicLSTMCell(num_units=units, forget_bias=1.0, state_is_tuple=True, activation=None)
+			lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=units, forget_bias=1.0, state_is_tuple=True) # using BasicLSTMCell instead of LSTMCell
+			# Initialize the initial lstm state
+			initial_state_backup = self._lstm_state_variables(batch_size=1, units=units)
+			initial_state = self._lstm_state_variables(batch_size=1, units=units)
+			# Unroll the LSTM
+			lstm_outputs, final_state = tf.nn.dynamic_rnn(cell=lstm_cell, inputs=input, initial_state=initial_state, sequence_length=sequence_length, time_major=True)
+			# Add an operation to update the train states with the last state tensors
+			backup_lstm_state_op = self._lstm_state_update_op(initial_state_backup, initial_state)
+			restore_lstm_state_op = self._lstm_state_update_op(initial_state, initial_state_backup)
+			update_lstm_state_op = self._lstm_state_update_op(initial_state, final_state)
+			# Add an operation to reset the train states
+			reset_lstm_state_op = self._lstm_state_update_op(initial_state, self._lstm_state_variables(batch_size=1, units=units))
+			# Dropout: https://www.nature.com/articles/s41586-018-0102-6
+			lstm_outputs = tf.layers.dropout(inputs=lstm_outputs, rate=0.5)
+			lstm_outputs = tf.reshape(lstm_outputs, [-1,units]) # shape: (batch, units)
+			# update keys
+			if share_trainables:
+				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
+			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
+			# return result
+			stateful_ops = (backup_lstm_state_op, restore_lstm_state_op, update_lstm_state_op, reset_lstm_state_op)
+			return lstm_outputs, stateful_ops
 
-	def _value_layers(self, input, scope, name="", share_trainables=True):
+	def _value_layer(self, input, scope, name="", share_trainables=True):
 		with tf.variable_scope(scope), tf.variable_scope("Value{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			input = tf.layers.dense(inputs=input, units=1, activation=None, kernel_initializer=tf.initializers.variance_scaling)
@@ -170,7 +202,7 @@ class BaseAC_Network(object):
 			# return result
 			return input
 			
-	def _policy_layers(self, input, scope, name="", share_trainables=True):
+	def _policy_layer(self, input, scope, name="", share_trainables=True):
 		with tf.variable_scope(scope), tf.variable_scope("Policy{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			if self.is_continuous_control():
@@ -197,7 +229,7 @@ class BaseAC_Network(object):
 			# return result
 			return policy_batch
 			
-	def _reward_prediction_layers(self, input, scope, name="", share_trainables=True):
+	def _reward_prediction_layer(self, input, scope, name="", share_trainables=True):
 		with tf.variable_scope(scope), tf.variable_scope("RewardPrediction", reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			# input = tf.contrib.layers.maxout(inputs=input, num_units=1, axis=0)
@@ -301,45 +333,46 @@ class BaseAC_Network(object):
 	def get_shared_keys(self):
 		return self.shared_keys # get model variables
 		
-	def predict_action(self, states, concats=None, lstm_state=None):
-		if lstm_state is None:
-			lstm_state = self.lstm_zero_state
-		feed_dict = { self.state_batch : states, self.lstm_initial_state : lstm_state }
+	def reset(self):
+		self.session.run(fetches=self.reset_lstm_state_op)
+		self.session.run(fetches=self.backup_lstm_state_op) # Backup new initial state after reset, in a different run in order to preserve execution order!
+		
+	def predict_action(self, states, concats=None):
+		feed_dict = { self.state_batch : states }
 		if self.concat_size > 0:
 			feed_dict.update( { self.concat_batch : concats } )
-		# return action_batch, value_batch, policy_batch, lstm_state
-		return self.session.run(fetches=[self.action_batch, self.value_batch, self.policy_batch, self.lstm_state], feed_dict=feed_dict)
+		action_batch, value_batch, policy_batch = self.session.run(fetches=[self.action_batch, self.value_batch, self.policy_batch], feed_dict=feed_dict)
+		self.session.run(fetches=self.update_lstm_state_op) # Update LSTM state, in a different run in order to preserve execution order!
+		return action_batch, value_batch, policy_batch
 				
-	def predict_value(self, states, concats=None, lstm_state=None):
-		if lstm_state is None:
-			lstm_state = self.lstm_zero_state
-		feed_dict = { self.state_batch : states, self.lstm_initial_state : lstm_state }
+	def predict_value(self, states, concats=None):
+		feed_dict = { self.state_batch : states }
 		if self.concat_size > 0:
 			feed_dict.update( { self.concat_batch : concats } )
-		#return value_batch, lstm_state
-		return self.session.run(fetches=[self.value_batch, self.lstm_state], feed_dict=feed_dict)
+		#return value_batch
+		return self.session.run(fetches=[self.value_batch], feed_dict=feed_dict)
 				
-	def train(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state=None, concats=None, reward_prediction_states=None, reward_prediction_target=None):
+	def train(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats=None, reward_prediction_states=None, reward_prediction_target=None):
 		self.train_count += len(states)
-		feed_dict = self.build_feed(states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target)
+		feed_dict = self.build_train_feed(states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, reward_prediction_states, reward_prediction_target)
+		self.session.run(fetches=self.restore_lstm_state_op) # Restore old initial state backup, in a different run in order to preserve execution order!
 		_, total_loss, policy_loss, value_loss = self.session.run(fetches=[self.train_op,self.total_loss,self.policy_loss,self.value_loss], feed_dict=feed_dict) # Calculate gradients and copy them to global network
+		self.session.run(fetches=self.update_lstm_state_op) # Update LSTM state, in a different run in order to preserve execution order!
+		self.session.run(fetches=self.backup_lstm_state_op) # Backup new initial state after updating it, in a different run in order to preserve execution order!
 		return total_loss, policy_loss, value_loss
 		
-	def build_feed(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, lstm_state, concats, reward_prediction_states, reward_prediction_target):
+	def build_train_feed(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, reward_prediction_states, reward_prediction_target):
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 			advantages = np.reshape(generalized_advantage_estimators,[-1])
 			values = np.reshape(values,[-1])
 			cumulative_rewards = advantages + values
 		else:
 			cumulative_rewards = np.reshape(discounted_cumulative_rewards,[-1])
-		if lstm_state is None:
-			lstm_state = self.lstm_zero_state
 		feed_dict={
 				self.state_batch: states,
 				self.cumulative_reward_batch: cumulative_rewards,
 				self.old_value_batch: values,
 				self.old_policy_batch: policies,
-				self.lstm_initial_state: lstm_state,
 				self.old_action_batch: actions
 			}
 		if self.concat_size > 0:
@@ -350,9 +383,6 @@ class BaseAC_Network(object):
 				self.reward_prediction_labels: reward_prediction_target
 			} )
 		return feed_dict
-		
-	def _lstm_state_placeholder(self, name=None, batch_size=None):
-		return tf.placeholder(dtype=tf.float32, shape=[batch_size, self.lstm_units], name=name)
 		
 	def _reward_prediction_target_placeholder(self, name=None, batch_size=None):
 		return tf.placeholder(dtype=tf.float32, shape=[batch_size,3], name=name)

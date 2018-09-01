@@ -12,7 +12,6 @@ class ExperienceBatch(object):
 		self.policies = [deque() for _ in range(model_size)]
 		self.rewards = [deque() for _ in range(model_size)]
 		self.values = [deque() for _ in range(model_size)]
-		self.lstm_states = [deque() for _ in range(model_size)]
 		# cumulative info
 		self.discounted_cumulative_rewards = [None for _ in range(model_size)]
 		self.generalized_advantage_estimators = [None for _ in range(model_size)]
@@ -44,10 +43,9 @@ class ExperienceBatch(object):
 	def get_agent_and_pos(self, index):
 		return self.agent_position_list[index]
 
-	def add_agent_action(self, agent_id, state, concat, action, policy, reward, value, lstm_state=None, memorize_step=True):
+	def add_agent_action(self, agent_id, state, concat, action, policy, reward, value, memorize_step=True):
 		self.states[agent_id].append(state)
 		self.concats[agent_id].append(concat)
-		self.lstm_states[agent_id].append(lstm_state)
 		self.rewards[agent_id].append(reward)
 		self.values[agent_id].append(value)
 		self.actions[agent_id].append(action)

@@ -62,11 +62,11 @@ class ReinforcementLearningPartitioner(BasicManager):
 		self.learning_rate[0] *= flags.partitioner_learning_factor
 		self.gradient_optimizer[0] = eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True)
 		
-	def get_state_partition(self, state, concat=None, lstm_state=None):
-		action_batch, value_batch, policy_batch, lstm_state = self.manager.predict_action(states=[state], concats=[concat], lstm_state=lstm_state)
+	def get_state_partition(self, state, concat=None):
+		action_batch, value_batch, policy_batch = self.manager.predict_action(states=[state], concats=[concat])
 		id = np.argwhere(action_batch[0]==1)[0][0]+1
 		self.add_to_statistics(id)
-		return id, action_batch[0], value_batch[0], policy_batch[0], lstm_state
+		return id, action_batch[0], value_batch[0], policy_batch[0]
 		
 	def query_partitioner(self, step):
 		return step%flags.partitioner_granularity==0
@@ -78,16 +78,14 @@ class ReinforcementLearningPartitioner(BasicManager):
 		super().reset()
 		self.last_manager_action = [0]*self.get_agents_count()
 		self.last_manager_reward = 0
-		self.manager_lstm_state = None
 		
 	def act(self, act_function, state, concat=None):
 		if self.query_partitioner(self.batch.size):
-			lstm_state = self.manager_lstm_state
 			manager_concat = self.get_manager_concatenation()
-			self.agent_id, manager_action, manager_value, manager_policy, self.manager_lstm_state = self.get_state_partition(state=state, concat=manager_concat, lstm_state=lstm_state)
+			self.agent_id, manager_action, manager_value, manager_policy = self.get_state_partition(state=state, concat=manager_concat)
 			self.last_manager_action = manager_action
 			# N.B.: the query reward is unknown since bootstrap or a new query starts
-			self.batch.add_agent_action(agent_id=0, state=state, concat=manager_concat, action=manager_action, policy=manager_policy, reward=0, value=manager_value, lstm_state=lstm_state, memorize_step=False)
+			self.batch.add_agent_action(agent_id=0, state=state, concat=manager_concat, action=manager_action, policy=manager_policy, reward=0, value=manager_value, memorize_step=False)
 			
 		new_state, value, action, reward, terminal, policy = super().act(act_function, state, concat)
 		# keep query reward updated
@@ -98,26 +96,23 @@ class ReinforcementLearningPartitioner(BasicManager):
 	def bootstrap(self, state, concat=None):
 		if self.query_partitioner(self.batch.size):
 			manager_concat = self.get_manager_concatenation()
-			self.agent_id, _, value, _, _ = self.get_state_partition(state=state, concat=manager_concat, lstm_state=self.manager_lstm_state)
+			self.agent_id, _, value, _ = self.get_state_partition(state=state, concat=manager_concat)
 			self.batch.bootstrap['manager_concat'] = manager_concat
 		else:
 			value = (self.batch.values[0][-1] - self.batch.rewards[0][-1])/flags.gamma
 		self.batch.bootstrap['manager_value'] = value
 		super().bootstrap(state, concat)
 		
-	def replay_value(self, batch): # replay values and lstm states
-		lstm_state = batch.lstm_states[0][0]
+	def replay_value(self, batch): # replay values
 		for i in range(len(batch.states[0])):
 			state = batch.states[0][i]
 			concat = batch.concats[0][i]
-			new_values, new_lstm_state = self.estimate_value(agent_id=0, states=[state], concats=[concat], lstm_state=lstm_state)
-			batch.lstm_states[0][i] = lstm_state
+			new_values = self.estimate_value(agent_id=0, states=[state], concats=[concat])
 			batch.values[0][i] = new_values[0]
-			lstm_state = new_lstm_state
 		if 'manager_value' in batch.bootstrap:
 			bootstrap = batch.bootstrap
 			if self.query_partitioner(batch.size):
-				new_values, _ = self.estimate_value(agent_id=0, states=[bootstrap['state']], concats=[bootstrap['manager_concat']], lstm_state=lstm_state)
+				new_values = self.estimate_value(agent_id=0, states=[bootstrap['state']], concats=[bootstrap['manager_concat']])
 				bootstrap['manager_value'] = new_values[0]
 			else:
 				bootstrap['manager_value'] = (batch.values[0][-1] - batch.rewards[0][-1])/flags.gamma
