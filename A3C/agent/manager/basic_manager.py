@@ -41,7 +41,7 @@ class BasicManager(object):
 	# Statistics
 		self._model_usage_list = deque()
 		if flags.print_loss:
-			self._loss_list = [{"total_loss": deque(), "policy_loss": deque(), "value_loss": deque()} for _ in range(self.model_size)]
+			self._loss_list = [{} for _ in range(self.model_size)]
 			
 	def is_global_network(self):
 		return self.global_network is None
@@ -91,8 +91,7 @@ class BasicManager(object):
 		for i in range(self.model_size):
 			local_agent = self.get_model(i)
 			global_agent = global_network.get_model(i)
-			local_agent.prepare_loss()
-			local_agent.minimize_local(optimizer=global_network.gradient_optimizer[i], global_step=global_network.global_step[i], global_var_list=global_agent.get_shared_keys())
+			local_agent.minimize_local_loss(optimizer=global_network.gradient_optimizer[i], global_step=global_network.global_step[i], global_var_list=global_agent.get_shared_keys())
 			self.sync_list.append(local_agent.bind_sync(global_agent)) # for syncing local network with global one
 
 	def get_model(self, id):
@@ -103,14 +102,8 @@ class BasicManager(object):
 		# build loss statistics
 		if flags.print_loss:
 			for i in range(self.model_size):
-				if len(self._loss_list[i]["total_loss"]) > 0:
-					stats['loss_total{}'.format(i)] = sum(self._loss_list[i]["total_loss"])/len(self._loss_list[i]["total_loss"])
-					stats['loss_policy{}'.format(i)] = sum(self._loss_list[i]["policy_loss"])/len(self._loss_list[i]["policy_loss"])
-					stats['loss_value{}'.format(i)] = sum(self._loss_list[i]["value_loss"])/len(self._loss_list[i]["value_loss"])
-				else:
-					stats['loss_total{}'.format(i)] = 0
-					stats['loss_policy{}'.format(i)] = 0
-					stats['loss_value{}'.format(i)] = 0
+				for key, value in self._loss_list[i].items():
+					stats['loss_{}{}_avg'.format(key,i)] = np.average(value)
 		# build models usage statistics
 		if self.model_size > 1:
 			total_usage = 0
@@ -182,7 +175,7 @@ class BasicManager(object):
 			batch.set_step_action({'discounted_cumulative_rewards':discounted_cumulative_reward, 'generalized_advantage_estimators':generalized_advantage_estimator}, index)
 		return batch
 		
-	def train(self, batch):
+	def train(self, batch, replay=False):
 		# assert self.global_network is not None, 'you are trying to train the global network'
 		states = batch.states
 		concats = batch.concats
@@ -204,7 +197,7 @@ class BasicManager(object):
 					rp_states = None
 					rp_target = None
 				# train
-				total_loss, policy_loss, value_loss = model.train(
+				loss_dict = model.train(
 					states=states[i], concats=concats[i],
 					actions=actions[i], values=values[i],
 					policies=policies[i],
@@ -212,17 +205,17 @@ class BasicManager(object):
 					discounted_cumulative_rewards=dcr[i],
 					generalized_advantage_estimators=gae[i],
 					reward_prediction_states=rp_states,
-					reward_prediction_target=rp_target
+					reward_prediction_target=rp_target,
+					replay=replay
 				)
 				# loss statistics
 				if flags.print_loss:
-					self._loss_list[i]["total_loss"].append(total_loss)
-					self._loss_list[i]["policy_loss"].append(policy_loss)
-					self._loss_list[i]["value_loss"].append(value_loss)
-					if len(self._loss_list[i]["total_loss"]) > flags.match_count_for_evaluation: # remove old statistics
-						self._loss_list[i]["total_loss"].popleft()
-						self._loss_list[i]["policy_loss"].popleft()
-						self._loss_list[i]["value_loss"].popleft()
+					for key, value in loss_dict.items():
+						if key not in self._loss_list[i]:
+							self._loss_list[i][key] = deque()
+						self._loss_list[i][key].append(value)
+						if len(self._loss_list[i][key]) > flags.match_count_for_evaluation: # remove old statistics
+							self._loss_list[i][key].popleft()
 				
 	def bootstrap(self, state, concat=None):
 		agent_id = self.agent_id
@@ -296,5 +289,5 @@ class BasicManager(object):
 				n = np.random.poisson(flags.replay_ratio)
 				for _ in range(n):
 					old_batch = self.experience_buffer.get()
-					self.train(self.replay_value(old_batch) if flags.replay_value else old_batch)
+					self.train(self.replay_value(old_batch) if flags.replay_value else old_batch, replay=True)
 			self.add_to_replay_buffer(batch)

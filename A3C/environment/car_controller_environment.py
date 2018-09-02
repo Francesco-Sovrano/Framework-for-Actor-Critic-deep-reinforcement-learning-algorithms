@@ -304,12 +304,12 @@ class CarControllerEnvironment(Environment):
 			result["avg_hit"] = 0
 		count = len(self.episodes)
 		if count>0:
-			result["avg_reward"] = sum(e["reward"] for e in self.episodes)/count
-			result["avg_step"] = sum(e["step"] for e in self.episodes)/count
-			result["avg_speed"] = sum(e["avg_speed"] for e in self.episodes)/count
-			result["avg_completed"] = sum(e["completed"] for e in self.episodes)/count
+			result["avg_reward"] = np.sum(e["reward"] for e in self.episodes)/count
+			result["avg_step"] = np.sum(e["step"] for e in self.episodes)/count
+			result["avg_speed"] = np.sum(e["avg_speed"] for e in self.episodes)/count
+			result["avg_completed"] = np.sum(e["completed"] for e in self.episodes)/count
 			if self.max_obstacle_count > 0:
-				result["avg_hit"] = sum(e["hit"] for e in self.episodes)/count
+				result["avg_hit"] = np.sum(e["hit"] for e in self.episodes)/count
 		return result
 		
 def rotate(x,y,theta):
@@ -382,4 +382,4 @@ def get_heading_vector(angle, space=1):
 	return (space*np.cos(angle), space*np.sin(angle))
 	
 def euclidean_distance(a,b):
-	return np.sqrt(sum((j-k)**2 for (j,k) in zip(a,b)))
+	return np.sqrt(np.sum((j-k)**2 for (j,k) in zip(a,b)))

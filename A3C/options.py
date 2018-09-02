@@ -82,7 +82,7 @@ def build():
 	tf.app.flags.DEFINE_string("checkpoint_dir", "./checkpoint", "checkpoint directory")
 	tf.app.flags.DEFINE_string("event_dir", "./events", "events directory")
 	tf.app.flags.DEFINE_string("log_dir", "./log", "events directory")
-	tf.app.flags.DEFINE_boolean("print_loss", False, "whether to print losses inside statistics") # print_loss = True might slow down the algorithm
+	tf.app.flags.DEFINE_boolean("print_loss", True, "whether to print losses inside statistics") # print_loss = True might slow down the algorithm
 	tf.app.flags.DEFINE_string("show_episodes", 'random', "What type of episodes to save: random, best, all, none")
 	tf.app.flags.DEFINE_float("show_episode_probability", 1e-3, "Probability of showing an episode when show_episodes == random")
 	# save_episode_screen = True might slow down the algorithm -> use in combination with show_episodes = 'random' for best perfomance

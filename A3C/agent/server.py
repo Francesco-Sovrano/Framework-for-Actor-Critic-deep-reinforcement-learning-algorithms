@@ -88,7 +88,7 @@ class Application(object):
 		info = self.get_global_statistics(clients=testers)
 		# write results to file
 		with open(flags.log_dir + '/test_results.log', "w", encoding="utf-8") as file:
-			file.write(str([key + "=" + str(value) for key, value in sorted(info.items(), key=lambda t: t[0])]))
+			file.write(str(["{}={}".format(key,value) for key,value in sorted(info.items(), key=lambda t: t[0])]))
 		print('End testing')
 		print('Test result saved in ' + flags.log_dir + '/test_results.log')
 
@@ -120,25 +120,17 @@ class Application(object):
 				if trainer.terminal:
 					info = self.get_global_statistics(clients=self.trainers)
 					if info:
-						info_str = "<{}> {}".format(self.global_step, ["{}={}".format(key,value) for key, value in sorted(info.items(), key=lambda t: t[0])])
+						info_str = "<{}> {}".format(self.global_step, ["{}={}".format(key,value) for key,value in sorted(info.items(), key=lambda t: t[0])])
 						self.training_logger.info(info_str) # Print statistics
 					sys.stdout.flush() # force print immediately what is in output buffer
 				
 	def get_global_statistics(self, clients):
-		info = {}
-		unused_clients = 0
-		for client in clients:
-			if client.terminated_episodes < flags.match_count_for_evaluation: # ignore the first flags.match_count_for_evaluation objects from data, because they are too noisy
-				unused_clients += 1
-				continue
-			for key in client.stats:
-				if key not in info:
-					info[key] = 0
-				info[key] += client.stats[key]
-		if unused_clients < len(clients):
-			for key in info:
-				info[key] /= len(clients) - unused_clients
-		return info
+		used_clients = np.sum(0 if client.terminated_episodes < flags.match_count_for_evaluation else 1 for client in clients) # ignore the first flags.match_count_for_evaluation objects from data, because they are too noisy
+		if used_clients <= 0:
+			return {}
+		dictionaries = [client.stats for client in clients]
+		merged_dictionaries = ((k,[d[k] for d in dictionaries]) for k in dictionaries[0])
+		return {key: np.sum(value)/used_clients for key,value in merged_dictionaries}
 		
 	def train(self):
 		# run training threads

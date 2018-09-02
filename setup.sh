@@ -11,12 +11,12 @@ fi
 # upgrade pip
 pip install --upgrade pip
 # install common libraries
-pip install tensorflow numpy scipy sklearn
+pip install tensorflow scipy # tensorflow includes numpy
 pip install matplotlib seaborn imageio
-pip install nearpy
+# pip install nearpy # for locality sensitive hashing
 # install gym
 pip install gym[atari]
 # install rogue
-pip install pyte vtk
+pip install pyte
 bash ./Rogue/build_with_no_monsters.sh
 bash ./Rogue/build_with_monsters.sh

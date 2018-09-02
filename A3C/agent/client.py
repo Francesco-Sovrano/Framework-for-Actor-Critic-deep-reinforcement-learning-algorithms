@@ -106,7 +106,7 @@ class Worker(object):
 		# Update statistics
 		self.update_statistics()
 		# Print statistics
-		self.reward_logger.info( str(["{0}={1}".format(key,value) for key, value in self.stats.items()]) )
+		self.reward_logger.info( str(["{0}={1}".format(key,value) for key,value in self.stats.items()]) )
 		
 	def print_frames(self, global_step):
 		frames_count = len(self.frame_info_list)

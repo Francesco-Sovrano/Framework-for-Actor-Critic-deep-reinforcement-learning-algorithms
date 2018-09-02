@@ -57,8 +57,8 @@ class GymEnvironment(environment.Environment):
 		result["avg_steps"] = 0
 		count = len(self.episodes)
 		if count>0:
-			result["avg_steps"] = sum(e["step"] for e in self.episodes)/count
-			result["avg_reward"] = sum(e["reward"] for e in self.episodes)/count
+			result["avg_steps"] = np.sum(e["step"] for e in self.episodes)/count
+			result["avg_reward"] = np.sum(e["reward"] for e in self.episodes)/count
 		return result
 		
 	def get_screen(self):
