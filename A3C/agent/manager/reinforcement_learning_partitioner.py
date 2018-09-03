@@ -51,7 +51,8 @@ class ReinforcementLearningPartitioner(BasicManager):
 				device=self.device, 
 				predict_reward=flags.predict_reward,
 				training = self.training,
-				parent_id = self.manager.id
+				parent = self.manager,
+				sibling = self.model_list[1] if i > 0 else None # the first agent (non manager)
 			)
 			self.model_list.append(agent)
 			

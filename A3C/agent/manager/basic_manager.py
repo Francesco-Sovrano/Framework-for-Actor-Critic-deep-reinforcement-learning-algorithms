@@ -7,7 +7,7 @@ from collections import deque
 import tensorflow as tf
 import numpy as np
 from agent.network import *
-from agent.experience_buffer import Buffer
+from utils.buffer import Buffer
 from agent.batch import ExperienceBatch, RewardPredictionBatch
 
 import options

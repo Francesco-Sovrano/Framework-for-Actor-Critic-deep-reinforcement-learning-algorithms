@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import tensorflow as tf
-import agent.plots as plt
+import utils.plots as plt
 import argparse
 
 parser = argparse.ArgumentParser(description='draw plots')

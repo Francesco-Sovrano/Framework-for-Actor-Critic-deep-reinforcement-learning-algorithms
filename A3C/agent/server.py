@@ -16,7 +16,7 @@ import _pickle as pickle # CPickle
 
 from environment.environment import Environment
 from agent.client import Worker
-import agent.plots as plt
+import utils.plots as plt
 # import gc
 
 import options
@@ -123,12 +123,12 @@ class Application(object):
 						info_str = "<{}> {}".format(self.global_step, ["{}={}".format(key,value) for key,value in sorted(info.items(), key=lambda t: t[0])])
 						self.training_logger.info(info_str) # Print statistics
 					sys.stdout.flush() # force print immediately what is in output buffer
-				
+
 	def get_global_statistics(self, clients):
-		used_clients = np.sum(0 if client.terminated_episodes < flags.match_count_for_evaluation else 1 for client in clients) # ignore the first flags.match_count_for_evaluation objects from data, because they are too noisy
-		if used_clients <= 0:
+		dictionaries = [client.stats for client in clients if client.terminated_episodes >= flags.match_count_for_evaluation]
+		used_clients = len(dictionaries) # ignore the first flags.match_count_for_evaluation objects from data, because they are too noisy
+		if used_clients < 1:
 			return {}
-		dictionaries = [client.stats for client in clients]
 		merged_dictionaries = ((k,[d[k] for d in dictionaries]) for k in dictionaries[0])
 		return {key: np.sum(value)/used_clients for key,value in merged_dictionaries}
 		

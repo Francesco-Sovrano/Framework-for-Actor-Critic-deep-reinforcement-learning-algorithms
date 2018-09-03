@@ -9,7 +9,7 @@ import numpy as np
 import copy
 
 from agent.network import *
-from agent.experience_buffer import Buffer
+from utils.buffer import Buffer
 from agent.manager import BasicManager
 from sklearn.cluster import KMeans
 

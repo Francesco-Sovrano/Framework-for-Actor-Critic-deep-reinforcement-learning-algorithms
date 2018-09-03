@@ -1,5 +1,4 @@
 from collections import deque
-import numpy as np
 
 class ExperienceBatch(object):
 	# __slots__ = ('bootstrap','agent_position_list','total_reward','size')
@@ -20,11 +19,6 @@ class ExperienceBatch(object):
 		self.agent_position_list = []
 		self.total_reward = 0
 		self.size = 0
-
-	# def finalize(self):
-		# for key in self.__dict__:
-			# self.__dict__[key] = np.array(self.__dict__[key])
-		# return self
 
 	def get_step_action(self, action, step):
 		id, pos = self.get_agent_and_pos(step)
