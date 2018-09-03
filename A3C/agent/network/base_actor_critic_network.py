@@ -81,7 +81,7 @@ class BaseAC_Network(object):
 		# Sample action, after getting keys
 		self.action_batch = self.sample_actions()
 		# Get cnn feature mean entropy
-		# self.fentropy = self.get_feature_entropy(input=self.lstm, scope=sibling_scope_name, name="FEntropy_LSTM", share_trainables=False)
+		self.fentropy = self.get_feature_entropy(input=self.lstm, scope=scope_name, share_trainables=False)
 		# Print shapes
 		print( "    [{}]Input shape: {}".format(self.id, self.state_batch.get_shape()) )
 		print( "    [{}]Concatenation shape: {}".format(self.id, self.concat_batch.get_shape()) )
@@ -154,7 +154,8 @@ class BaseAC_Network(object):
 			# lstm_cell = tf.contrib.model_pruning.MaskedBasicLSTMCell(num_units=units, forget_bias=1.0, state_is_tuple=True, activation=None)
 			lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=units, forget_bias=1.0, state_is_tuple=True) # using BasicLSTMCell instead of LSTMCell
 			# Unroll the LSTM
-			lstm_outputs, final_state = tf.nn.dynamic_rnn(cell=lstm_cell, inputs=input, initial_state=initial_state, sequence_length=sequence_length, time_major=True)
+			lstm_state_tuple = tf.nn.rnn_cell.LSTMStateTuple(initial_state[0],initial_state[1])
+			lstm_outputs, final_state = tf.nn.dynamic_rnn(cell=lstm_cell, inputs=input, initial_state=lstm_state_tuple, sequence_length=sequence_length, time_major=True)
 			# Dropout: https://www.nature.com/articles/s41586-018-0102-6
 			lstm_outputs = tf.layers.dropout(inputs=lstm_outputs, rate=0.5)
 			lstm_outputs = tf.reshape(lstm_outputs, [-1,units]) # shape: (batch, units)
@@ -243,25 +244,41 @@ class BaseAC_Network(object):
 				new_policy_batch = tf.transpose(self.policy_batch, [1, 0, 2])
 				new_policy_distributions = Normal(new_policy_batch[0], new_policy_batch[1])
 				new_cross_entropy_batch = new_policy_distributions.cross_entropy(self.old_action_batch)
-				new_entropy_batch = new_policy_distributions.entropy()
+				# new_entropy_batch = new_policy_distributions.entropy()
 			else: # discrete control
 				# Old policy
 				old_cross_entropy_batch = Categorical(self.old_policy_batch).cross_entropy(self.old_action_batch)
 				# New policy
 				new_policy_distributions = Categorical(self.policy_batch)
 				new_cross_entropy_batch = new_policy_distributions.cross_entropy(self.old_action_batch)
-				new_entropy_batch = new_policy_distributions.entropy()
-			# new_entropy_batch = self.fentropy
+				# new_entropy_batch = new_policy_distributions.entropy()
+			new_entropy_batch = self.fentropy
 			# [Actor loss]
-			policy_loss = PolicyLoss(cliprange=self.clip, cross_entropy=new_cross_entropy_batch, old_cross_entropy=old_cross_entropy_batch, advantage=self.advantage_batch, entropy=new_entropy_batch, entropy_beta=self.entropy_beta).get()
+			policy_loss_builder = PolicyLoss(cliprange=self.clip, cross_entropy=new_cross_entropy_batch, old_cross_entropy=old_cross_entropy_batch, advantage=self.advantage_batch, entropy=new_entropy_batch, entropy_beta=self.entropy_beta)
+			policy_loss = policy_loss_builder.get()
 			# [Critic loss]
-			value_loss = ValueLoss(cliprange=self.clip, value=self.value_batch, old_value=self.old_value_batch, reward=self.cumulative_reward_batch).get()
-			value_loss *= flags.value_coefficient # usually critic has lower learning rate
+			value_loss_builder = ValueLoss(cliprange=self.clip, value=self.value_batch, old_value=self.old_value_batch, reward=self.cumulative_reward_batch)
+			value_loss = flags.value_coefficient * value_loss_builder.get() # usually critic has lower learning rate
 			# [Extra loss]
 			extra_loss = tf.constant(0.)
 			if self.predict_reward:
 				extra_loss += self._reward_prediction_loss()
-			return (policy_loss, value_loss, extra_loss)
+			# [Debug variables]
+			self.policy_kl_divergence = policy_loss_builder.approximate_kullback_leibler_divergence()
+			self.policy_clipping_frequency = policy_loss_builder.get_clipping_frequency()
+			self.policy_entropy_contribution = policy_loss_builder.get_entropy_contribution()
+			return policy_loss, value_loss, extra_loss
+			
+	def minimize_local_loss(self, optimizer, global_step, global_var_list): # minimize loss and apply gradients to global vars.
+		self.policy_loss, self.value_loss, self.extra_loss = self.prepare_loss()
+		with tf.device(self.device) and tf.control_dependencies(self.update_keys): # control_dependencies is for batch normalization
+			var_refs = [v._ref() for v in self.get_shared_keys()]
+			total_loss = self.policy_loss + self.value_loss + self.extra_loss
+			local_gradients = tf.gradients(total_loss, var_refs, gate_gradients=False, aggregation_method=None, colocate_gradients_with_ops=False)
+			if flags.grad_norm_clip > 0:
+				local_gradients, _ = tf.clip_by_global_norm(local_gradients, flags.grad_norm_clip)
+			grads_and_vars = list(zip(local_gradients, global_var_list))
+			self.train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 			
 	def bind_sync(self, src_network, name=None):
 		with tf.device(self.device), tf.name_scope(name, "Sync{0}".format(self.id),[]) as name:
@@ -275,17 +292,6 @@ class BaseAC_Network(object):
 				
 	def sync(self, sync):
 		self.session.run(fetches=sync)
-
-	def minimize_local_loss(self, optimizer, global_step, global_var_list): # minimize loss and apply gradients to global vars.
-		self.policy_loss, self.value_loss, self.extra_loss = self.prepare_loss()
-		with tf.device(self.device) and tf.control_dependencies(self.update_keys): # control_dependencies is for batch normalization
-			var_refs = [v._ref() for v in self.get_shared_keys()]
-			total_loss = self.policy_loss + self.value_loss + self.extra_loss
-			local_gradients = tf.gradients(total_loss, var_refs, gate_gradients=False, aggregation_method=None, colocate_gradients_with_ops=False)
-			if flags.grad_norm_clip > 0:
-				local_gradients, _ = tf.clip_by_global_norm(local_gradients, flags.grad_norm_clip)
-			grads_and_vars = list(zip(local_gradients, global_var_list))
-			self.train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
 	def get_shared_keys(self):
 		return self.shared_keys # get model variables
@@ -316,9 +322,9 @@ class BaseAC_Network(object):
 		if not replay: # update train state
 			self.sibling.lstm_train_state = self.sibling.lstm_last_state # no need for deepcopy until lstm_last_state is tuple
 		# run train op
-		_, policy_loss, value_loss, extra_loss = self.session.run(fetches=[self.train_op, self.policy_loss, self.value_loss, self.extra_loss], feed_dict=feed_dict) # Minimize gradients and copy them to global network
+		_, policy_loss, value_loss, extra_loss, policy_kl_divergence, policy_clipping_frequency, policy_entropy_contribution = self.session.run(fetches=[self.train_op, self.policy_loss, self.value_loss, self.extra_loss, self.policy_kl_divergence, self.policy_clipping_frequency, self.policy_entropy_contribution], feed_dict=feed_dict) # Minimize gradients and copy them to global network
 		# build and return loss dict
-		loss_dict = {"actor": policy_loss, "critic": value_loss}
+		loss_dict = {"actor": policy_loss, "critic": value_loss, "actor_kl_divergence": policy_kl_divergence, "actor_clipping_frequency": policy_clipping_frequency, "actor_entropy_contribution": policy_entropy_contribution}
 		if self.predict_reward:
 			loss_dict.update( {"extra": extra_loss} )
 		return loss_dict
@@ -354,7 +360,7 @@ class BaseAC_Network(object):
 	def _lstm_state_placeholder(self, units, batch_size=None, name=None):
 		state0 = tf.placeholder(dtype=tf.float32, shape=[batch_size, units], name=name+"0")
 		state1 = tf.placeholder(dtype=tf.float32, shape=[batch_size, units], name=name+"1")
-		return tf.nn.rnn_cell.LSTMStateTuple(state0,state1)
+		return (state0,state1)
 		
 	def _reward_prediction_target_placeholder(self, name=None, batch_size=None):
 		return tf.placeholder(dtype=tf.float32, shape=[batch_size,3], name=name)

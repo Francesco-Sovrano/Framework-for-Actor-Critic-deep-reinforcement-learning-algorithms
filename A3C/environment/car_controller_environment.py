@@ -278,7 +278,7 @@ class CarControllerEnvironment(Environment):
 			handles.append(Line2D(range(1), range(1), color="white", marker='o', markerfacecolor="blue", label='Obstacle'))
 		ax.legend(handles=handles)
 		# Draw plot
-		figure.suptitle('Speed: {0:.2f} m/s \n Angle: {1:.2f} deg \n Step: {2}'.format(self.speed,convert_radiant_to_degree(self.steering_angle), self.step))
+		figure.suptitle('Speed: {0:.2f} m/s Angle: {1:.2f} deg \n Step: {2}'.format(self.speed,convert_radiant_to_degree(self.steering_angle), self.step))
 		canvas.draw()
 		# Save plot into RGB array
 		data = np.fromstring(figure.canvas.tostring_rgb(), dtype=np.uint8, sep='')

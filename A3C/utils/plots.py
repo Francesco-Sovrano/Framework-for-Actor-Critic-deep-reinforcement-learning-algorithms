@@ -43,7 +43,7 @@ def plot(logs, figure_file):
 	nrows=math.ceil(max_stats_count/ncols)
 	# First set up the figure and the axis
 	# fig, ax = matplotlib.pyplot.subplots(nrows=1, ncols=1, sharey=False, sharex=False, figsize=(10,10)) # this method causes memory leaks
-	figure = Figure(figsize=(7*nrows,7*ncols))
+	figure = Figure(figsize=(7*ncols,8*nrows))
 	canvas = FigureCanvas(figure)
 	grid = GridSpec(ncols=ncols, nrows=nrows)
 	axes = [figure.add_subplot(grid[id//ncols, id%ncols]) for id in range(max_stats_count)]
@@ -113,7 +113,7 @@ def plot(logs, figure_file):
 				ax.plot(x[key], y[key]["data"], label=name)
 				ax.legend()
 				ax.grid(True)
-	figure.savefig(figure_file)
+	figure.savefig(figure_file,bbox_inches='tight')
 	print("Plot figure saved in ", figure_file)
 
 def plot_files(log_files, figure_file):
@@ -161,7 +161,7 @@ def heatmap(heatmap, figure_file):
 	canvas = FigureCanvas(figure)
 	ax = figure.add_subplot(111) # nrows=1, ncols=1, index=1
 	sns.heatmap(data=heatmap, ax=ax)
-	figure.savefig(figure_file)
+	figure.savefig(figure_file,bbox_inches='tight')
 	
 def ascii_image(string, file_name):
 	# find image size
