@@ -74,14 +74,14 @@ class BaseAC_Network(object):
 			self.value_batch = self._value_layer(input=self.lstm, scope=scope_name)
 			# [Reward Prediction]
 			if self.predict_reward:
-				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state",3)
+				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state", 3)
 				# reusing with a different placeholder seems to cause memory leaks
-				reward_prediction_cnn = self._cnn_layer(input=self.reward_prediction_state_batch, scope=scope_name)
+				reward_prediction_cnn = self._cnn_layer(input=self.reward_prediction_state_batch, scope=parent_scope_name) # shared with family
 				self.reward_prediction_logits = self._reward_prediction_layer(input=reward_prediction_cnn, scope=scope_name)
 		# Sample action, after getting keys
 		self.action_batch = self.sample_actions()
 		# Get cnn feature mean entropy
-		self.fentropy = self.get_feature_entropy(input=self.lstm, scope=scope_name, share_trainables=False)
+		self.fentropy = self.get_feature_entropy(input=self.lstm, scope=scope_name)
 		# Print shapes
 		print( "    [{}]Input shape: {}".format(self.id, self.state_batch.get_shape()) )
 		print( "    [{}]Concatenation shape: {}".format(self.id, self.concat_batch.get_shape()) )
@@ -94,10 +94,14 @@ class BaseAC_Network(object):
 			print( "    [{}]Reward prediction logits shape: {}".format(self.id, self.reward_prediction_logits.get_shape()) )
 		print( "    [{}]Action shape: {}".format(self.id, self.action_batch.get_shape()) )
 		
-	def get_feature_entropy(self, input, scope, name="", share_trainables=True): # feature entropy measures how much the input is uncommon
+	def get_feature_entropy(self, input, scope, name=""): # feature entropy measures how much the input is uncommon
 		with tf.device(self.device):
-			batch_norm, _ = self._batch_norm_layer(input=input, scope=scope, name=name)
-			return Normal(batch_norm.moving_mean, tf.sqrt(batch_norm.moving_variance)).cross_entropy(input)
+			batch_norm, _ = self._batch_norm_layer(input=input, scope=scope, name=name, share_trainables=False)
+			fentropy = Normal(batch_norm.moving_mean, tf.sqrt(batch_norm.moving_variance)).cross_entropy(input)
+			fentropy = tf.layers.flatten(fentropy)
+			if len(fentropy.get_shape()) > 1:
+				fentropy = tf.reduce_mean(fentropy, axis=-1)
+			return fentropy
 		
 	def _batch_norm_layer(self, input, scope, name="", share_trainables=True):
 		with tf.variable_scope(scope), tf.variable_scope("BatchNorm{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
@@ -131,8 +135,9 @@ class BaseAC_Network(object):
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			input = tf.layers.flatten(input)
 			input = tf.layers.dense(inputs=input, units=units, activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling)
-			concat = tf.layers.flatten(concat)
-			input = tf.concat([input, concat], -1) # shape: (batch, concat_size+units)
+			if concat.get_shape()[-1] > 0:
+				concat = tf.layers.flatten(concat)
+				input = tf.concat([input, concat], -1) # shape: (batch, concat_size+units)
 			# Update keys
 			if share_trainables:
 				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
@@ -384,11 +389,11 @@ class BaseAC_Network(object):
 		return tf.placeholder(dtype=tf.float32, shape=[batch_size], name=name)
 		
 	def _concat_placeholder(self, name=None, batch_size=None):
-		input=[tf.zeros(self.concat_size)] # default value
-		shape=[batch_size,self.concat_size]
+		shape = [batch_size, self.concat_size]
+		input = tf.zeros(shape if batch_size is not None else [1] + shape[1:]) # default value
 		return tf.placeholder_with_default(input=input, shape=shape, name=name) # with default we can use batch normalization directly on it
 
 	def _state_placeholder(self, name=None, batch_size=None):
-		input=[tf.zeros(self.state_shape)] # default value
-		shape=np.concatenate([[batch_size], self.state_shape], 0)
+		shape = [batch_size] + list(self.state_shape)
+		input = tf.zeros(shape if batch_size is not None else [1] + shape[1:]) # default value
 		return tf.placeholder_with_default(input=input, shape=shape, name=name) # with default we can use batch normalization directly on it

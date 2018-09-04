@@ -25,7 +25,7 @@ def build():
 	tf.app.flags.DEFINE_string("value_loss", "PVO", "value loss function: Vanilla, PVO")
 # Partitioner parameters
 	# Partition count > 0 reduces algorithm speed, because also a partitioner is trained
-	tf.app.flags.DEFINE_integer("partition_count", 5, "Number of partitions of the input space. Set to 1 for no partitions.")
+	tf.app.flags.DEFINE_integer("partition_count", 3, "Number of partitions of the input space. Set to 1 for no partitions.")
 	# Partitioner granularity > 0 increases algorithm speed when partition_count > 0
 	tf.app.flags.DEFINE_integer("partitioner_granularity", 8, "Number of steps after which to run the partitioner.")
 	
@@ -49,7 +49,7 @@ def build():
 	tf.app.flags.DEFINE_integer("alpha_decay_steps", 10**5, "decay alpha every x steps") # default is 10**6
 	tf.app.flags.DEFINE_float("alpha_decay_rate", 0.96, "decay rate") # default is 0.25
 # Last Action-Reward: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
-	tf.app.flags.DEFINE_boolean("use_concatenation", True, "Whether to concatenate an extra 1D vector to the flatten output in the network.")
+	tf.app.flags.DEFINE_boolean("use_concatenation", True, "Whether to add as extra network input a 1D vector with useful information.")
 # Reward Prediction: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
 	tf.app.flags.DEFINE_boolean("predict_reward", False, "Whether to predict rewards. This is useful with sparse rewards.") # N.B.: Cause of memory leaks! (probably because of tf scope reuse)
 	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 2**7, "Maximum number of batches stored in the reward prediction buffer")
@@ -58,7 +58,7 @@ def build():
 	tf.app.flags.DEFINE_float("replay_ratio", 1, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4
 	tf.app.flags.DEFINE_integer("replay_step", 10**3, "Start replaying when global step is greater than replay_step.")
 	tf.app.flags.DEFINE_boolean("replay_value", False, "Whether to recompute values, advantages and discounted cumulative rewards") # default is True
-	tf.app.flags.DEFINE_integer("replay_buffer_size", 2**6, "Maximum number of batches stored in the experience replay buffer")
+	tf.app.flags.DEFINE_integer("replay_buffer_size", 2**10, "Maximum number of batches stored in the experience replay buffer")
 	tf.app.flags.DEFINE_integer("replay_start", 1, "Should be greater than 0 and lower than replay_buffer_size. Train on x batches before using experience replay") # default is 5000
 	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
 # Reward clip
@@ -74,7 +74,7 @@ def build():
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
 	tf.app.flags.DEFINE_float("gamma", 0.99, "discount factor for rewards") # default is 0.95, for openAI is 0.99
 # Generalized Advantage Estimation
-	tf.app.flags.DEFINE_boolean("use_GAE", False, "whether to use Generalized Advantage Estimation (default in openAI's PPO implementation)") # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
+	tf.app.flags.DEFINE_boolean("use_GAE", True, "whether to use Generalized Advantage Estimation (default in openAI's PPO implementation)") # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 	# Taking lambda < 1 introduces bias only when the value function is inaccurate
 	tf.app.flags.DEFINE_float("lambd", 0.95, "generalized advantage estimator decay parameter") # default is 0.95
 # Log

@@ -30,7 +30,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 			id='{0}_{1}'.format(self.id, 0), 
 			state_shape=state_shape, 
 			action_shape=(1,agents_count), 
-			concat_size=agents_count+1,
+			concat_size=agents_count+1 if flags.use_concatenation else 0,
 			entropy_beta=flags.partitioner_entropy_beta, 
 			clip=self.clip[0], 
 			device=self.device, 
@@ -58,10 +58,10 @@ class ReinforcementLearningPartitioner(BasicManager):
 			
 	def initialize_gradient_optimizer(self):
 		super().initialize_gradient_optimizer()
-		# initial_learning_rate = flags.alpha * flags.partitioner_learning_factor
-		# self.learning_rate[0] = eval('tf.train.'+flags.alpha_annealing_function)(learning_rate=initial_learning_rate, global_step=self.global_step[0], decay_steps=flags.alpha_decay_steps, decay_rate=flags.alpha_decay_rate) if flags.alpha_decay else initial_learning_rate
-		self.learning_rate[0] *= flags.partitioner_learning_factor
-		self.gradient_optimizer[0] = eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True)
+		initial_learning_rate = flags.alpha * flags.partitioner_learning_factor
+		self.learning_rate[0] = eval('tf.train.'+flags.alpha_annealing_function)(learning_rate=initial_learning_rate, global_step=self.global_step[0], decay_steps=flags.alpha_decay_steps, decay_rate=flags.alpha_decay_rate) if flags.alpha_decay else initial_learning_rate
+		# self.learning_rate[0] *= flags.partitioner_learning_factor
+		# self.gradient_optimizer[0] = eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True)
 		
 	def get_state_partition(self, state, concat=None):
 		action_batch, value_batch, policy_batch = self.manager.predict_action(states=[state], concats=[concat])

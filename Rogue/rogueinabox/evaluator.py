@@ -71,9 +71,9 @@ class RogueEvaluator:
 		count = len(self.episodes)
 		# victories = 0
 		if count>0:
-			result["avg_steps"] = np.sum(e.step for e in self.episodes)/count
-			result["avg_reward"] = np.sum(e.reward for e in self.episodes)/count
-			result["avg_tiles"] = np.sum(e.tiles for e in self.episodes)/count
-			result["avg_level"] = np.sum(e.level for e in self.episodes)/count
+			result["avg_steps"] = sum(e.step for e in self.episodes)/count
+			result["avg_reward"] = sum(e.reward for e in self.episodes)/count
+			result["avg_tiles"] = sum(e.tiles for e in self.episodes)/count
+			result["avg_level"] = sum(e.level for e in self.episodes)/count
 		return result
 		

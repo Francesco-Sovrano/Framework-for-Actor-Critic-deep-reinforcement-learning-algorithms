@@ -129,8 +129,7 @@ class Application(object):
 		used_clients = len(dictionaries) # ignore the first flags.match_count_for_evaluation objects from data, because they are too noisy
 		if used_clients < 1:
 			return {}
-		merged_dictionaries = ((k,[d[k] for d in dictionaries]) for k in dictionaries[0])
-		return {key: np.sum(value)/used_clients for key,value in merged_dictionaries}
+		return {k: sum(d[k] for d in dictionaries)/used_clients for k in dictionaries[0]}
 		
 	def train(self):
 		# run training threads

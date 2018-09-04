@@ -269,10 +269,10 @@ class BasicManager(object):
 		batch_reward = batch.total_reward
 		if batch_reward == 0 and flags.save_only_batches_with_reward:
 			return
-		type_id = 1 if batch_reward > 0 else 0
-		if not self.experience_buffer.id_is_full(type_id) or self.should_save_batch(batch):
-			self.experience_buffer.put(batch, type_id)
-		# self.experience_buffer.put(batch, 1 if batch_reward > 0 else 0)
+		# type_id = 1 if batch_reward > 0 else 0
+		# if not self.experience_buffer.id_is_full(type_id) or self.should_save_batch(batch):
+			# self.experience_buffer.put(batch, type_id)
+		self.experience_buffer.put(batch, 1 if batch_reward > 0 else 0)
 		
 	def process_batch(self, global_step):
 		batch = self.compute_cumulative_reward(self.batch)

@@ -43,7 +43,7 @@ def plot(logs, figure_file):
 	nrows=math.ceil(max_stats_count/ncols)
 	# First set up the figure and the axis
 	# fig, ax = matplotlib.pyplot.subplots(nrows=1, ncols=1, sharey=False, sharex=False, figsize=(10,10)) # this method causes memory leaks
-	figure = Figure(figsize=(7*ncols,8*nrows))
+	figure = Figure(figsize=(10*ncols,7*nrows))
 	canvas = FigureCanvas(figure)
 	grid = GridSpec(ncols=ncols, nrows=nrows)
 	axes = [figure.add_subplot(grid[id//ncols, id%ncols]) for id in range(max_stats_count)]
