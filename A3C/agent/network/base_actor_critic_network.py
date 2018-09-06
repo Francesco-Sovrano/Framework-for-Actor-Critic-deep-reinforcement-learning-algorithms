@@ -15,9 +15,10 @@ from agent.loss.value_loss import ValueLoss
 from utils.distributions import Categorical, Normal
 
 class BaseAC_Network(object):
-	def __init__(self, session, id, state_shape, action_shape, entropy_beta, clip, device, predict_reward, concat_size=0, training=True, parent=None, sibling=None):
+	def __init__(self, session, id, state_shape, action_shape, clip, device, predict_reward, concat_size=0, beta=None, gamma=None, training=True, parent=None, sibling=None):
 		self.train_count = 0
-		self.entropy_beta = entropy_beta
+		self.beta = beta if beta is not None else flags.beta
+		self.gamma = gamma if gamma is not None else flags.gamma
 		self.clip = clip
 		self.predict_reward = predict_reward
 		# initialize
@@ -240,29 +241,35 @@ class BaseAC_Network(object):
 	def prepare_loss(self):
 		with tf.device(self.device):
 			print( "Preparing loss {}".format(self.id) )
-			# [Entropy]
+			# [Policy distribution]
 			if self.is_continuous_control():
 				# Old policy
 				old_policy_batch = tf.transpose(self.old_policy_batch, [1, 0, 2])
-				old_cross_entropy_batch = Normal(old_policy_batch[0], old_policy_batch[1]).cross_entropy(self.old_action_batch)
+				old_policy_distributions = Normal(old_policy_batch[0], old_policy_batch[1])
 				# New policy
 				new_policy_batch = tf.transpose(self.policy_batch, [1, 0, 2])
 				new_policy_distributions = Normal(new_policy_batch[0], new_policy_batch[1])
-				new_cross_entropy_batch = new_policy_distributions.cross_entropy(self.old_action_batch)
-				# new_entropy_batch = new_policy_distributions.entropy()
 			else: # discrete control
-				# Old policy
-				old_cross_entropy_batch = Categorical(self.old_policy_batch).cross_entropy(self.old_action_batch)
-				# New policy
-				new_policy_distributions = Categorical(self.policy_batch)
-				new_cross_entropy_batch = new_policy_distributions.cross_entropy(self.old_action_batch)
-				# new_entropy_batch = new_policy_distributions.entropy()
-			new_entropy_batch = self.fentropy
+				old_policy_distributions = Categorical(self.old_policy_batch) # Old policy
+				new_policy_distributions = Categorical(self.policy_batch) # New policy
 			# [Actor loss]
-			policy_loss_builder = PolicyLoss(cliprange=self.clip, cross_entropy=new_cross_entropy_batch, old_cross_entropy=old_cross_entropy_batch, advantage=self.advantage_batch, entropy=new_entropy_batch, entropy_beta=self.entropy_beta)
+			policy_loss_builder = PolicyLoss(
+				cliprange=self.clip, 
+				cross_entropy=new_policy_distributions.cross_entropy(self.old_action_batch), 
+				old_cross_entropy=old_policy_distributions.cross_entropy(self.old_action_batch), 
+				advantage=self.advantage_batch, 
+				entropy=self.fentropy, 
+				# entropy=new_policy_distributions.entropy(), 
+				beta=self.beta
+			)
 			policy_loss = policy_loss_builder.get()
 			# [Critic loss]
-			value_loss_builder = ValueLoss(cliprange=self.clip, value=self.value_batch, old_value=self.old_value_batch, reward=self.cumulative_reward_batch)
+			value_loss_builder = ValueLoss(
+				cliprange=self.clip, 
+				value=self.value_batch, 
+				old_value=self.old_value_batch, 
+				reward=self.cumulative_reward_batch
+			)
 			value_loss = flags.value_coefficient * value_loss_builder.get() # usually critic has lower learning rate
 			# [Extra loss]
 			extra_loss = tf.constant(0.)
@@ -321,11 +328,7 @@ class BaseAC_Network(object):
 				
 	def train(self, replay, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats=None, reward_prediction_states=None, reward_prediction_target=None):
 		self.train_count += len(states)
-		feed_dict = self.build_train_feed(states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, reward_prediction_states, reward_prediction_target)
-		# set lstm state
-		feed_dict.update( { self.lstm_initial_state: self.sibling.lstm_train_state } )
-		if not replay: # update train state
-			self.sibling.lstm_train_state = self.sibling.lstm_last_state # no need for deepcopy until lstm_last_state is tuple
+		feed_dict = self.build_train_feed(replay, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, reward_prediction_states, reward_prediction_target)
 		# run train op
 		_, policy_loss, value_loss, extra_loss, policy_kl_divergence, policy_clipping_frequency, policy_entropy_contribution = self.session.run(fetches=[self.train_op, self.policy_loss, self.value_loss, self.extra_loss, self.policy_kl_divergence, self.policy_clipping_frequency, self.policy_entropy_contribution], feed_dict=feed_dict) # Minimize gradients and copy them to global network
 		# build and return loss dict
@@ -334,7 +337,7 @@ class BaseAC_Network(object):
 			loss_dict.update( {"extra": extra_loss} )
 		return loss_dict
 		
-	def build_train_feed(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, reward_prediction_states, reward_prediction_target):
+	def build_train_feed(self, replay, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, reward_prediction_states, reward_prediction_target):
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 			advantages = np.reshape(generalized_advantage_estimators,[-1])
 			values = np.reshape(values,[-1])
@@ -355,6 +358,12 @@ class BaseAC_Network(object):
 				self.reward_prediction_state_batch: reward_prediction_states,
 				self.reward_prediction_labels: reward_prediction_target
 			} )
+		# set lstm state
+		if not replay: # update train state
+			feed_dict.update( { self.lstm_initial_state: self.sibling.lstm_train_state } )
+			self.sibling.lstm_train_state = self.sibling.lstm_last_state # no need for deepcopy until lstm_last_state is tuple
+		else: # when replaying it does not make any sense to use current episode lstm state, use default one instead as it was a new episode
+			feed_dict.update( { self.lstm_initial_state: self._lstm_default_state(batch_size=1, units=self.lstm_units) } ) # default state
 		return feed_dict
 		
 	def _lstm_default_state(self, units, batch_size=None):

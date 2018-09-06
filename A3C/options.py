@@ -8,7 +8,7 @@ import tensorflow as tf
 options_built = False
 def build():
 	tf.app.flags.DEFINE_boolean("use_gpu", False, "whether to use the GPU")
-	tf.app.flags.DEFINE_integer("max_time_step", 2*10**8, "max time steps")
+	tf.app.flags.DEFINE_integer("max_time_step", (10**8)//2, "max time steps")
 # Environment
 	# tf.app.flags.DEFINE_string("env_type", "car_controller", "environment types: rogue, car_controller, or environments from https://gym.openai.com/envs")
 	# tf.app.flags.DEFINE_string("env_type", "MontezumaRevenge-ram-v0", "environment types: rogue, or environments from https://gym.openai.com/envs")
@@ -22,20 +22,22 @@ def build():
 	# Use mean losses if max_batch_size is too big, in order to avoid NaN
 	tf.app.flags.DEFINE_string("loss_type", "mean", "type of loss reduction: sum, mean")
 	tf.app.flags.DEFINE_string("policy_loss", "PPO", "policy loss function: Vanilla, PPO")
-	tf.app.flags.DEFINE_string("value_loss", "PVO", "value loss function: Vanilla, PVO")
+	tf.app.flags.DEFINE_string("value_loss", "Vanilla", "value loss function: Vanilla, PVO")
 # Partitioner parameters
 	# Partition count > 0 reduces algorithm speed, because also a partitioner is trained
-	tf.app.flags.DEFINE_integer("partition_count", 3, "Number of partitions of the input space. Set to 1 for no partitions.")
+	tf.app.flags.DEFINE_integer("partition_count", 5, "Number of partitions of the input space. Set to 1 for no partitions.")
 	# Partitioner granularity > 0 increases algorithm speed when partition_count > 0
 	tf.app.flags.DEFINE_integer("partitioner_granularity", 8, "Number of steps after which to run the partitioner.")
-	
 	tf.app.flags.DEFINE_string("partitioner_type", "ReinforcementLearning", "Partitioner types: ReinforcementLearning, KMeans")
 	# Flags for partitioner_type == KMeans
 	tf.app.flags.DEFINE_integer("partitioner_training_set_size", 10**5, "Should be a number greater than 0")
 	# Flags for partitioner_type == ReinforcementLearning
-	tf.app.flags.DEFINE_float("partitioner_learning_factor", 2, "Should be a number greater than 0. Usually the partitioner has an higher learning rate than the others. This factor is used to change the initial learning rate of the partitioner only.") # default is 2.0
 	tf.app.flags.DEFINE_string("partitioner_optimizer", "ProximalAdagrad", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is ProximalAdagrad
-	tf.app.flags.DEFINE_float("partitioner_entropy_beta", 0.001, "Entropy regularization constant. Usually the partitioner has an higher entropy beta than other agents.") # default is ProximalAdagrad
+	tf.app.flags.DEFINE_float("partitioner_alpha", 7e-4, "Partitioner learning rate") # Usually the partitioner has an higher learning rate than the others
+	tf.app.flags.DEFINE_float("partitioner_beta", 0.001, "Partitioner entropy regularization constant")
+	tf.app.flags.DEFINE_float("partitioner_gamma", 0.99, "Partitioner cumulative reward discount factor")
+	tf.app.flags.DEFINE_float("gamma_translation_per_agent", -0.05, "Translation formula: translated_gamma = gamma + (agent_id-1)*gamma_translation_per_agent. With agent_id in [1,partition_count].") # default -0.05
+	tf.app.flags.DEFINE_float("beta_translation_per_agent", 0, "Translation formula: translated_beta = beta + (agent_id-1)*beta_translation_per_agent. With agent_id in [1,partition_count].") # default beta
 # Loss clip range
 	tf.app.flags.DEFINE_float("clip", 0.2, "PPO/PVO initial clip range") # default is 0.2, for openAI is 0.1
 	tf.app.flags.DEFINE_boolean("clip_decay", True, "Whether to decay the clip range")
@@ -49,13 +51,13 @@ def build():
 	tf.app.flags.DEFINE_integer("alpha_decay_steps", 10**5, "decay alpha every x steps") # default is 10**6
 	tf.app.flags.DEFINE_float("alpha_decay_rate", 0.96, "decay rate") # default is 0.25
 # Last Action-Reward: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
-	tf.app.flags.DEFINE_boolean("use_concatenation", True, "Whether to add as extra network input a 1D vector with useful information.")
+	tf.app.flags.DEFINE_boolean("use_concatenation", True, "Whether to add as extra network input a 1D vector containing useful information to concat to some layer.")
 # Reward Prediction: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
-	tf.app.flags.DEFINE_boolean("predict_reward", False, "Whether to predict rewards. This is useful with sparse rewards.") # N.B.: Cause of memory leaks! (probably because of tf scope reuse)
+	tf.app.flags.DEFINE_boolean("predict_reward", False, "Whether to predict rewards. This should be useful with sparse rewards.") # N.B.: Cause of memory leaks! (probably because of tf scope reuse)
 	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 2**7, "Maximum number of batches stored in the reward prediction buffer")
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
-	tf.app.flags.DEFINE_float("replay_ratio", 1, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is de-activated.") # for A3C is 0, for ACER default is 4
+	tf.app.flags.DEFINE_float("replay_ratio", 0.5, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is not active.") # for A3C is 0, for ACER default is 4
 	tf.app.flags.DEFINE_integer("replay_step", 10**3, "Start replaying when global step is greater than replay_step.")
 	tf.app.flags.DEFINE_boolean("replay_value", False, "Whether to recompute values, advantages and discounted cumulative rewards") # default is True
 	tf.app.flags.DEFINE_integer("replay_buffer_size", 2**10, "Maximum number of batches stored in the experience replay buffer")
@@ -68,9 +70,10 @@ def build():
 # Actor-Critic parameters
 	# Learning rate for Critic is half of Actor's, so multiply by 0.5 (default)
 	tf.app.flags.DEFINE_float("value_coefficient", 0.5, "value coefficient for tuning Critic learning rate") # default is 0.5, for openAI is 0.25
-	tf.app.flags.DEFINE_float("entropy_beta", 0.001, "entropy regularization constant") # default is 0.001, for openAI is 0.01
+	tf.app.flags.DEFINE_float("beta", 0.01, "entropy regularization constant") # default is 0.001, for openAI is 0.01
 	tf.app.flags.DEFINE_integer("parallel_size", 4, "parallel thread size")
-	tf.app.flags.DEFINE_integer("max_batch_size", 8, "maximum batch size") # default is 60, for openAI is 128
+	tf.app.flags.DEFINE_integer("min_batch_size", 8, "Minimum max batch size") # default is 8
+	tf.app.flags.DEFINE_integer("max_batch_size", 128, "Maximum max batch size") # default is 60, for openAI is 128
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
 	tf.app.flags.DEFINE_float("gamma", 0.99, "discount factor for rewards") # default is 0.95, for openAI is 0.99
 # Generalized Advantage Estimation

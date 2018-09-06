@@ -11,11 +11,11 @@ flags = options.get()
 
 class PolicyLoss(object):
 
-	def __init__(self, cliprange, cross_entropy, old_cross_entropy, advantage, entropy, entropy_beta):
+	def __init__(self, cliprange, cross_entropy, old_cross_entropy, advantage, entropy, beta):
 		self.cliprange = cliprange
 		self.advantage = advantage
 		# entropy
-		self.entropy_beta = entropy_beta
+		self.beta = beta
 		self.entropy = tf.maximum(0.,entropy) if flags.only_non_negative_entropy else entropy
 		self.cross_entropy = tf.maximum(0.,cross_entropy) if flags.only_non_negative_entropy else cross_entropy
 		self.old_cross_entropy = tf.maximum(0.,old_cross_entropy) if flags.only_non_negative_entropy else old_cross_entropy
@@ -42,7 +42,7 @@ class PolicyLoss(object):
 		return self.reduce_function(tf.to_float(tf.greater(tf.abs(tf.exp(self.old_cross_entropy - self.cross_entropy) - 1.0), self.cliprange)))
 		
 	def get_entropy_contribution(self):
-		return self.reduce_function(self.entropy)*self.entropy_beta
+		return self.reduce_function(self.entropy)*self.beta
 			
 	def vanilla(self):
 		policy = self.reduce_function(self.advantage*self.cross_entropy)

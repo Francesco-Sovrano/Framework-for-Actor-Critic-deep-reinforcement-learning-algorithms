@@ -26,39 +26,41 @@ class ReinforcementLearningPartitioner(BasicManager):
 		agents_count = self.get_agents_count()
 		# the manager
 		self.manager = eval('{}_Network'.format(flags.network))(
-			session=self.session, 
 			id='{0}_{1}'.format(self.id, 0), 
+			device=self.device, 
+			session=self.session, 
 			state_shape=state_shape, 
 			action_shape=(1,agents_count), 
-			concat_size=agents_count+1 if flags.use_concatenation else 0,
-			entropy_beta=flags.partitioner_entropy_beta, 
+			concat_size=agents_count+1 if flags.use_concatenation else 0, 
+			beta=flags.partitioner_beta, 
+			gamma=flags.partitioner_gamma, 
 			clip=self.clip[0], 
-			device=self.device, 
-			predict_reward=flags.predict_reward,
+			predict_reward=flags.predict_reward, 
 			training = self.training
 		)
 		self.model_list.append(self.manager)
 		# the agents
 		for i in range(agents_count):
 			agent = eval('{}_Network'.format(flags.network))(
-				session=self.session, 
 				id='{0}_{1}'.format(self.id, i+1), 
+				device=self.device, 
+				session=self.session, 
 				state_shape=state_shape, 
 				action_shape=action_shape, 
-				concat_size=concat_size,
-				entropy_beta=flags.entropy_beta*(i+1), 
+				concat_size=concat_size, 
+				beta=flags.beta + i*flags.beta_translation_per_agent, 
+				gamma=flags.gamma + i*flags.gamma_translation_per_agent, 
 				clip=self.clip[i+1], 
-				device=self.device, 
-				predict_reward=flags.predict_reward,
-				training = self.training,
-				parent = self.manager,
+				predict_reward=flags.predict_reward, 
+				training = self.training, 
+				parent = self.manager, 
 				sibling = self.model_list[1] if i > 0 else None # the first agent (non manager)
 			)
 			self.model_list.append(agent)
 			
 	def initialize_gradient_optimizer(self):
 		super().initialize_gradient_optimizer()
-		initial_learning_rate = flags.alpha * flags.partitioner_learning_factor
+		initial_learning_rate = flags.partitioner_alpha
 		self.learning_rate[0] = eval('tf.train.'+flags.alpha_annealing_function)(learning_rate=initial_learning_rate, global_step=self.global_step[0], decay_steps=flags.alpha_decay_steps, decay_rate=flags.alpha_decay_rate) if flags.alpha_decay else initial_learning_rate
 		# self.learning_rate[0] *= flags.partitioner_learning_factor
 		# self.gradient_optimizer[0] = eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True)
@@ -90,33 +92,27 @@ class ReinforcementLearningPartitioner(BasicManager):
 			
 		new_state, value, action, reward, terminal, policy = super().act(act_function, state, concat)
 		# keep query reward updated
-		self.batch.rewards[0][-1] += reward
-		self.last_manager_reward = self.batch.rewards[0][-1]
+		self.last_manager_reward += reward
+		self.batch.rewards[0][-1] = self.last_manager_reward
 		return new_state, value, action, reward, terminal, policy
 		
 	def bootstrap(self, state, concat=None):
+		manager_concat = self.get_manager_concatenation()
+		new_agent_id, _, manager_value, _ = self.get_state_partition(state=state, concat=manager_concat)
+		self.batch.bootstrap['manager_concat'] = manager_concat
+		self.batch.bootstrap['manager_value'] = manager_value
 		if self.query_partitioner(self.batch.size):
-			manager_concat = self.get_manager_concatenation()
-			self.agent_id, _, value, _ = self.get_state_partition(state=state, concat=manager_concat)
-			self.batch.bootstrap['manager_concat'] = manager_concat
-		else:
-			value = (self.batch.values[0][-1] - self.batch.rewards[0][-1])/flags.gamma
-		self.batch.bootstrap['manager_value'] = value
+			self.agent_id = new_agent_id
 		super().bootstrap(state, concat)
 		
 	def replay_value(self, batch): # replay values
 		for i in range(len(batch.states[0])):
 			state = batch.states[0][i]
 			concat = batch.concats[0][i]
-			new_values = self.estimate_value(agent_id=0, states=[state], concats=[concat])
-			batch.values[0][i] = new_values[0]
+			batch.values[0][i] = self.estimate_value(agent_id=0, states=[state], concats=[concat])[0]
 		if 'manager_value' in batch.bootstrap:
 			bootstrap = batch.bootstrap
-			if self.query_partitioner(batch.size):
-				new_values = self.estimate_value(agent_id=0, states=[bootstrap['state']], concats=[bootstrap['manager_concat']])
-				bootstrap['manager_value'] = new_values[0]
-			else:
-				bootstrap['manager_value'] = (batch.values[0][-1] - batch.rewards[0][-1])/flags.gamma
+			bootstrap['manager_value'] = self.estimate_value(agent_id=0, states=[bootstrap['state']], concats=[bootstrap['manager_concat']])[0]
 		return super().replay_value(batch)
 		
 	def compute_cumulative_reward(self, batch):
@@ -133,8 +129,8 @@ class ReinforcementLearningPartitioner(BasicManager):
 		for i in range(batch_length-1,-1,-1):
 			query_reward = batch.rewards[0][i]
 			manager_value = batch.values[0][i]
-			manager_discounted_cumulative_reward = query_reward + flags.gamma * manager_discounted_cumulative_reward
-			manager_generalized_advantage_estimator = query_reward + flags.gamma * last_manager_value - manager_value + flags.gamma*flags.lambd*manager_generalized_advantage_estimator
+			manager_discounted_cumulative_reward = query_reward + self.manager.gamma*manager_discounted_cumulative_reward
+			manager_generalized_advantage_estimator = query_reward + self.manager.gamma*last_manager_value - manager_value + self.manager.gamma*flags.lambd*manager_generalized_advantage_estimator
 			last_manager_value = manager_value
 			batch.discounted_cumulative_rewards[0].appendleft(manager_discounted_cumulative_reward)
 			batch.generalized_advantage_estimators[0].appendleft(manager_generalized_advantage_estimator)

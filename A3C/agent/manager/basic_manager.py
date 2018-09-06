@@ -51,15 +51,14 @@ class BasicManager(object):
 			
 	def build_agents(self, state_shape, action_shape, concat_size):
 		agent=eval('{}_Network'.format(flags.network))(
-			session=self.session,
-			id='{0}_{1}'.format(self.id, 0),
-			device=self.device,
-			state_shape=state_shape,
-			action_shape=action_shape,
-			concat_size=concat_size,
-			entropy_beta=flags.entropy_beta,
-			clip=self.clip[0],
-			predict_reward=flags.predict_reward,
+			session=self.session, 
+			id='{0}_{1}'.format(self.id, 0), 
+			device=self.device, 
+			state_shape=state_shape, 
+			action_shape=action_shape, 
+			concat_size=concat_size, 
+			clip=self.clip[0], 
+			predict_reward=flags.predict_reward, 
 			training = self.training
 		)
 		self.model_list.append(agent)
@@ -169,8 +168,10 @@ class BasicManager(object):
 		for t in range(batch_size):
 			index = -t-1
 			value, reward = batch.get_step_action(['values','rewards'], index)
-			discounted_cumulative_reward = reward + flags.gamma * discounted_cumulative_reward
-			generalized_advantage_estimator = reward + flags.gamma * last_value - value + flags.gamma*flags.lambd*generalized_advantage_estimator
+			agent_id = batch.get_agent(index)
+			gamma = self.get_model(agent_id).gamma
+			discounted_cumulative_reward = reward + gamma*discounted_cumulative_reward
+			generalized_advantage_estimator = reward + gamma*last_value - value + gamma*flags.lambd*generalized_advantage_estimator
 			last_value = value
 			batch.set_step_action({'discounted_cumulative_rewards':discounted_cumulative_reward, 'generalized_advantage_estimators':generalized_advantage_estimator}, index)
 		return batch
@@ -229,14 +230,12 @@ class BasicManager(object):
 	def replay_value(self, batch): # replay values
 		for i in range(batch.size):
 			concat, state = batch.get_step_action(['concats','states'], i)
-			agent_id, _ = batch.get_agent_and_pos(i)
-			new_values = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat])
-			batch.set_step_action({'values':new_values[0]}, i)
+			agent_id = batch.get_agent(i)
+			batch.set_step_action({'values':self.estimate_value(agent_id=agent_id, states=[state], concats=[concat])[0]}, i)
 		if 'value' in batch.bootstrap:
 			bootstrap = batch.bootstrap
 			agent_id = bootstrap['agent_id']
-			values = self.estimate_value(agent_id=agent_id, states=[bootstrap['state']], concats=[bootstrap['concat']])
-			bootstrap['value'] = values[0]
+			bootstrap['value'] = self.estimate_value(agent_id=agent_id, states=[bootstrap['state']], concats=[bootstrap['concat']])[0]
 		return self.compute_cumulative_reward(batch)
 		
 	def should_save_batch(self, batch):

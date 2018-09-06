@@ -32,15 +32,14 @@ class KMeansPartitioner(BasicManager):
 		self.model_list = []
 		for i in range(self.model_size):
 			agent=eval(flags.network + "_Network")(
-				session=self.session, 
 				id="{0}_{1}".format(self.id, i), 
+				device=self.device, 
+				session=self.session, 
 				state_shape=state_shape, 
 				action_shape=action_shape, 
-				concat_size=concat_size,
-				entropy_beta=flags.entropy_beta, 
+				concat_size=concat_size, 
 				clip=self.clip[i], 
-				device=self.device, 
-				predict_reward=flags.predict_reward,
+				predict_reward=flags.predict_reward, 
 				training = self.training
 			)
 			self.model_list.append(agent)

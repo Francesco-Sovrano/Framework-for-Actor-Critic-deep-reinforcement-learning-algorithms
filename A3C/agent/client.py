@@ -182,6 +182,12 @@ class Worker(object):
 			elif self.save_frame_info:
 				self.print_frames(global_step)
 				
+	def get_batch_size(self, global_step):
+		if flags.max_batch_size > flags.min_batch_size:
+			return int(flags.min_batch_size + (1-global_step/flags.max_time_step)*(flags.max_batch_size-flags.min_batch_size))
+		else:
+			return flags.max_batch_size
+				
 	# run simulations
 	def run_batch(self, global_step):
 		if self.training: # Copy weights from shared to local
@@ -189,7 +195,8 @@ class Worker(object):
 			
 		step = 0
 		self.local_network.initialize_new_batch()
-		while step < flags.max_batch_size and not self.terminal:
+		max_batch_size = self.get_batch_size(global_step)
+		while step < max_batch_size and not self.terminal:
 			step += 1
 			state=self.environment.last_state
 			new_state, value, action, reward, self.terminal, policy = self.local_network.act( 

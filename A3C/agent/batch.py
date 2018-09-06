@@ -36,6 +36,9 @@ class ExperienceBatch(object):
 		
 	def get_agent_and_pos(self, index):
 		return self.agent_position_list[index]
+		
+	def get_agent(self, index):
+		return self.get_agent_and_pos(index)[0]
 
 	def add_agent_action(self, agent_id, state, concat, action, policy, reward, value, memorize_step=True):
 		self.states[agent_id].append(state)
