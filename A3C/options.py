@@ -34,7 +34,7 @@ def build():
 	# Flags for partitioner_type == ReinforcementLearning
 	tf.app.flags.DEFINE_string("partitioner_optimizer", "ProximalAdagrad", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is ProximalAdagrad
 	tf.app.flags.DEFINE_float("partitioner_alpha", 7e-4, "Partitioner learning rate") # Usually the partitioner has an higher learning rate than the others
-	tf.app.flags.DEFINE_float("partitioner_beta", 0.001, "Partitioner entropy regularization constant")
+	tf.app.flags.DEFINE_float("partitioner_beta", 0.01, "Partitioner entropy regularization constant")
 	tf.app.flags.DEFINE_float("partitioner_gamma", 0.99, "Partitioner cumulative reward discount factor")
 	tf.app.flags.DEFINE_float("gamma_translation_per_agent", -0.05, "Translation formula: translated_gamma = gamma + (agent_id-1)*gamma_translation_per_agent. With agent_id in [1,partition_count].") # default -0.05
 	tf.app.flags.DEFINE_float("beta_translation_per_agent", 0, "Translation formula: translated_beta = beta + (agent_id-1)*beta_translation_per_agent. With agent_id in [1,partition_count].") # default beta
@@ -74,6 +74,7 @@ def build():
 	tf.app.flags.DEFINE_integer("parallel_size", 4, "parallel thread size")
 	tf.app.flags.DEFINE_integer("min_batch_size", 8, "Minimum max batch size") # default is 8
 	tf.app.flags.DEFINE_integer("max_batch_size", 128, "Maximum max batch size") # default is 60, for openAI is 128
+	tf.app.flags.DEFINE_integer("steps_before_increasing_batch_size", 10**6, "Number of steps to run before starting to increase the batch size")
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
 	tf.app.flags.DEFINE_float("gamma", 0.99, "discount factor for rewards") # default is 0.95, for openAI is 0.99
 # Generalized Advantage Estimation

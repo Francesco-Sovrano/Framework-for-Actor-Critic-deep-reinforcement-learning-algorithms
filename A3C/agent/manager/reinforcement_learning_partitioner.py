@@ -75,18 +75,19 @@ class ReinforcementLearningPartitioner(BasicManager):
 		return step%flags.partitioner_granularity==0
 		
 	def get_manager_concatenation(self):
-		return np.concatenate((self.last_manager_action, [self.last_manager_reward]), -1)
+		return np.concatenate((self.last_manager_action,[self.last_manager_value]), -1)
 		
 	def reset(self):
 		super().reset()
 		self.last_manager_action = [0]*self.get_agents_count()
-		self.last_manager_reward = 0
+		self.last_manager_reward = self.last_manager_value = 0
 		
 	def act(self, act_function, state, concat=None):
 		if self.query_partitioner(self.batch.size):
 			manager_concat = self.get_manager_concatenation()
 			self.agent_id, manager_action, manager_value, manager_policy = self.get_state_partition(state=state, concat=manager_concat)
 			self.last_manager_action = manager_action
+			self.last_manager_value = manager_value
 			# N.B.: the query reward is unknown since bootstrap or a new query starts
 			self.batch.add_agent_action(agent_id=0, state=state, concat=manager_concat, action=manager_action, policy=manager_policy, reward=0, value=manager_value, memorize_step=False)
 			

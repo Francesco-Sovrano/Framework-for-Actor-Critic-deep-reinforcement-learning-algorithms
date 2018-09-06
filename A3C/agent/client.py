@@ -183,10 +183,10 @@ class Worker(object):
 				self.print_frames(global_step)
 				
 	def get_batch_size(self, global_step):
-		if flags.max_batch_size > flags.min_batch_size:
-			return int(flags.min_batch_size + (1-global_step/flags.max_time_step)*(flags.max_batch_size-flags.min_batch_size))
-		else:
-			return flags.max_batch_size
+		if flags.max_batch_size <= flags.min_batch_size or global_step <= flags.steps_before_increasing_batch_size:
+			return flags.min_batch_size
+		step_ratio = (global_step - flags.steps_before_increasing_batch_size)/(flags.max_time_step - flags.steps_before_increasing_batch_size)
+		return flags.min_batch_size + (1-step_ratio)*(flags.max_batch_size-flags.min_batch_size)
 				
 	# run simulations
 	def run_batch(self, global_step):

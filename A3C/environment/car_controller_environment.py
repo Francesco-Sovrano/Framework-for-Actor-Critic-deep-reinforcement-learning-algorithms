@@ -30,7 +30,7 @@ class CarControllerEnvironment(Environment):
 		self.thread_index = thread_index
 		self.max_step = 100
 		self.control_points_per_step = 5
-		self.seconds_per_step = 0.1 # a step every n seconds
+		self.mean_seconds_per_step = 0.1 # in average, a step every n seconds
 		self.horizon_distance = 1 # meters
 		self.max_distance_to_path = 0.1 # meters
 		# obstacles related stuff
@@ -40,6 +40,7 @@ class CarControllerEnvironment(Environment):
 		# information about speed parameters: http://www.ijtte.com/uploads/2012-10-01/5ebd8343-9b9c-b1d4IJTTE%20vol2%20no3%20%287%29.pdf
 		self.min_speed = 0.1 # m/s
 		self.max_speed = 1.4 # m/s
+		self.speed_lower_limit = 0.7 # m/s # used together with max_speed to get the random speed upper limit
 		self.max_speed_noise = 0.25 # m/s
 		# the fastest car has max_acceleration 9.25 m/s (https://en.wikipedia.org/wiki/List_of_fastest_production_cars_by_acceleration)
 		# the slowest car has max_acceleration 0.7 m/s (http://automdb.com/max_acceleration)
@@ -58,13 +59,18 @@ class CarControllerEnvironment(Environment):
 		self.action_shape = self.get_action_shape()
 	
 	def reset(self):
+		self.step = 0
+		self.seconds_per_step = self.get_step_seconds()
 		self.path = self.build_random_path()
+		# car position
 		self.car_point = (0,0) # car point and orientation are always expressed with respect to the initial point and orientation of the road fragment
 		self.car_progress, self.car_goal = self.get_position_and_goal(point=self.car_point)
-		self.speed = self.min_speed + (self.max_speed-self.min_speed)*np.random.random() # in [min_speed,max_speed]
 		self.car_angle = self.get_angle_from_position(self.car_progress)
+		# speed limit
+		self.speed_upper_limit = self.speed_lower_limit + (self.max_speed-self.speed_lower_limit)*np.random.random() # in [speed_lower_limit,max_speed]
+		# steering angle & speed
+		self.speed = self.min_speed + (self.max_speed-self.min_speed)*np.random.random() # in [min_speed,max_speed]
 		self.steering_angle = 0
-		self.step = 0
 		# get obstacles
 		self.obstacles = self.get_new_obstacles()
 		# init concat variables
@@ -156,8 +162,13 @@ class CarControllerEnvironment(Environment):
 		
 	def accelerate(self, speed, acceleration):
 		return np.clip(speed + acceleration*self.seconds_per_step, self.min_speed, self.max_speed)
+		
+	def get_step_seconds(self):
+		return np.random.exponential(scale=self.mean_seconds_per_step)
 
 	def process(self, action_vector):
+		# first of all, get the seconds passed from last step
+		self.seconds_per_step = self.get_step_seconds()
 		# compute new steering angle
 		self.steering_angle = self.get_steering_angle_from_action(action=action_vector[0])
 		# compute new acceleration
@@ -199,10 +210,10 @@ class CarControllerEnvironment(Environment):
 		return state, reward, terminal
 	
 	def get_concatenation_size(self):
-		return 3
+		return 4
 		
 	def get_concatenation(self):
-		return [self.steering_angle, self.speed, max(self.last_reward,0)]
+		return [self.steering_angle, self.speed, self.seconds_per_step, self.speed_upper_limit]
 		
 	def get_reward(self, car_speed, car_point, car_progress, car_position, obstacles):
 		max_distance_to_path = self.max_distance_to_path
@@ -218,8 +229,11 @@ class CarControllerEnvironment(Environment):
 			distance = euclidean_distance(car_point, car_projection_point)
 			distance_ratio = np.clip(distance/max_distance_to_path, 0,1) # always in [0,1]
 			inverse_distance_ratio = 1 - distance_ratio
+			# the more car_speed > self.speed_upper_limit, the bigger the malus
+			malus = self.speed_upper_limit*max(0,car_speed/self.speed_upper_limit-1)*self.seconds_per_step
 			# smaller distances to path give higher rewards
-			return (car_speed*self.seconds_per_step*inverse_distance_ratio, False) # do not terminate episode
+			bonus = min(car_speed,self.speed_upper_limit)*self.seconds_per_step*inverse_distance_ratio
+			return (bonus-malus, False) # do not terminate episode
 		# else is NOT moving toward next position
 		return (-0.1, False) # do not terminate episode
 		
@@ -278,7 +292,7 @@ class CarControllerEnvironment(Environment):
 			handles.append(Line2D(range(1), range(1), color="white", marker='o', markerfacecolor="blue", label='Obstacle'))
 		ax.legend(handles=handles)
 		# Draw plot
-		figure.suptitle('Speed: {0:.2f} m/s Angle: {1:.2f} deg \n Step: {2}'.format(self.speed,convert_radiant_to_degree(self.steering_angle), self.step))
+		figure.suptitle('[Speed]{0:.2f} m/s [Angle]{1:.2f} deg \n [Limit]{3:.2f} m/s [Step]{2}'.format(self.speed,convert_radiant_to_degree(self.steering_angle), self.step, self.speed_upper_limit))
 		canvas.draw()
 		# Save plot into RGB array
 		data = np.fromstring(figure.canvas.tostring_rgb(), dtype=np.uint8, sep='')
