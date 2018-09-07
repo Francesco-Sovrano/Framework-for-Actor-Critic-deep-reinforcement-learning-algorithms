@@ -63,7 +63,7 @@ def build():
 	tf.app.flags.DEFINE_integer("replay_buffer_size", 2**10, "Maximum number of batches stored in the experience replay buffer")
 	tf.app.flags.DEFINE_integer("replay_start", 1, "Should be greater than 0 and lower than replay_buffer_size. Train on x batches before using experience replay") # default is 5000
 	tf.app.flags.DEFINE_boolean("prioritized_replay", True, "Whether to use prioritized sampling") # default is True
-	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", False, "Save in the replay buffer only those batches with total reward different from 0") # default is True
+	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
 # Reward clip
 	tf.app.flags.DEFINE_boolean("clip_reward", False, "Whether to clip the reward between min_reward and max_reward") # default is False
 	tf.app.flags.DEFINE_float("min_reward", 0, "Minimum reward for clipping") # default is -1

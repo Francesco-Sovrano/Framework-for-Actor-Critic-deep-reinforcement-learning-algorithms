@@ -13,6 +13,7 @@ pip install --upgrade pip
 # install common libraries
 pip install tensorflow scipy # tensorflow includes numpy
 pip install matplotlib seaborn imageio
+pip install sortedcontainers
 # pip install nearpy # for locality sensitive hashing
 # install gym
 pip install gym[atari]

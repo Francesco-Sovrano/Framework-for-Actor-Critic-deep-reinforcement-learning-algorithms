@@ -290,13 +290,13 @@ class BasicManager(object):
 		n = np.random.poisson(flags.replay_ratio)
 		for _ in range(n):
 			if flags.prioritized_replay:
-				old_batch, batch_index = self.experience_buffer.sample()
+				old_batch, batch_index, type_id = self.experience_buffer.sample()
 			else:
 				old_batch = self.experience_buffer.sample()
 			old_batch_error = self.train(self.replay_value(old_batch) if flags.replay_value else old_batch, replay=True)
 			if flags.prioritized_replay:
 				avg_error = sum(old_batch_error)/len(old_batch_error)
-				self.experience_buffer.update_priority(batch_index, avg_error)
+				self.experience_buffer.update_priority(batch_index, avg_error, type_id)
 		
 	def process_batch(self, global_step):
 		batch = self.compute_cumulative_reward(self.batch)
