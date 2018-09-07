@@ -7,7 +7,8 @@ from collections import deque
 import tensorflow as tf
 import numpy as np
 from agent.network import *
-from utils.buffer import Buffer
+from utils.buffer import Buffer, PrioritizedBuffer
+# from utils.schedules import LinearSchedule
 from agent.batch import ExperienceBatch, RewardPredictionBatch
 
 import options
@@ -32,7 +33,11 @@ class BasicManager(object):
 		self.build_agents(state_shape=state_shape, action_shape=action_shape, concat_size=concat_size)
 	# Build experience buffer
 		if flags.replay_ratio > 0:
-			self.experience_buffer = Buffer(size=flags.replay_buffer_size)
+			if flags.prioritized_replay:
+				self.experience_buffer = PrioritizedBuffer(size=flags.replay_buffer_size)
+				# self.beta_schedule = LinearSchedule(flags.max_time_step, initial_p=0.4, final_p=1.0)
+			else:
+				self.experience_buffer = Buffer(size=flags.replay_buffer_size)
 		if flags.predict_reward:
 			self.reward_prediction_buffer = Buffer(size=flags.reward_prediction_buffer_size)
 	# Bind optimizer to global
@@ -186,19 +191,20 @@ class BasicManager(object):
 		rewards = batch.rewards
 		dcr = batch.discounted_cumulative_rewards
 		gae = batch.generalized_advantage_estimators
+		batch_error = []
 		for i in range(self.model_size):
 			batch_size = len(states[i])
 			if batch_size > 0:
 				model = self.get_model(i)
 				# reward prediction
 				if model.predict_reward:
-					rp_batch = self.reward_prediction_buffer.get()
+					rp_batch = self.reward_prediction_buffer.sample()
 					rp_states, rp_target = rp_batch.states, rp_batch.target
 				else:
 					rp_states = None
 					rp_target = None
 				# train
-				loss_dict = model.train(
+				error, train_info = model.train(
 					states=states[i], concats=concats[i],
 					actions=actions[i], values=values[i],
 					policies=policies[i],
@@ -209,15 +215,17 @@ class BasicManager(object):
 					reward_prediction_target=rp_target,
 					replay=replay
 				)
+				batch_error.append(error)
 				# loss statistics
 				if flags.print_loss:
-					for key, value in loss_dict.items():
+					for key, value in train_info.items():
 						if key not in self._loss_list[i]:
 							self._loss_list[i][key] = deque()
 						self._loss_list[i][key].append(value)
 						if len(self._loss_list[i][key]) > flags.match_count_for_evaluation: # remove old statistics
 							self._loss_list[i][key].popleft()
-				
+		return batch_error
+		
 	def bootstrap(self, state, concat=None):
 		agent_id = self.agent_id
 		value_batch = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat])
@@ -261,17 +269,34 @@ class BasicManager(object):
 					target[0][2] = 1 # negative
 				self.reward_prediction_buffer.put(batch=RewardPredictionBatch(states, target), type_id=type_id)  # target must have the same batch size of states to avoid tensorflow memory leaks
 			
-	def add_to_replay_buffer(self, batch):
+	def add_to_replay_buffer(self, batch, batch_error):
 		batch_size = batch.size
 		if batch_size <= 1:
 			return
 		batch_reward = batch.total_reward
 		if batch_reward == 0 and flags.save_only_batches_with_reward:
 			return
-		# type_id = 1 if batch_reward > 0 else 0
-		# if not self.experience_buffer.id_is_full(type_id) or self.should_save_batch(batch):
-			# self.experience_buffer.put(batch, type_id)
-		self.experience_buffer.put(batch, 1 if batch_reward > 0 else 0)
+		type_id = 1 if batch_reward > 0 else 0
+		if flags.prioritized_replay:
+			self.experience_buffer.put(batch=batch, priority=sum(batch_error)/len(batch_error), type_id=type_id)
+		else:
+			# if not self.experience_buffer.id_is_full(type_id) or self.should_save_batch(batch):
+				# self.experience_buffer.put(batch=batch, type_id=type_id)
+			self.experience_buffer.put(batch=batch, type_id=type_id)
+		
+	def replay_experience(self):
+		if not self.experience_buffer.has_atleast(flags.replay_start):
+			return
+		n = np.random.poisson(flags.replay_ratio)
+		for _ in range(n):
+			if flags.prioritized_replay:
+				old_batch, batch_index = self.experience_buffer.sample()
+			else:
+				old_batch = self.experience_buffer.sample()
+			old_batch_error = self.train(self.replay_value(old_batch) if flags.replay_value else old_batch, replay=True)
+			if flags.prioritized_replay:
+				avg_error = sum(old_batch_error)/len(old_batch_error)
+				self.experience_buffer.update_priority(batch_index, avg_error)
 		
 	def process_batch(self, global_step):
 		batch = self.compute_cumulative_reward(self.batch)
@@ -281,12 +306,8 @@ class BasicManager(object):
 			if self.reward_prediction_buffer.is_empty():
 				return # cannot train without reward prediction, wait until reward_prediction_buffer is not empty
 		# train
-		self.train(batch)
+		batch_error = self.train(batch)
 		# experience replay
 		if flags.replay_ratio > 0 and global_step > flags.replay_step:
-			if self.experience_buffer.has_atleast(flags.replay_start):
-				n = np.random.poisson(flags.replay_ratio)
-				for _ in range(n):
-					old_batch = self.experience_buffer.get()
-					self.train(self.replay_value(old_batch) if flags.replay_value else old_batch, replay=True)
-			self.add_to_replay_buffer(batch)
+			self.replay_experience()
+			self.add_to_replay_buffer(batch, batch_error)

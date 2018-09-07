@@ -14,6 +14,7 @@ import utils.plots as plt
 
 from environment.environment import Environment
 from agent.manager import *
+from utils.schedules import LinearSchedule
 
 # get command line args
 import options
@@ -69,6 +70,7 @@ class Worker(object):
 		self.prev_local_t = 0
 		self.terminated_episodes = 0
 		self.stats = {}
+		self.batch_schedule = LinearSchedule(flags.max_time_step-flags.steps_before_increasing_batch_size, initial_p=flags.min_batch_size, final_p=flags.min_batch_size)
 
 	def update_statistics(self):
 		self.stats = self.environment.get_statistics()
@@ -185,8 +187,7 @@ class Worker(object):
 	def get_batch_size(self, global_step):
 		if flags.max_batch_size <= flags.min_batch_size or global_step <= flags.steps_before_increasing_batch_size:
 			return flags.min_batch_size
-		step_ratio = (global_step - flags.steps_before_increasing_batch_size)/(flags.max_time_step - flags.steps_before_increasing_batch_size)
-		return flags.min_batch_size + (1-step_ratio)*(flags.max_batch_size-flags.min_batch_size)
+		return self.batch_schedule.value(global_step-flags.steps_before_increasing_batch_size)
 				
 	# run simulations
 	def run_batch(self, global_step):

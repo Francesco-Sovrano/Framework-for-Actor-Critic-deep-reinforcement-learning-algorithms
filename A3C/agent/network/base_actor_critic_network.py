@@ -94,6 +94,8 @@ class BaseAC_Network(object):
 		if self.predict_reward:
 			print( "    [{}]Reward prediction logits shape: {}".format(self.id, self.reward_prediction_logits.get_shape()) )
 		print( "    [{}]Action shape: {}".format(self.id, self.action_batch.get_shape()) )
+		# Prepare loss
+		self.prepare_loss()
 		
 	def get_feature_entropy(self, input, scope, name=""): # feature entropy measures how much the input is uncommon
 		with tf.device(self.device):
@@ -240,7 +242,7 @@ class BaseAC_Network(object):
 		
 	def prepare_loss(self):
 		with tf.device(self.device):
-			print( "Preparing loss {}".format(self.id) )
+			print( "    [{}]Preparing loss".format(self.id) )
 			# [Policy distribution]
 			if self.is_continuous_control():
 				# Old policy
@@ -262,7 +264,7 @@ class BaseAC_Network(object):
 				# entropy=new_policy_distributions.entropy(), 
 				beta=self.beta
 			)
-			policy_loss = policy_loss_builder.get()
+			self.policy_loss = policy_loss_builder.get()
 			# [Critic loss]
 			value_loss_builder = ValueLoss(
 				cliprange=self.clip, 
@@ -270,23 +272,21 @@ class BaseAC_Network(object):
 				old_value=self.old_value_batch, 
 				reward=self.cumulative_reward_batch
 			)
-			value_loss = flags.value_coefficient * value_loss_builder.get() # usually critic has lower learning rate
+			self.value_loss = flags.value_coefficient * value_loss_builder.get() # usually critic has lower learning rate
 			# [Extra loss]
-			extra_loss = tf.constant(0.)
+			self.extra_loss = tf.constant(0.)
 			if self.predict_reward:
-				extra_loss += self._reward_prediction_loss()
+				self.extra_loss += self._reward_prediction_loss()
 			# [Debug variables]
 			self.policy_kl_divergence = policy_loss_builder.approximate_kullback_leibler_divergence()
 			self.policy_clipping_frequency = policy_loss_builder.get_clipping_frequency()
 			self.policy_entropy_contribution = policy_loss_builder.get_entropy_contribution()
-			return policy_loss, value_loss, extra_loss
+			self.total_loss = self.policy_loss+self.value_loss+self.extra_loss
 			
 	def minimize_local_loss(self, optimizer, global_step, global_var_list): # minimize loss and apply gradients to global vars.
-		self.policy_loss, self.value_loss, self.extra_loss = self.prepare_loss()
 		with tf.device(self.device) and tf.control_dependencies(self.update_keys): # control_dependencies is for batch normalization
 			var_refs = [v._ref() for v in self.get_shared_keys()]
-			total_loss = self.policy_loss + self.value_loss + self.extra_loss
-			local_gradients = tf.gradients(total_loss, var_refs, gate_gradients=False, aggregation_method=None, colocate_gradients_with_ops=False)
+			local_gradients = tf.gradients(self.total_loss, var_refs, gate_gradients=False, aggregation_method=None, colocate_gradients_with_ops=False)
 			if flags.grad_norm_clip > 0:
 				local_gradients, _ = tf.clip_by_global_norm(local_gradients, flags.grad_norm_clip)
 			grads_and_vars = list(zip(local_gradients, global_var_list))
@@ -330,12 +330,12 @@ class BaseAC_Network(object):
 		self.train_count += len(states)
 		feed_dict = self.build_train_feed(replay, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, reward_prediction_states, reward_prediction_target)
 		# run train op
-		_, policy_loss, value_loss, extra_loss, policy_kl_divergence, policy_clipping_frequency, policy_entropy_contribution = self.session.run(fetches=[self.train_op, self.policy_loss, self.value_loss, self.extra_loss, self.policy_kl_divergence, self.policy_clipping_frequency, self.policy_entropy_contribution], feed_dict=feed_dict) # Minimize gradients and copy them to global network
+		_, total_loss, policy_loss, value_loss, extra_loss, policy_kl_divergence, policy_clipping_frequency, policy_entropy_contribution = self.session.run(fetches=[self.train_op, self.total_loss, self.policy_loss, self.value_loss, self.extra_loss, self.policy_kl_divergence, self.policy_clipping_frequency, self.policy_entropy_contribution], feed_dict=feed_dict) # Minimize gradients and copy them to global network
 		# build and return loss dict
-		loss_dict = {"actor": policy_loss, "critic": value_loss, "actor_kl_divergence": policy_kl_divergence, "actor_clipping_frequency": policy_clipping_frequency, "actor_entropy_contribution": policy_entropy_contribution}
+		train_info = {"actor": policy_loss, "critic": value_loss, "actor_kl_divergence": policy_kl_divergence, "actor_clipping_frequency": policy_clipping_frequency, "actor_entropy_contribution": policy_entropy_contribution}
 		if self.predict_reward:
-			loss_dict.update( {"extra": extra_loss} )
-		return loss_dict
+			train_info.update( {"extra": extra_loss} )
+		return total_loss, train_info
 		
 	def build_train_feed(self, replay, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, reward_prediction_states, reward_prediction_target):
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
@@ -396,6 +396,9 @@ class BaseAC_Network(object):
 		
 	def _value_placeholder(self, name=None, batch_size=None):
 		return tf.placeholder(dtype=tf.float32, shape=[batch_size], name=name)
+		
+	def _scalar_placeholder(self, name=None):
+		return tf.placeholder(dtype=tf.float32, shape=(), name=name)
 		
 	def _concat_placeholder(self, name=None, batch_size=None):
 		shape = [batch_size, self.concat_size]
