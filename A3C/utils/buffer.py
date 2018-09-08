@@ -96,23 +96,25 @@ class PrioritizedBuffer(Buffer):
 	def get_batch_priority(self, priority):
 		return self._eps + (np.abs(priority)**self._alpha)
 		
-	def put(self, batch, priority, type_id=0): # O(n)
+	def put(self, batch, priority, type_id=0): # O(log)
 		type = self.get_type(type_id)
 		if self.is_full(type):
 			self.batches[type].popitem(index=0) # argument with lowest priority is always 0 because buffer is sorted by priority
 		batch_priority = self.get_batch_priority(priority)
 		self.batches[type].update({batch_priority: batch}) # O(log)
-		self.prefixsum[type] = np.cumsum(self.batches[type].keys()) # O(n)
+		self.prefixsum[type] = None # compute prefixsum only if needed, when sampling
 		
-	def sample(self): # O(log)
+	def sample(self): # O(n) after a new put, O(log) otherwise
 		type_id = np.random.choice( [key for key,value in self.types.items() if not self.is_empty(value)] )
 		type = self.get_type(type_id)
+		if self.prefixsum[type] is None: # compute prefixsum
+			self.prefixsum[type] = np.cumsum(self.batches[type].keys()) # O(n)
 		mass = np.random.random() * self.prefixsum[type][-1]
 		idx = np.searchsorted(self.prefixsum[type], mass) # O(log) # Find arg of leftmost item greater than or equal to x
 		keys = self.batches[type].keys()
 		return self.batches[type][keys[idx]], idx, type_id
 
-	def update_priority(self, idx, priority, type_id=0): # O(n)
+	def update_priority(self, idx, priority, type_id=0): # O(log)
 		type = self.get_type(type_id)
 		_, batch = self.batches[type].popitem(index=idx) # argument with lowest priority is always 0 because buffer is sorted by priority
 		self.put(batch, priority, type_id)

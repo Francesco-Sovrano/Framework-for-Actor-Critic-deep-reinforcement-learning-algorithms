@@ -129,7 +129,7 @@ class Application(object):
 		used_clients = len(dictionaries) # ignore the first flags.match_count_for_evaluation objects from data, because they are too noisy
 		if used_clients < 1:
 			return {}
-		return {k: sum(d[k] for d in dictionaries)/used_clients for k in dictionaries[0]}
+		return {k: sum(d[k] for d in dictionaries if k in d)/used_clients for k in dictionaries[0]}
 		
 	def train(self):
 		# run training threads

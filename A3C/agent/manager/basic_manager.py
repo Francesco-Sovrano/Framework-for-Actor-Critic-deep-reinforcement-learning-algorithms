@@ -228,12 +228,11 @@ class BasicManager(object):
 		
 	def bootstrap(self, state, concat=None):
 		agent_id = self.agent_id
-		value_batch = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat])
 		bootstrap = self.batch.bootstrap
 		bootstrap['agent_id'] = agent_id
 		bootstrap['state'] = state
 		bootstrap['concat'] = concat
-		bootstrap['value'] = value_batch[0]
+		bootstrap['value'] = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat])[0]
 		
 	def replay_value(self, batch): # replay values
 		for i in range(batch.size):
