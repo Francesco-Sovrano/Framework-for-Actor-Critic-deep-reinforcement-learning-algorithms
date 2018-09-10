@@ -38,6 +38,7 @@ def build():
 	tf.app.flags.DEFINE_float("partitioner_gamma", 0.99, "Partitioner cumulative reward discount factor")
 	tf.app.flags.DEFINE_float("gamma_translation_per_agent", -0.05, "Translation formula: translated_gamma = gamma + (agent_id-1)*gamma_translation_per_agent. With agent_id in [1,partition_count].") # default -0.05
 	tf.app.flags.DEFINE_float("beta_translation_per_agent", 0, "Translation formula: translated_beta = beta + (agent_id-1)*beta_translation_per_agent. With agent_id in [1,partition_count].") # default beta
+	tf.app.flags.DEFINE_boolean("share_internal_state", True, "Whether to share the internal network state (eg: LSTM state) between partitioning agents")
 # Loss clip range
 	tf.app.flags.DEFINE_float("clip", 0.2, "PPO/PVO initial clip range") # default is 0.2, for openAI is 0.1
 	tf.app.flags.DEFINE_boolean("clip_decay", True, "Whether to decay the clip range")
@@ -55,15 +56,23 @@ def build():
 # Reward Prediction: Jaderberg, Max, et al. "Reinforcement learning with unsupervised auxiliary tasks." arXiv preprint arXiv:1611.05397 (2016).
 	tf.app.flags.DEFINE_boolean("predict_reward", False, "Whether to predict rewards. This should be useful with sparse rewards.") # N.B.: Cause of memory leaks! (probably because of tf scope reuse)
 	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 2**7, "Maximum number of batches stored in the reward prediction buffer")
+# Count-Based Exploration: Tang, Haoran, et al. "# Exploration: A study of count-based exploration for deep reinforcement learning." Advances in Neural Information Processing Systems. 2017.
+	tf.app.flags.DEFINE_boolean("use_count_based_exploration_reward", True, "States are mapped to hash codes (using Locality-sensitive hashing), which allows to count their occurrences with a hash table. These counts are then used to compute a reward bonus according to the classic count-based exploration theory.")
+	tf.app.flags.DEFINE_float("exploration_bonus", 0.1, "Bonus coefficient for the count-based exploration reward")
+	tf.app.flags.DEFINE_integer("exploration_hash_size", 10, "Locality-Sensitive Hash size: higher values lead to fewer collisions and are thus more likely to distinguish states. Set 0 for automatic sizing")
+	tf.app.flags.DEFINE_integer("projection_train_set_size", 10**4, "Size of the training set for the Locality-Sensitive Hash projection function")
+	tf.app.flags.DEFINE_integer("steps_before_exploration_reward_bonus", 10, "Number of steps to wait before giving exploration reward bonus")
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
 	tf.app.flags.DEFINE_float("replay_ratio", 0.5, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is not active.") # for A3C is 0, for ACER default is 4
 	tf.app.flags.DEFINE_integer("replay_step", 10**3, "Start replaying when global step is greater than replay_step.")
 	tf.app.flags.DEFINE_boolean("replay_value", False, "Whether to recompute values, advantages and discounted cumulative rewards") # default is True
 	tf.app.flags.DEFINE_integer("replay_buffer_size", 2**10, "Maximum number of batches stored in the experience replay buffer")
-	tf.app.flags.DEFINE_integer("replay_start", 1, "Should be greater than 0 and lower than replay_buffer_size. Train on x batches before using experience replay") # default is 5000
-	tf.app.flags.DEFINE_boolean("prioritized_replay", True, "Whether to use prioritized sampling") # default is True
+	tf.app.flags.DEFINE_integer("replay_start", 1, "Should be greater than 0 and lower than replay_buffer_size. Train on x batches before using experience replay")
+	tf.app.flags.DEFINE_boolean("replay_using_default_internal_state", True, "Whether to use old internal state when replaying, or to use the default one")
 	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
+# Prioritized Experience Replay: Schaul, Tom, et al. "Prioritized experience replay." arXiv preprint arXiv:1511.05952 (2015).
+	tf.app.flags.DEFINE_boolean("prioritized_replay", True, "Whether to use prioritized sampling (if replay_ratio > 0)") # default is True
 # Reward clip
 	tf.app.flags.DEFINE_boolean("clip_reward", False, "Whether to clip the reward between min_reward and max_reward") # default is False
 	tf.app.flags.DEFINE_float("min_reward", 0, "Minimum reward for clipping") # default is -1
@@ -71,7 +80,7 @@ def build():
 # Actor-Critic parameters
 	# Learning rate for Critic is half of Actor's, so multiply by 0.5 (default)
 	tf.app.flags.DEFINE_float("value_coefficient", 0.5, "value coefficient for tuning Critic learning rate") # default is 0.5, for openAI is 0.25
-	tf.app.flags.DEFINE_float("beta", 0.01, "entropy regularization constant") # default is 0.001, for openAI is 0.01
+	tf.app.flags.DEFINE_float("beta", 0.001, "entropy regularization constant") # default is 0.001, for openAI is 0.01
 	tf.app.flags.DEFINE_integer("parallel_size", 4, "parallel thread size")
 	tf.app.flags.DEFINE_integer("min_batch_size", 8, "Minimum max batch size") # default is 8
 	tf.app.flags.DEFINE_integer("max_batch_size", 8, "Maximum max batch size") # default is 60, for openAI is 128
@@ -90,7 +99,7 @@ def build():
 	tf.app.flags.DEFINE_string("log_dir", "./log", "events directory")
 	tf.app.flags.DEFINE_boolean("print_loss", True, "whether to print losses inside statistics") # print_loss = True might slow down the algorithm
 	tf.app.flags.DEFINE_string("show_episodes", 'random', "What type of episodes to save: random, best, all, none")
-	tf.app.flags.DEFINE_float("show_episode_probability", 1e-3, "Probability of showing an episode when show_episodes == random")
+	tf.app.flags.DEFINE_float("show_episode_probability", e-2, "Probability of showing an episode when show_episodes == random")
 	# save_episode_screen = True might slow down the algorithm -> use in combination with show_episodes = 'random' for best perfomance
 	tf.app.flags.DEFINE_boolean("save_episode_screen", False, "whether to save episode screens")
 	# save_episode_heatmap = True slows down the algorithm -> works only with rogue

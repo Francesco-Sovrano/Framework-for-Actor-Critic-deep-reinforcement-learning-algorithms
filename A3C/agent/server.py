@@ -49,7 +49,6 @@ class Application(object):
 		self.stop_requested = False
 		self.terminate_reqested = False
 		self.build_network()
-		self.lock = threading.Lock()
 			
 	def build_network(self):
 		# global network
@@ -100,28 +99,28 @@ class Application(object):
 	
 		while True:
 			if self.stop_requested:
-				break
+				return
 			if self.terminate_reqested:
 				trainer.stop()
 				if parallel_index == 0:
 					self.save()
-				break
+				return
 			if self.global_step > flags.max_time_step:
 				trainer.stop()
-				break
+				return
 			if parallel_index == 0 and self.global_step > self.next_save_steps:
 				# Save checkpoint
 				self.save()
 	
 			diff_global_step = trainer.process(self.global_step)
-			with self.lock:
-				self.global_step += diff_global_step			
-				# print global statistics
-				if trainer.terminal:
-					info = self.get_global_statistics(clients=self.trainers)
-					if info:
-						info_str = "<{}> {}".format(self.global_step, ["{}={}".format(key,value) for key,value in sorted(info.items(), key=lambda t: t[0])])
-						self.training_logger.info(info_str) # Print statistics
+			self.global_step += diff_global_step
+			# print global statistics
+			if trainer.terminal:
+				info = self.get_global_statistics(clients=self.trainers)
+				if info:
+					info_str = "<{}> {}".format(self.global_step, ["{}={}".format(key,value) for key,value in sorted(info.items(), key=lambda t: t[0])])
+					self.training_logger.info(info_str) # Print statistics
+				if parallel_index == 0:
 					sys.stdout.flush() # force print immediately what is in output buffer
 
 	def get_global_statistics(self, clients):

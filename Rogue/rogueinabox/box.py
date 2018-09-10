@@ -249,7 +249,7 @@ class RogueBox:
 		while old_screen[-1] == new_screen[-1]: # after a command execution, the new screen is always different from the old one
 			# print (self.screen[-1])
 			self._update_screen()
-			while max_iter>0 and self._need_to_dismiss(): # will dismiss all upcoming messages
+			while max_iter > 0 and self._need_to_dismiss(): # will dismiss all upcoming messages
 				self._dismiss_message()
 				self._update_screen()
 				max_iter -= 1

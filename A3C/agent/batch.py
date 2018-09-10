@@ -11,6 +11,7 @@ class ExperienceBatch(object):
 		self.policies = [deque() for _ in range(model_size)]
 		self.rewards = [deque() for _ in range(model_size)]
 		self.values = [deque() for _ in range(model_size)]
+		self.internal_states = [deque() for _ in range(model_size)]
 		# cumulative info
 		self.discounted_cumulative_rewards = [None for _ in range(model_size)]
 		self.generalized_advantage_estimators = [None for _ in range(model_size)]
@@ -40,17 +41,18 @@ class ExperienceBatch(object):
 	def get_agent(self, index):
 		return self.get_agent_and_pos(index)[0]
 
-	def add_agent_action(self, agent_id, state, concat, action, policy, reward, value, memorize_step=True):
+	def add_agent_action(self, agent_id, state, concat, action, policy, reward, value, internal_state=None, memorize_step=True):
 		self.states[agent_id].append(state)
 		self.concats[agent_id].append(concat)
-		self.rewards[agent_id].append(reward)
+		self.internal_states[agent_id].append(internal_state)
+		self.rewards[agent_id].append(sum(reward)) # extrinsic + intrinsic reward
 		self.values[agent_id].append(value)
 		self.actions[agent_id].append(action)
 		self.policies[agent_id].append(policy)
 		if memorize_step:
 			self.agent_position_list.append( (agent_id, len(self.states[agent_id])-1) ) # (agent_id, batch_position)
 			self.size += 1
-			self.total_reward += reward
+			self.total_reward += reward[0] # sum only extrinsic rewards
 		
 class RewardPredictionBatch(object):
 	__slots__ = ('states', 'target')

@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import matplotlib
 matplotlib.use('Agg',force=True) # no display
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas

@@ -10,6 +10,7 @@ from agent.network import *
 from utils.buffer import Buffer, PrioritizedBuffer
 # from utils.schedules import LinearSchedule
 from agent.batch import ExperienceBatch, RewardPredictionBatch
+from sklearn import random_projection
 
 import options
 flags = options.get()
@@ -47,6 +48,10 @@ class BasicManager(object):
 		self._model_usage_list = deque()
 		if flags.print_loss:
 			self._loss_list = [{} for _ in range(self.model_size)]
+	# Count based exploration	
+		if flags.use_count_based_exploration_reward:
+			self.projection = None
+			self.projection_train_set = []
 			
 	def is_global_network(self):
 		return self.global_network is None
@@ -135,27 +140,59 @@ class BasicManager(object):
 		return vars
 		
 	def reset(self):
+		self.step = 0
 		self.agent_id = 0
-		for agent in self.model_list:
-			agent.reset()
+		# Internal state
+		if flags.share_internal_state:
+			self.internal_state = None
+		else:
+			self.internal_state = [None for _ in range(self.model_size)] # do not mix internal_states from different agents
+		# Count based exploration
+		if flags.use_count_based_exploration_reward:
+			self.hash_state_table = {}
 			
 	def initialize_new_batch(self):
 		self.batch = ExperienceBatch(self.model_size)
 		
-	def estimate_value(self, agent_id, states, concats=None):
-		return self.get_model(agent_id).predict_value(states=states, concats=concats)
+	def estimate_value(self, agent_id, states, concats=None, internal_state=None):
+		return self.get_model(agent_id).predict_value(states=states, concats=concats, internal_state=internal_state)
 		
 	def act(self, act_function, state, concat=None):
+		self.step += 1
 		agent_id = self.agent_id
 		agent = self.get_model(agent_id)
-		action_batch, value_batch, policy_batch = agent.predict_action(states=[state], concats=[concat])
+		internal_state = self.internal_state if flags.share_internal_state else self.internal_state[agent_id]
+		action_batch, value_batch, policy_batch, new_internal_state = agent.predict_action(states=[state], concats=[concat], internal_state=internal_state)
+		
+		if flags.share_internal_state:
+			self.internal_state = new_internal_state
+		else:
+			self.internal_state[agent_id] = new_internal_state
 		action, value, policy = action_batch[0], value_batch[0], policy_batch[0]
-		new_state, reward, terminal = act_function(action)
+		new_state, extrinsic_reward, terminal = act_function(action)
 		if flags.clip_reward:
-			reward = np.clip(reward, flags.min_reward, flags.max_reward)
+			extrinsic_reward = np.clip(extrinsic_reward, flags.min_reward, flags.max_reward)
+			
+		intrinsic_reward = 0
+		if flags.use_count_based_exploration_reward: # intrinsic reward
+			if len(self.projection_train_set) < flags.projection_train_set_size:
+				self.projection_train_set.append(new_state.flatten())
+			if len(self.projection_train_set) == flags.projection_train_set_size:
+				if self.projection is None:
+					self.projection = random_projection.SparseRandomProjection(n_components=flags.exploration_hash_size if flags.exploration_hash_size > 0 else 'auto') # http://scikit-learn.org/stable/modules/random_projection.html
+				self.projection.fit(self.projection_train_set)
+				self.projection_train_set = [] # reset
+			if self.projection is not None:
+				state_projection = self.projection.transform([new_state.flatten()])[0] # project to smaller dimension
+				state_hash = ''.join('1' if x > 0 else '0' for x in state_projection) # build binary locality-sensitive hash
+				if state_hash not in self.hash_state_table:
+					self.hash_state_table[state_hash] = 1
+					if self.step > flags.steps_before_exploration_reward_bonus:
+						intrinsic_reward += flags.exploration_bonus
 
-		self.batch.add_agent_action(agent_id, state, concat, action, policy, reward, value)
-		return new_state, value, action, reward, terminal, policy
+		total_reward = [extrinsic_reward, intrinsic_reward]
+		self.batch.add_agent_action(agent_id=agent_id, state=state, concat=concat, action=action, policy=policy, reward=total_reward, value=value, internal_state=internal_state)
+		return new_state, value, action, total_reward, terminal, policy
 					
 	def compute_cumulative_reward(self, batch):
 		# prepare batch
@@ -181,9 +218,10 @@ class BasicManager(object):
 			batch.set_step_action({'discounted_cumulative_rewards':discounted_cumulative_reward, 'generalized_advantage_estimators':generalized_advantage_estimator}, index)
 		return batch
 		
-	def train(self, batch, replay=False):
+	def train(self, batch):
 		# assert self.global_network is not None, 'you are trying to train the global network'
 		states = batch.states
+		internal_states = batch.internal_states
 		concats = batch.concats
 		actions = batch.actions
 		policies = batch.policies
@@ -213,7 +251,7 @@ class BasicManager(object):
 					generalized_advantage_estimators=gae[i],
 					reward_prediction_states=rp_states,
 					reward_prediction_target=rp_target,
-					replay=replay
+					internal_state=internal_states[i][0]
 				)
 				batch_error.append(error)
 				# loss statistics
@@ -228,21 +266,32 @@ class BasicManager(object):
 		
 	def bootstrap(self, state, concat=None):
 		agent_id = self.agent_id
+		internal_state = self.internal_state if flags.share_internal_state else self.internal_state[agent_id]
+		value_batch, _ = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], internal_state=internal_state)
 		bootstrap = self.batch.bootstrap
 		bootstrap['agent_id'] = agent_id
 		bootstrap['state'] = state
 		bootstrap['concat'] = concat
-		bootstrap['value'] = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat])[0]
+		bootstrap['value'] = value_batch[0]
 		
 	def replay_value(self, batch): # replay values
+		internal_states = batch.get_step_action('internal_states', 0) if flags.share_internal_state else [batch.internal_states[i][0] if len(batch.internal_states[i])>0 else None for i in range(self.model_size)]
 		for i in range(batch.size):
 			concat, state = batch.get_step_action(['concats','states'], i)
 			agent_id = batch.get_agent(i)
-			batch.set_step_action({'values':self.estimate_value(agent_id=agent_id, states=[state], concats=[concat])[0]}, i)
+			internal_state = internal_states if flags.share_internal_state else internal_states[agent_id]
+			value_batch, new_internal_state = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], internal_state=internal_state)
+			batch.set_step_action({'internal_states':internal_state, 'values':value_batch[0]}, i)
+			if flags.share_internal_state:
+				internal_states = new_internal_state
+			else: 
+				internal_states[agent_id] = new_internal_state
 		if 'value' in batch.bootstrap:
 			bootstrap = batch.bootstrap
 			agent_id = bootstrap['agent_id']
-			bootstrap['value'] = self.estimate_value(agent_id=agent_id, states=[bootstrap['state']], concats=[bootstrap['concat']])[0]
+			internal_state = internal_states if flags.share_internal_state else internal_states[agent_id]
+			value_batch, _ = self.estimate_value(agent_id=agent_id, states=[bootstrap['state']], concats=[bootstrap['concat']], internal_state=internal_state)
+			bootstrap['value'] = value_batch[0]
 		return self.compute_cumulative_reward(batch)
 		
 	def should_save_batch(self, batch):
@@ -275,6 +324,8 @@ class BasicManager(object):
 		batch_reward = batch.total_reward
 		if batch_reward == 0 and flags.save_only_batches_with_reward:
 			return
+		if flags.replay_using_default_internal_state:
+			batch.internal_states = [[None] for _ in range(self.model_size)]
 		type_id = 1 if batch_reward > 0 else 0
 		if flags.prioritized_replay:
 			self.experience_buffer.put(batch=batch, priority=sum(batch_error)/len(batch_error), type_id=type_id)
@@ -292,7 +343,7 @@ class BasicManager(object):
 				old_batch, batch_index, type_id = self.experience_buffer.sample()
 			else:
 				old_batch = self.experience_buffer.sample()
-			old_batch_error = self.train(self.replay_value(old_batch) if flags.replay_value else old_batch, replay=True)
+			old_batch_error = self.train(self.replay_value(old_batch) if flags.replay_value else old_batch)
 			if flags.prioritized_replay:
 				avg_error = sum(old_batch_error)/len(old_batch_error)
 				self.experience_buffer.update_priority(batch_index, avg_error, type_id)
@@ -306,7 +357,7 @@ class BasicManager(object):
 				return # cannot train without reward prediction, wait until reward_prediction_buffer is not empty
 		# train
 		batch_error = self.train(batch)
-		# experience replay
+		# experience replay (after training!)
 		if flags.replay_ratio > 0 and global_step > flags.replay_step:
 			self.replay_experience()
 			self.add_to_replay_buffer(batch, batch_error)

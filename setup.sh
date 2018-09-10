@@ -14,7 +14,6 @@ pip install --upgrade pip
 pip install tensorflow scipy # tensorflow includes numpy
 pip install matplotlib seaborn imageio
 pip install sortedcontainers
-# pip install nearpy # for locality sensitive hashing
 # install gym
 pip install gym[atari]
 # install rogue

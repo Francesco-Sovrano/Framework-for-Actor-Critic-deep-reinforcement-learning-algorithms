@@ -58,11 +58,11 @@ class BaseAC_Network(object):
 			self.old_policy_batch = self._policy_placeholder("old_policy")
 			self.old_action_batch = self._action_placeholder("old_action_batch")
 			self.cumulative_reward_batch = self._value_placeholder("cumulative_reward")
+			self.advantage_batch = self._value_placeholder("advantage")
 			self.lstm_initial_state = self._lstm_state_placeholder(batch_size=1, units=self.lstm_units, name="initial_lstm_state") # for stateful lstm
+			self.lstm_default_state = self._lstm_default_state(batch_size=1, units=self.lstm_units)
 			# [Batch Normalization]
 			# _, self.state_batch_norm = self._batch_norm_layer(input=self.state_batch, scope="Global", name="State", share_trainables=False) # global
-			# [Advantage]
-			self.advantage_batch = tf.stop_gradient(self.cumulative_reward_batch - self.old_value_batch) # stopping gradient
 			# [CNN]
 			self.cnn = self._cnn_layer(input=self.state_batch, scope=parent_scope_name) # shared with family
 			# [Concat]
@@ -82,7 +82,7 @@ class BaseAC_Network(object):
 		# Sample action, after getting keys
 		self.action_batch = self.sample_actions()
 		# Get cnn feature mean entropy
-		self.fentropy = self.get_feature_entropy(input=self.lstm, scope=scope_name)
+		# self.fentropy = self.get_feature_entropy(input=self.lstm, scope=scope_name)
 		# Print shapes
 		print( "    [{}]Input shape: {}".format(self.id, self.state_batch.get_shape()) )
 		print( "    [{}]Concatenation shape: {}".format(self.id, self.concat_batch.get_shape()) )
@@ -260,8 +260,8 @@ class BaseAC_Network(object):
 				cross_entropy=new_policy_distributions.cross_entropy(self.old_action_batch), 
 				old_cross_entropy=old_policy_distributions.cross_entropy(self.old_action_batch), 
 				advantage=self.advantage_batch, 
-				entropy=self.fentropy, 
-				# entropy=new_policy_distributions.entropy(), 
+				# entropy=self.fentropy, 
+				entropy=new_policy_distributions.entropy(), 
 				beta=self.beta
 			)
 			self.policy_loss = policy_loss_builder.get()
@@ -308,27 +308,27 @@ class BaseAC_Network(object):
 	def get_shared_keys(self):
 		return self.shared_keys # get model variables
 		
-	def reset(self):
-		self.sibling.lstm_last_state = self._lstm_default_state(batch_size=1, units=self.lstm_units)
-		self.sibling.lstm_train_state = self.sibling.lstm_last_state # no need for deepcopy until lstm_last_state is tuple
-		
-	def predict_action(self, states, concats=None):
-		feed_dict = { self.state_batch : states, self.lstm_initial_state: self.sibling.lstm_last_state }
+	def predict_action(self, states, concats=None, internal_state=None):
+		if internal_state is None:
+			internal_state = self.lstm_default_state
+		feed_dict = { self.state_batch : states, self.lstm_initial_state: internal_state }
 		if self.concat_size > 0:
 			feed_dict.update( { self.concat_batch : concats } )
-		action_batch, value_batch, policy_batch, self.sibling.lstm_last_state = self.session.run(fetches=[self.action_batch, self.value_batch, self.policy_batch, self.lstm_final_state], feed_dict=feed_dict)
-		return action_batch, value_batch, policy_batch
+		# return action_batch, value_batch, policy_batch, new_internal_state
+		return self.session.run(fetches=[self.action_batch, self.value_batch, self.policy_batch, self.lstm_final_state], feed_dict=feed_dict)
 				
-	def predict_value(self, states, concats=None):
-		feed_dict = { self.state_batch : states, self.lstm_initial_state: self.sibling.lstm_last_state }
+	def predict_value(self, states, concats=None, internal_state=None):
+		if internal_state is None:
+			internal_state = self.lstm_default_state
+		feed_dict = { self.state_batch : states, self.lstm_initial_state: internal_state }
 		if self.concat_size > 0:
 			feed_dict.update( { self.concat_batch : concats } )
-		#return value_batch
-		return self.session.run(fetches=[self.value_batch], feed_dict=feed_dict)
+		#return value_batch, new_internal_state
+		return self.session.run(fetches=[self.value_batch, self.lstm_final_state], feed_dict=feed_dict)
 				
-	def train(self, replay, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats=None, reward_prediction_states=None, reward_prediction_target=None):
+	def train(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats=None, internal_state=None, reward_prediction_states=None, reward_prediction_target=None):
 		self.train_count += len(states)
-		feed_dict = self.build_train_feed(replay, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, reward_prediction_states, reward_prediction_target)
+		feed_dict = self.build_train_feed(states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, internal_state, reward_prediction_states, reward_prediction_target)
 		# run train op
 		_, total_loss, policy_loss, value_loss, extra_loss, policy_kl_divergence, policy_clipping_frequency, policy_entropy_contribution = self.session.run(fetches=[self.train_op, self.total_loss, self.policy_loss, self.value_loss, self.extra_loss, self.policy_kl_divergence, self.policy_clipping_frequency, self.policy_entropy_contribution], feed_dict=feed_dict) # Minimize gradients and copy them to global network
 		# build and return loss dict
@@ -337,19 +337,24 @@ class BaseAC_Network(object):
 			train_info.update( {"extra": extra_loss} )
 		return total_loss, train_info
 		
-	def build_train_feed(self, replay, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, reward_prediction_states, reward_prediction_target):
+	def build_train_feed(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, internal_state, reward_prediction_states, reward_prediction_target):
+		values = np.reshape(values,[-1])
 		if flags.use_GAE: # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
 			advantages = np.reshape(generalized_advantage_estimators,[-1])
-			values = np.reshape(values,[-1])
 			cumulative_rewards = advantages + values
 		else:
 			cumulative_rewards = np.reshape(discounted_cumulative_rewards,[-1])
+			advantages = cumulative_rewards - values
+		if internal_state is None:
+			internal_state = self.lstm_default_state
 		feed_dict={
 				self.state_batch: states,
+				self.advantage_batch: advantages,
 				self.cumulative_reward_batch: cumulative_rewards,
 				self.old_value_batch: values,
 				self.old_policy_batch: policies,
-				self.old_action_batch: actions
+				self.old_action_batch: actions,
+				self.lstm_initial_state: internal_state # set lstm state
 			}
 		if self.concat_size > 0:
 			feed_dict.update( {self.concat_batch : concats} )
@@ -358,12 +363,6 @@ class BaseAC_Network(object):
 				self.reward_prediction_state_batch: reward_prediction_states,
 				self.reward_prediction_labels: reward_prediction_target
 			} )
-		# set lstm state
-		if not replay: # update train state
-			feed_dict.update( { self.lstm_initial_state: self.sibling.lstm_train_state } )
-			self.sibling.lstm_train_state = self.sibling.lstm_last_state # no need for deepcopy until lstm_last_state is tuple
-		else: # when replaying it does not make any sense to use current episode lstm state, use default one instead as it was a new episode
-			feed_dict.update( { self.lstm_initial_state: self._lstm_default_state(batch_size=1, units=self.lstm_units) } ) # default state
 		return feed_dict
 		
 	def _lstm_default_state(self, units, batch_size=None):

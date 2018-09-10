@@ -205,7 +205,7 @@ class Worker(object):
 				state=state,
 				concat=self.environment.get_concatenation() if flags.use_concatenation else None
 			)
-			self.episode_reward += reward
+			self.episode_reward += sum(reward)
 			
 			if self.save_frame_info:
 				self.frame_info_list.append( self.environment.get_frame_info(network=self.local_network, value=value, action=action, reward=reward, policy=policy) )

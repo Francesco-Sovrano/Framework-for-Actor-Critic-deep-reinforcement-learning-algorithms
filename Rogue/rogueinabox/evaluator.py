@@ -21,7 +21,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import numpy as np
 
 class Episode:
 	def __init__(self, infos, reward, has_won, step):

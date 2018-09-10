@@ -51,7 +51,7 @@ class RogueEnvironment(environment.Environment):
 		
 	def get_frame_info(self, network, value, action, reward, policy):
 		# Screen
-		last_frame = self.game.get_frame(-2)	
+		last_frame = self.game.get_frame(-1)
 		state_info = "reward={}, passages={}, doors={}, below_player={}, agent={}, value={}, policy={}\n".format( 
 			reward,
 			last_frame.get_tile_count("#"),
