@@ -69,7 +69,7 @@ class KMeansPartitioner(BasicManager):
 		return self.partitioner_trained and step%flags.partitioner_granularity==0
 		
 	def act(self, act_function, state, concat=None):
-		if self.query_partitioner(self.batch.size):
+		if self.query_partitioner(self.step):
 			self.agent_id = self.get_state_partition(state)
 		return super().act(act_function, state, concat)
 		
@@ -91,7 +91,7 @@ class KMeansPartitioner(BasicManager):
 						self.buffer.clean()
 			
 	def bootstrap(self, state, concat=None):
-		if self.query_partitioner(self.batch.size):
+		if self.query_partitioner(self.step):
 			self.agent_id = self.get_state_partition(state)
 		super().bootstrap(state, concat)
 			

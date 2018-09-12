@@ -15,10 +15,9 @@ from agent.loss.value_loss import ValueLoss
 from utils.distributions import Categorical, Normal
 
 class BaseAC_Network(object):
-	def __init__(self, session, id, state_shape, action_shape, clip, device, predict_reward, concat_size=0, beta=None, gamma=None, training=True, parent=None, sibling=None):
+	def __init__(self, session, id, state_shape, action_shape, clip, device, predict_reward, concat_size=0, beta=None, training=True, parent=None, sibling=None):
 		self.train_count = 0
 		self.beta = beta if beta is not None else flags.beta
-		self.gamma = gamma if gamma is not None else flags.gamma
 		self.clip = clip
 		self.predict_reward = predict_reward
 		# initialize
@@ -331,21 +330,18 @@ class BaseAC_Network(object):
 		self.train_count += len(states)
 		feed_dict = self.build_train_feed(states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, internal_state, reward_prediction_states, reward_prediction_target)
 		# run train op
-		_, new_internal_state, total_loss, policy_loss, value_loss, extra_loss, policy_kl_divergence, policy_clipping_frequency, policy_entropy_contribution = self.session.run
-		(
-			fetches=[
-				self.train_op, # Minimize gradients and copy them to global network
-				self.lstm_final_state, self.total_loss, 
-				self.policy_loss, self.value_loss, self.extra_loss, 
-				self.policy_kl_divergence, self.policy_clipping_frequency, self.policy_entropy_contribution
-			], 
-			feed_dict=feed_dict
-		)
+		fetches=[
+			self.train_op, # Minimize gradients and copy them to global network
+			self.total_loss, 
+			self.policy_loss, self.value_loss, self.extra_loss, 
+			self.policy_kl_divergence, self.policy_clipping_frequency, self.policy_entropy_contribution
+		]
+		_, total_loss, policy_loss, value_loss, extra_loss, policy_kl_divergence, policy_clipping_frequency, policy_entropy_contribution = self.session.run(fetches=fetches, feed_dict=feed_dict)
 		# build and return loss dict
 		train_info = {"actor": policy_loss, "critic": value_loss, "actor_kl_divergence": policy_kl_divergence, "actor_clipping_frequency": policy_clipping_frequency, "actor_entropy_contribution": policy_entropy_contribution}
 		if self.predict_reward:
 			train_info.update( {"extra": extra_loss} )
-		return total_loss, train_info, new_internal_state
+		return total_loss, train_info
 		
 	def build_train_feed(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, internal_state, reward_prediction_states, reward_prediction_target):
 		values = np.reshape(values,[-1])

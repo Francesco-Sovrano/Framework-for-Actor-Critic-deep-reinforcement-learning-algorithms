@@ -36,7 +36,6 @@ def build():
 	tf.app.flags.DEFINE_float("partitioner_alpha", 7e-4, "Partitioner learning rate") # Usually the partitioner has an higher learning rate than the others
 	tf.app.flags.DEFINE_float("partitioner_beta", 0.001, "Partitioner entropy regularization constant")
 	tf.app.flags.DEFINE_float("partitioner_gamma", 0.99, "Partitioner cumulative reward discount factor")
-	tf.app.flags.DEFINE_float("gamma_translation_per_agent", 0, "Translation formula: translated_gamma = gamma + (agent_id-1)*gamma_translation_per_agent. With agent_id in [1,partition_count].") # default -0.05
 	tf.app.flags.DEFINE_float("beta_translation_per_agent", 0.001, "Translation formula: translated_beta = beta + (agent_id-1)*beta_translation_per_agent. With agent_id in [1,partition_count].") # default beta
 	tf.app.flags.DEFINE_boolean("share_internal_state", False, "Whether to share the internal network state (eg: LSTM state) between partitioning agents")
 # Loss clip range
@@ -70,7 +69,6 @@ def build():
 	tf.app.flags.DEFINE_integer("replay_buffer_size", 2**6, "Maximum number of batches stored in the experience replay buffer")
 	tf.app.flags.DEFINE_integer("replay_start", 1, "Buffer minimum size before starting replay. Should be greater than 0 and lower than replay_buffer_size.")
 	tf.app.flags.DEFINE_boolean("replay_using_default_internal_state", False, "Whether to use old internal state when replaying, or to use the default one")
-	tf.app.flags.DEFINE_boolean("replay_change_current_internal_state", False, "Whether to change current internal state when replaying")
 	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
 # Prioritized Experience Replay: Schaul, Tom, et al. "Prioritized experience replay." arXiv preprint arXiv:1511.05952 (2015).
 	tf.app.flags.DEFINE_boolean("prioritized_replay", True, "Whether to use prioritized sampling (if replay_ratio > 0)") # default is True
@@ -79,7 +77,6 @@ def build():
 	tf.app.flags.DEFINE_float("min_reward", 0, "Minimum reward for clipping") # default is -1
 	tf.app.flags.DEFINE_float("max_reward", 1, "Maximum reward for clipping") # default is 1
 # Actor-Critic parameters
-	tf.app.flags.DEFINE_boolean("train_change_current_internal_state", False, "Whether to change current internal state when training")
 	# Learning rate for Critic is half of Actor's, so multiply by 0.5 (default)
 	tf.app.flags.DEFINE_float("value_coefficient", 0.5, "value coefficient for tuning Critic learning rate") # default is 0.5, for openAI is 0.25
 	tf.app.flags.DEFINE_float("beta", 0.001, "entropy regularization constant") # default is 0.001, for openAI is 0.01

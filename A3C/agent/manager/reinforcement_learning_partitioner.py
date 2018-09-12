@@ -18,6 +18,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		self.model_size = flags.partition_count+1 # manager output size
 		if self.model_size < 2:
 			self.model_size = 2
+		self.agents_set = set(range(1,self.model_size))
 
 	def get_agents_count(self):
 		return self.model_size-1
@@ -33,7 +34,6 @@ class ReinforcementLearningPartitioner(BasicManager):
 			action_shape=(1,agents_count), 
 			# concat_size=agents_count+1 if flags.use_concatenation else 0, 
 			beta=flags.partitioner_beta, 
-			gamma=flags.partitioner_gamma, 
 			clip=self.clip[0], 
 			predict_reward=flags.predict_reward, 
 			training = self.training
@@ -49,7 +49,6 @@ class ReinforcementLearningPartitioner(BasicManager):
 				action_shape=action_shape, 
 				concat_size=concat_size, 
 				beta=flags.beta + i*flags.beta_translation_per_agent, 
-				gamma=flags.gamma + i*flags.gamma_translation_per_agent, 
 				clip=self.clip[i+1], 
 				predict_reward=flags.predict_reward, 
 				training = self.training, 
@@ -81,8 +80,17 @@ class ReinforcementLearningPartitioner(BasicManager):
 		super().reset()
 		self.last_manager_action = [0]*self.get_agents_count()
 		self.last_manager_value = 0
-		self.last_manager_reward = 0
+		self.last_manager_reward = np.zeros(2)
 		self.manager_internal_state = None
+		
+	def initialize_new_batch(self):
+		query_partitioner = self.query_partitioner(self.step)
+		if not query_partitioner:
+			last_action = self.batch.get_action(['states','concats','actions','policies','rewards','values','internal_states'], 0, -1)
+		super().initialize_new_batch()
+		if not query_partitioner:
+			state, concat, action, policy, reward, value, internal_state = last_action
+			self.batch.add_action(agent_id=0, state=states, concat=concat, action=action, policy=policy, reward=reward, value=value, internal_state=internal_state)
 		
 	def act(self, act_function, state, concat=None):
 		if self.query_partitioner(self.step):
@@ -91,18 +99,19 @@ class ReinforcementLearningPartitioner(BasicManager):
 			self.agent_id, manager_action, manager_value, manager_policy, self.manager_internal_state = self.get_state_partition(state=state, concat=manager_concat, internal_state=internal_state)
 			self.last_manager_action = manager_action
 			self.last_manager_value = manager_value
-			query_reward = [0,0] # [extrinsic, intrinsic] # N.B.: the query reward is unknown since bootstrap or a new query starts
-			self.batch.add_agent_action(agent_id=0, state=state, concat=manager_concat, action=manager_action, policy=manager_policy, reward=query_reward, value=manager_value, internal_state=internal_state, memorize_step=False)
+			self.last_manager_reward = np.zeros(2) # [extrinsic, intrinsic] # N.B.: the query reward is unknown since bootstrap or a new query starts
+			self.batch.add_action(agent_id=0, state=state, concat=manager_concat, action=manager_action, policy=manager_policy, reward=self.last_manager_reward, value=manager_value, internal_state=internal_state)
 			
 		new_state, value, action, total_reward, terminal, policy = super().act(act_function, state, concat)
 		# keep query reward updated
-		self.last_manager_reward += sum(total_reward)
-		self.batch.rewards[0][-1] = self.last_manager_reward
+		self.last_manager_reward += total_reward
+		self.batch.set_action({'rewards':self.last_manager_reward}, 0, -1)
 		return new_state, value, action, total_reward, terminal, policy
 		
 	def bootstrap(self, state, concat=None):
 		manager_concat = self.get_manager_concatenation()
 		new_agent_id, _, manager_value, _, _ = self.get_state_partition(state=state, concat=manager_concat, internal_state=self.manager_internal_state)
+		self.batch.bootstrap['manager_internal_state'] = self.manager_internal_state
 		self.batch.bootstrap['manager_concat'] = manager_concat
 		self.batch.bootstrap['manager_value'] = manager_value
 		if self.query_partitioner(self.step):
@@ -110,36 +119,17 @@ class ReinforcementLearningPartitioner(BasicManager):
 		super().bootstrap(state, concat)
 		
 	def replay_value(self, batch): # replay values
-		internal_state = batch.internal_states[0][0]
-		for i in range(len(batch.states[0])):
-			state = batch.states[0][i]
-			concat = batch.concats[0][i]
-			batch.internal_states[0][i] = internal_state
-			value_batch, internal_state = self.estimate_value(agent_id=0, states=[state], concats=[concat], internal_state=internal_state)
-			batch.values[0][i] = value_batch[0]
+		for (_,i) in batch.step_generator(agents=[0]):
+			state, concat, internal_state = batch.get_action(['states','concats','internal_states'], 0, i)
+			value_batch, _ = self.estimate_value(agent_id=0, states=[state], concats=[concat], internal_state=internal_state)
+			batch.set_action({'values':value_batch[0]}, 0, i)
 		if 'manager_value' in batch.bootstrap:
 			bootstrap = batch.bootstrap
-			value_batch, _ = self.estimate_value(agent_id=0, states=[bootstrap['state']], concats=[bootstrap['manager_concat']], internal_state=internal_state)
+			value_batch, _ = self.estimate_value(agent_id=0, states=[bootstrap['state']], concats=[bootstrap['manager_concat']], internal_state=bootstrap['manager_internal_state'])
 			bootstrap['manager_value'] = value_batch[0]
 		return super().replay_value(batch)
 		
-	def compute_cumulative_reward(self, batch):
-		manager_discounted_cumulative_reward = 0.0
-		manager_generalized_advantage_estimator = 0.0
-		# Bootstrap partitioner
-		if 'manager_value' in batch.bootstrap:
-			manager_discounted_cumulative_reward = batch.bootstrap['manager_value']
-		# Compute agents' cumulative_reward
-		batch = super().compute_cumulative_reward(batch)
-		# Compute partitioner's cumulative_reward
-		last_manager_value = manager_discounted_cumulative_reward
-		batch_length = len(batch.values[0])
-		for i in range(batch_length-1,-1,-1):
-			query_reward = batch.rewards[0][i]
-			manager_value = batch.values[0][i]
-			manager_discounted_cumulative_reward = query_reward + self.manager.gamma*manager_discounted_cumulative_reward
-			manager_generalized_advantage_estimator = query_reward + self.manager.gamma*last_manager_value - manager_value + self.manager.gamma*flags.lambd*manager_generalized_advantage_estimator
-			last_manager_value = manager_value
-			batch.discounted_cumulative_rewards[0].appendleft(manager_discounted_cumulative_reward)
-			batch.generalized_advantage_estimators[0].appendleft(manager_generalized_advantage_estimator)
+	def compute_discounted_cumulative_reward(self, batch):
+		batch.compute_discounted_cumulative_reward(agents=self.agents_set, last_value=batch.bootstrap['value'] if 'value' in batch.bootstrap else 0., gamma=flags.gamma, lambd=flags.lambd)
+		batch.compute_discounted_cumulative_reward(agents=[0], last_value=batch.bootstrap['manager_value'] if 'manager_value' in batch.bootstrap else 0., gamma=flags.partitioner_gamma, lambd=flags.lambd)
 		return batch
