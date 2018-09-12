@@ -20,7 +20,7 @@ def build():
 	# In information theory, the cross entropy between two probability distributions p and q over the same underlying set of events measures the average number of bits needed to identify an event drawn from the set.
 	tf.app.flags.DEFINE_boolean("only_non_negative_entropy", True, "Cross-entropy and entropy are used for policy loss and if this flag is true, then entropy=max(0,entropy). If cross-entropy measures the average number of bits needed to identify an event, then it cannot be negative.")
 	# Use mean losses if max_batch_size is too big, in order to avoid NaN
-	tf.app.flags.DEFINE_string("loss_type", "mean", "type of loss reduction: sum, mean")
+	tf.app.flags.DEFINE_string("loss_type", "sum", "type of loss reduction: sum, mean")
 	tf.app.flags.DEFINE_string("policy_loss", "PPO", "policy loss function: Vanilla, PPO")
 	tf.app.flags.DEFINE_string("value_loss", "Vanilla", "value loss function: Vanilla, PVO")
 # Partitioner parameters
@@ -36,9 +36,9 @@ def build():
 	tf.app.flags.DEFINE_float("partitioner_alpha", 7e-4, "Partitioner learning rate") # Usually the partitioner has an higher learning rate than the others
 	tf.app.flags.DEFINE_float("partitioner_beta", 0.001, "Partitioner entropy regularization constant")
 	tf.app.flags.DEFINE_float("partitioner_gamma", 0.99, "Partitioner cumulative reward discount factor")
-	tf.app.flags.DEFINE_float("gamma_translation_per_agent", -0.05, "Translation formula: translated_gamma = gamma + (agent_id-1)*gamma_translation_per_agent. With agent_id in [1,partition_count].") # default -0.05
-	tf.app.flags.DEFINE_float("beta_translation_per_agent", 0, "Translation formula: translated_beta = beta + (agent_id-1)*beta_translation_per_agent. With agent_id in [1,partition_count].") # default beta
-	tf.app.flags.DEFINE_boolean("share_internal_state", True, "Whether to share the internal network state (eg: LSTM state) between partitioning agents")
+	tf.app.flags.DEFINE_float("gamma_translation_per_agent", 0, "Translation formula: translated_gamma = gamma + (agent_id-1)*gamma_translation_per_agent. With agent_id in [1,partition_count].") # default -0.05
+	tf.app.flags.DEFINE_float("beta_translation_per_agent", 0.001, "Translation formula: translated_beta = beta + (agent_id-1)*beta_translation_per_agent. With agent_id in [1,partition_count].") # default beta
+	tf.app.flags.DEFINE_boolean("share_internal_state", False, "Whether to share the internal network state (eg: LSTM state) between partitioning agents")
 # Loss clip range
 	tf.app.flags.DEFINE_float("clip", 0.2, "PPO/PVO initial clip range") # default is 0.2, for openAI is 0.1
 	tf.app.flags.DEFINE_boolean("clip_decay", True, "Whether to decay the clip range")
@@ -64,12 +64,13 @@ def build():
 	tf.app.flags.DEFINE_integer("steps_before_exploration_reward_bonus", 10, "Number of steps to wait before giving exploration reward bonus")
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
-	tf.app.flags.DEFINE_float("replay_ratio", 0.5, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is not active.") # for A3C is 0, for ACER default is 4
-	tf.app.flags.DEFINE_integer("replay_step", 10**3, "Start replaying when global step is greater than replay_step.")
+	tf.app.flags.DEFINE_float("replay_ratio", 1, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is not active.") # for A3C is 0, for ACER default is 4
+	tf.app.flags.DEFINE_integer("replay_step", 10**3, "Start populating buffer when global step is greater than replay_step.")
 	tf.app.flags.DEFINE_boolean("replay_value", False, "Whether to recompute values, advantages and discounted cumulative rewards") # default is True
-	tf.app.flags.DEFINE_integer("replay_buffer_size", 2**10, "Maximum number of batches stored in the experience replay buffer")
-	tf.app.flags.DEFINE_integer("replay_start", 1, "Should be greater than 0 and lower than replay_buffer_size. Train on x batches before using experience replay")
-	tf.app.flags.DEFINE_boolean("replay_using_default_internal_state", True, "Whether to use old internal state when replaying, or to use the default one")
+	tf.app.flags.DEFINE_integer("replay_buffer_size", 2**6, "Maximum number of batches stored in the experience replay buffer")
+	tf.app.flags.DEFINE_integer("replay_start", 1, "Buffer minimum size before starting replay. Should be greater than 0 and lower than replay_buffer_size.")
+	tf.app.flags.DEFINE_boolean("replay_using_default_internal_state", False, "Whether to use old internal state when replaying, or to use the default one")
+	tf.app.flags.DEFINE_boolean("replay_change_current_internal_state", False, "Whether to change current internal state when replaying")
 	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
 # Prioritized Experience Replay: Schaul, Tom, et al. "Prioritized experience replay." arXiv preprint arXiv:1511.05952 (2015).
 	tf.app.flags.DEFINE_boolean("prioritized_replay", True, "Whether to use prioritized sampling (if replay_ratio > 0)") # default is True
@@ -78,6 +79,7 @@ def build():
 	tf.app.flags.DEFINE_float("min_reward", 0, "Minimum reward for clipping") # default is -1
 	tf.app.flags.DEFINE_float("max_reward", 1, "Maximum reward for clipping") # default is 1
 # Actor-Critic parameters
+	tf.app.flags.DEFINE_boolean("train_change_current_internal_state", False, "Whether to change current internal state when training")
 	# Learning rate for Critic is half of Actor's, so multiply by 0.5 (default)
 	tf.app.flags.DEFINE_float("value_coefficient", 0.5, "value coefficient for tuning Critic learning rate") # default is 0.5, for openAI is 0.25
 	tf.app.flags.DEFINE_float("beta", 0.001, "entropy regularization constant") # default is 0.001, for openAI is 0.01
@@ -87,8 +89,8 @@ def build():
 	tf.app.flags.DEFINE_integer("steps_before_increasing_batch_size", 10**6, "Number of steps to run before starting to increase the batch size")
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
 	tf.app.flags.DEFINE_float("gamma", 0.99, "discount factor for rewards") # default is 0.95, for openAI is 0.99
-# Generalized Advantage Estimation
-	tf.app.flags.DEFINE_boolean("use_GAE", True, "whether to use Generalized Advantage Estimation (default in openAI's PPO implementation)") # Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
+# Generalized Advantage Estimation: Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
+	tf.app.flags.DEFINE_boolean("use_GAE", True, "whether to use Generalized Advantage Estimation (default in openAI's PPO implementation)")
 	# Taking lambda < 1 introduces bias only when the value function is inaccurate
 	tf.app.flags.DEFINE_float("lambd", 0.95, "generalized advantage estimator decay parameter") # default is 0.95
 # Log
@@ -99,7 +101,7 @@ def build():
 	tf.app.flags.DEFINE_string("log_dir", "./log", "events directory")
 	tf.app.flags.DEFINE_boolean("print_loss", True, "whether to print losses inside statistics") # print_loss = True might slow down the algorithm
 	tf.app.flags.DEFINE_string("show_episodes", 'random', "What type of episodes to save: random, best, all, none")
-	tf.app.flags.DEFINE_float("show_episode_probability", e-2, "Probability of showing an episode when show_episodes == random")
+	tf.app.flags.DEFINE_float("show_episode_probability", 1e-2, "Probability of showing an episode when show_episodes == random")
 	# save_episode_screen = True might slow down the algorithm -> use in combination with show_episodes = 'random' for best perfomance
 	tf.app.flags.DEFINE_boolean("save_episode_screen", False, "whether to save episode screens")
 	# save_episode_heatmap = True slows down the algorithm -> works only with rogue

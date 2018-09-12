@@ -4,6 +4,7 @@ class ExperienceBatch(object):
 	# __slots__ = ('bootstrap','agent_position_list','total_reward','size')
 
 	def __init__(self, model_size):
+		self.model_size = model_size
 		# action info
 		self.states = [deque() for _ in range(model_size)] # do NOT use [deque]*model_size
 		self.concats = [deque() for _ in range(model_size)]
@@ -20,6 +21,16 @@ class ExperienceBatch(object):
 		self.agent_position_list = []
 		self.total_reward = 0
 		self.size = 0
+		
+	def get_initial_internal_states(self, share_internal_state):
+		if share_internal_state:
+			value = None if self.size == 0 else self.get_step_action('internal_states', 0)
+		else:
+			value = [None for _ in range(self.model_size)] if self.size == 0 else [internal_state[0] if len(internal_state) > 0 else None for internal_state in self.internal_states]
+		return InternalState(value)
+		
+	def reset_internal_states(self):
+		self.internal_states = [[None] for _ in range(self.model_size)]
 
 	def get_step_action(self, action, step):
 		id, pos = self.get_agent_and_pos(step)
@@ -53,10 +64,29 @@ class ExperienceBatch(object):
 			self.agent_position_list.append( (agent_id, len(self.states[agent_id])-1) ) # (agent_id, batch_position)
 			self.size += 1
 			self.total_reward += reward[0] # sum only extrinsic rewards
-		
-class RewardPredictionBatch(object):
-	__slots__ = ('states', 'target')
+			
+class InternalState(object):
 	
-	def __init__(self, states, target):
-		self.states = states
-		self.target = target
+	def __init__(self, value):
+		self.value = value
+		self.share = type(value) not in [list,tuple]
+		
+	def get(self, id=None):
+		if id is None:
+			return self.value
+		return self.value if self.share else self.value[id]
+	
+	def set(self, val, id=None):
+		if id is None:
+			self.value = val
+		else:
+			if self.share:
+				self.value = val
+			else: 
+				self.value[id] = val
+				
+	def clear(self):
+		if self.share:
+			self.value = None
+		else:
+			self.value = [None for _ in range(len(self.value))]

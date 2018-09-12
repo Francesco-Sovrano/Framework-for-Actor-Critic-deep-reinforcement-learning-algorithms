@@ -39,7 +39,7 @@ class PolicyLoss(object):
 		return 0.5 * self.reduce_function(tf.squared_difference(self.old_cross_entropy,self.cross_entropy))
 		
 	def get_clipping_frequency(self):
-		return self.reduce_function(tf.to_float(tf.greater(tf.abs(tf.exp(self.old_cross_entropy - self.cross_entropy) - 1.0), self.cliprange)))
+		return tf.reduce_mean(tf.to_float(tf.greater(tf.abs(tf.exp(self.old_cross_entropy - self.cross_entropy) - 1.0), self.cliprange)))
 		
 	def get_entropy_contribution(self):
 		return self.reduce_function(self.entropy)*self.beta

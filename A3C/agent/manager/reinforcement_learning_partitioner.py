@@ -31,7 +31,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 			session=self.session, 
 			state_shape=state_shape, 
 			action_shape=(1,agents_count), 
-			concat_size=agents_count+1 if flags.use_concatenation else 0, 
+			# concat_size=agents_count+1 if flags.use_concatenation else 0, 
 			beta=flags.partitioner_beta, 
 			gamma=flags.partitioner_gamma, 
 			clip=self.clip[0], 
@@ -63,7 +63,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		initial_learning_rate = flags.partitioner_alpha
 		self.learning_rate[0] = eval('tf.train.'+flags.alpha_annealing_function)(learning_rate=initial_learning_rate, global_step=self.global_step[0], decay_steps=flags.alpha_decay_steps, decay_rate=flags.alpha_decay_rate) if flags.alpha_decay else initial_learning_rate
 		# self.learning_rate[0] *= flags.partitioner_learning_factor
-		# self.gradient_optimizer[0] = eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True)
+		self.gradient_optimizer[0] = eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True)
 		
 	def get_state_partition(self, state, concat=None, internal_state=None):
 		action_batch, value_batch, policy_batch, new_internal_state = self.manager.predict_action(states=[state], concats=[concat], internal_state=internal_state)
@@ -85,7 +85,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		self.manager_internal_state = None
 		
 	def act(self, act_function, state, concat=None):
-		if self.query_partitioner(self.batch.size):
+		if self.query_partitioner(self.step):
 			internal_state = self.manager_internal_state
 			manager_concat = self.get_manager_concatenation()
 			self.agent_id, manager_action, manager_value, manager_policy, self.manager_internal_state = self.get_state_partition(state=state, concat=manager_concat, internal_state=internal_state)
@@ -105,7 +105,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		new_agent_id, _, manager_value, _, _ = self.get_state_partition(state=state, concat=manager_concat, internal_state=self.manager_internal_state)
 		self.batch.bootstrap['manager_concat'] = manager_concat
 		self.batch.bootstrap['manager_value'] = manager_value
-		if self.query_partitioner(self.batch.size):
+		if self.query_partitioner(self.step):
 			self.agent_id = new_agent_id
 		super().bootstrap(state, concat)
 		

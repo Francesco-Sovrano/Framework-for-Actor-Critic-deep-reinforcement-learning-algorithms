@@ -90,7 +90,7 @@ class RogueBox:
 	"""Start a rogue game and expose interface to communicate with it"""
 	def __init__(self, game_exe_path, state_generator, reward_generator, max_step_count, match_count_for_evaluation):
 		self.iterations_guard = 1000
-		self.seconds_before_possible_deadlock = 10
+		self.seconds_before_possible_deadlock = 5
 		self.rogue_path=game_exe_path
 		self.parser=RogueParser()
 		self.evaluator=RogueEvaluator(match_count_for_evaluation)
@@ -243,7 +243,7 @@ class RogueBox:
 		"""send a command to rogue"""
 		old_screen=self.screen
 		self.pipe.write(command.encode())
-		self.pipe.write('\x12'.encode()) # workaround to fully refresh the screen output
+		# self.pipe.write('\x12'.encode()) # workaround to fully refresh the screen output
 		new_screen=old_screen
 		max_iter=self.iterations_guard*self.seconds_before_possible_deadlock
 		while old_screen[-1] == new_screen[-1]: # after a command execution, the new screen is always different from the old one

@@ -18,25 +18,25 @@ class Categorical(object):
 	
 	def __init__(self, logits):
 		self.logits = logits
+		
+	def probability_distribution(self):
+		return tf.nn.softmax(self.logits)
 	
 	def cross_entropy(self, samples):
 		return tf.nn.softmax_cross_entropy_with_logits_v2(labels=samples, logits=self.logits)
 
 	def entropy(self):
-		a0 = self.logits - tf.reduce_max(self.logits, axis=-1, keepdims=True)
-		ea0 = tf.exp(a0)
-		z0 = tf.reduce_sum(ea0, axis=-1, keepdims=True)
-		p0 = ea0 / z0
-		return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=-1)
+		scaled_logits = self.logits - tf.reduce_max(self.logits, axis=-1, keepdims=True)
+		exp_scaled_logits = tf.exp(scaled_logits)
+		sum_exp_scaled_logits = tf.reduce_sum(exp_scaled_logits, axis=-1, keepdims=True)
+		avg_exp_scaled_logits = exp_scaled_logits / sum_exp_scaled_logits
+		return tf.reduce_sum(avg_exp_scaled_logits * (tf.log(sum_exp_scaled_logits) - scaled_logits), axis=-1)
 			
 	def sample(self):
-		logits_shape = self.logits.get_shape()
-		u = tf.random_uniform(tf.shape(self.logits))
-		samples = tf.argmax(self.logits - tf.log(-tf.log(u)), axis=-1)
-		depth = logits_shape.as_list()[-1]
-		one_hot_actions = tf.one_hot(samples, depth)
-		one_hot_actions.set_shape(logits_shape)
-		return one_hot_actions
+		scaled_logits = self.logits - tf.reduce_max(self.logits, axis=-1, keepdims=True)
+		samples = tf.squeeze(tf.multinomial(scaled_logits, 1), axis=-1) # one sample per batch
+		depth = self.logits.get_shape().as_list()[-1] # depth of the one hot vector
+		return tf.one_hot(indices=samples, depth=depth) # one_hot_actions
 		
 class Normal(object):
 

@@ -64,11 +64,11 @@ class BaseAC_Network(object):
 			# [Batch Normalization]
 			# _, self.state_batch_norm = self._batch_norm_layer(input=self.state_batch, scope="Global", name="State", share_trainables=False) # global
 			# [CNN]
-			self.cnn = self._cnn_layer(input=self.state_batch, scope=parent_scope_name) # shared with family
+			self.cnn = self._cnn_layer(input=self.state_batch, scope=scope_name)
 			# [Concat]
 			self.concat = self._concat_layer(input=self.cnn, concat=self.concat_batch, units=self.lstm_units, scope=scope_name)
 			# [LSTM]
-			self.lstm, self.lstm_final_state = self._lstm_layer(input=self.concat, initial_state=self.lstm_initial_state, scope=sibling_scope_name) # shared with siblings
+			self.lstm, self.lstm_final_state = self._lstm_layer(input=self.concat, initial_state=self.lstm_initial_state, scope=scope_name)
 			# [Policy]
 			self.policy_batch = self._policy_layer(input=self.lstm, scope=scope_name)
 			# [Value]
@@ -77,7 +77,7 @@ class BaseAC_Network(object):
 			if self.predict_reward:
 				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state", 3)
 				# reusing with a different placeholder seems to cause memory leaks
-				reward_prediction_cnn = self._cnn_layer(input=self.reward_prediction_state_batch, scope=parent_scope_name) # shared with family
+				reward_prediction_cnn = self._cnn_layer(input=self.reward_prediction_state_batch, scope=scope_name)
 				self.reward_prediction_logits = self._reward_prediction_layer(input=reward_prediction_cnn, scope=scope_name)
 		# Sample action, after getting keys
 		self.action_batch = self.sample_actions()
@@ -122,10 +122,10 @@ class BaseAC_Network(object):
 	def _cnn_layer(self, input, scope, name="", share_trainables=True):
 		with tf.variable_scope(scope), tf.variable_scope("CNN{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
-			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=16, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.leaky_relu) # xavier initializer
-			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=32, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.leaky_relu) # xavier initializer
-			input = tf.layers.conv2d( inputs=input, filters=16, kernel_size=(3,3), padding='SAME', activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling )
-			input = tf.layers.conv2d( inputs=input, filters=8, kernel_size=(3,3), padding='SAME', activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling )
+			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=16, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.relu) # xavier initializer
+			# input = tf.contrib.model_pruning.masked_conv2d(inputs=input, num_outputs=32, kernel_size=(3,3), padding='SAME', activation_fn=tf.nn.relu) # xavier initializer
+			input = tf.layers.conv2d( inputs=input, filters=16, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
+			input = tf.layers.conv2d( inputs=input, filters=8, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
 			# update keys
 			if share_trainables:
 				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
@@ -137,7 +137,7 @@ class BaseAC_Network(object):
 		with tf.variable_scope(scope), tf.variable_scope("Concat{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			input = tf.layers.flatten(input)
-			input = tf.layers.dense(inputs=input, units=units, activation=tf.nn.leaky_relu, kernel_initializer=tf.initializers.variance_scaling)
+			input = tf.layers.dense(inputs=input, units=units, activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
 			if concat.get_shape()[-1] > 0:
 				concat = tf.layers.flatten(concat)
 				input = tf.concat([input, concat], -1) # shape: (batch, concat_size+units)
@@ -151,7 +151,8 @@ class BaseAC_Network(object):
 	def _lstm_layer(self, input, initial_state, scope, name="", share_trainables=True):
 		with tf.variable_scope(scope), tf.variable_scope("LSTM_Network{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
-			input = tf.layers.flatten(input)
+			if len(input.get_shape()) > 2:
+				input = tf.layers.flatten(input)
 			sequence_length = [tf.shape(input)[0]]
 			state_shape = initial_state[0].get_shape().as_list()
 			batch_size = state_shape[0]
@@ -330,12 +331,21 @@ class BaseAC_Network(object):
 		self.train_count += len(states)
 		feed_dict = self.build_train_feed(states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, internal_state, reward_prediction_states, reward_prediction_target)
 		# run train op
-		_, total_loss, policy_loss, value_loss, extra_loss, policy_kl_divergence, policy_clipping_frequency, policy_entropy_contribution = self.session.run(fetches=[self.train_op, self.total_loss, self.policy_loss, self.value_loss, self.extra_loss, self.policy_kl_divergence, self.policy_clipping_frequency, self.policy_entropy_contribution], feed_dict=feed_dict) # Minimize gradients and copy them to global network
+		_, new_internal_state, total_loss, policy_loss, value_loss, extra_loss, policy_kl_divergence, policy_clipping_frequency, policy_entropy_contribution = self.session.run
+		(
+			fetches=[
+				self.train_op, # Minimize gradients and copy them to global network
+				self.lstm_final_state, self.total_loss, 
+				self.policy_loss, self.value_loss, self.extra_loss, 
+				self.policy_kl_divergence, self.policy_clipping_frequency, self.policy_entropy_contribution
+			], 
+			feed_dict=feed_dict
+		)
 		# build and return loss dict
 		train_info = {"actor": policy_loss, "critic": value_loss, "actor_kl_divergence": policy_kl_divergence, "actor_clipping_frequency": policy_clipping_frequency, "actor_entropy_contribution": policy_entropy_contribution}
 		if self.predict_reward:
 			train_info.update( {"extra": extra_loss} )
-		return total_loss, train_info
+		return total_loss, train_info, new_internal_state
 		
 	def build_train_feed(self, states, actions, rewards, values, policies, discounted_cumulative_rewards, generalized_advantage_estimators, concats, internal_state, reward_prediction_states, reward_prediction_target):
 		values = np.reshape(values,[-1])
