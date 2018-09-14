@@ -36,12 +36,13 @@ class StateGenerator(ABC):
 	def reset(self):
 		self.need_reset = False
 
+	@abstractmethod
 	def _set_shape(self):
 		"""The implementing class MUST set the state _shape (should be a tuple)."""
 		self._shape = (0, 0, 0) # [heigth, width, channel]
 		
 	def _set_situations_count(self):
-		self._situations = 1 # situations are for multi-agent models
+		self._situations = 1
 		
 	def get_status_size(self):
 		return 9
@@ -93,11 +94,34 @@ class StateGenerator(ABC):
 					return True
 		return False
 
+class ScreenView_StateGenerator(StateGenerator):
+	def _set_shape(self):
+		self._shape = self.screen_shape()
+		
+	def move_agent_in_all_known_walkable_positions(self, info):
+		player_position = info.get_player_pos()
+		if not info.has_statusbar() or player_position is None:
+			return None
+		result = []
+		list_of_walkable_positions = info.get_list_of_walkable_positions()
+		px, py = player_position
+		for walkable_position in list_of_walkable_positions:
+			wx, wy = walkable_position
+			state = self.build_state(info)
+			state[px][py][0] = ord(info.get_tile_below_player()) # set player position as tile below player
+			state[wx][wy][0] = ord('@') # set walkable position as player
+			result.append((state,walkable_position))
+		return result
+		
+	def build_state(self, info):
+		state = np.array([[[ord(char)] for char in line] for line in info.screen])
+		return state, 0
+		
 class FullView_StateGenerator(StateGenerator): # 1 situation
 	def _set_shape(self):
 		(screen_x,screen_y,_) = self.screen_shape()
 		self._shape = (screen_x-2, screen_y, 1) # [heigth, width, channel]
-		
+
 	def move_agent_in_all_known_walkable_positions(self, info):
 		player_position = info.get_player_pos()
 		if not info.has_statusbar() or player_position is None:
@@ -154,8 +178,8 @@ class CroppedView_StateGenerator(StateGenerator): # 6 situations
 	def _get_relative_coordinates(self, tile_position, centre_position, range):
 		i, j = tile_position
 		x, y = centre_position
-		norm_i = i-x+floor(range[0]/2)
-		norm_j = j-y+floor(range[1]/2)
+		norm_i = i-x+range[0]//2
+		norm_j = j-y+range[1]//2
 		return norm_i, norm_j
 		
 	def is_valid_coordinate(self, i, j):
@@ -247,30 +271,10 @@ class C2S4_CroppedView_StateGenerator(CroppedView_StateGenerator): # 4 situation
 		if self.environment_tiles_are_in_position_range(info, "|-", self.player_position, 1): # situation 2
 			return state, 2
 		return state, 3
-
-class C2S2_CroppedView_StateGenerator(CroppedView_StateGenerator): # 2 situations
-	def _set_shape(self):
-		self._shape = (17, 17, 2) # [heigth, width, channel]
-
-	def _set_situations_count(self):
-		self._situations = 2
 		
-	def build_state(self, info):
-		state = self.empty_state()
-		state = self.set_channel(1, self.player_position, state, info.get_list_of_positions_by_tile("%"), 1) # stairs
-		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("|"), 1) # walls
-		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("-"), 1) # walls
-		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("+"), 2) # doors
-		state = self.set_channel(0, self.player_position, state, info.get_list_of_positions_by_tile("#"), 2) # tunnel
-			
-		pixel = info.get_tile_below_player()
-		if info.get_tile_count("%") > 0: # situation 1
-			return state, 1
-		return state, 0
-
 class Complete_CroppedView_StateGenerator(CroppedView_StateGenerator):
 	def _set_shape(self):
-		self._shape = (17, 17, 4) # [heigth, width, channel]
+		self._shape = (17, 17, 6) # [heigth, width, channel]
 		
 	def compute_state(self, info):
 		self.player_position = info.get_player_pos()
@@ -281,51 +285,15 @@ class Complete_CroppedView_StateGenerator(CroppedView_StateGenerator):
 		
 	def build_state(self, info):
 		map = self.empty_state()
-		index = 0
-		for item in info.pixel["items"]: # items
-			index+=1
-			map = self.set_channel(3, self.player_position, map, info.pixel["items"][item], index)
-		index = 0
-		for monster in info.pixel["monsters"]: # monsters
-			index+=1
-			map = self.set_channel(2, self.player_position, map, info.pixel["monsters"][monster], index)
-		map = self.set_channel(1, self.player_position, map, info.get_list_of_positions_by_tile("%"), 1) # stairs
-		map = self.set_channel(0, self.player_position, map, info.get_list_of_positions_by_tile("|"), 1) # walls
-		map = self.set_channel(0, self.player_position, map, info.get_list_of_positions_by_tile("-"), 1) # walls
-		map = self.set_channel(0, self.player_position, map, info.get_list_of_positions_by_tile("+"), 2) # doors
-		map = self.set_channel(0, self.player_position, map, info.get_list_of_positions_by_tile("#"), 2) # tunnel
-		
-		status = self.empty_status()
-		status[0] = info.statusbar["gold"]
-		status[1] = info.statusbar["current_hp"]
-		status[2] = info.statusbar["max_hp"]
-		status[3] = info.statusbar["current_strength"]
-		status[4] = info.statusbar["max_strength"]
-		status[5] = info.statusbar["armor"]
-		status[6] = info.statusbar["tot_exp"]
-		status[7] = info.statusbar["exp_level"]
-		status[8] = info.statusbar["command_count"]
-		return map, status
-		
-class Channel6_Complete_CroppedView_StateGenerator(Complete_CroppedView_StateGenerator):
-	def _set_shape(self):
-		self._shape = (17, 17, 6) # [heigth, width, channel]
-		
-	def build_state(self, info):
-		map = self.empty_state()
 		map = self.set_channel(3, self.player_position, map, info.get_list_of_positions_by_tile("%"), 1) # stairs
 		map = self.set_channel(2, self.player_position, map, info.get_list_of_positions_by_tile("|"), 1) # walls
 		map = self.set_channel(2, self.player_position, map, info.get_list_of_positions_by_tile("-"), 1) # walls
 		map = self.set_channel(1, self.player_position, map, info.get_list_of_positions_by_tile("+"), 1) # doors
 		map = self.set_channel(0, self.player_position, map, info.get_list_of_positions_by_tile("#"), 1) # tunnel
-		index = 0
 		for item in info.pixel["items"]: # items
-			index+=1
-			map = self.set_channel(5, self.player_position, map, info.pixel["items"][item], index)
-		index = 0
+			map = self.set_channel(5, self.player_position, map, info.pixel["items"][item], ord(item))
 		for monster in info.pixel["monsters"]: # monsters
-			index+=1
-			map = self.set_channel(4, self.player_position, map, info.pixel["monsters"][monster], index)
+			map = self.set_channel(4, self.player_position, map, info.pixel["monsters"][monster], ord(monster))
 		
 		status = self.empty_status()
 		status[0] = info.statusbar["gold"]
@@ -340,6 +308,10 @@ class Channel6_Complete_CroppedView_StateGenerator(Complete_CroppedView_StateGen
 		return map, status
 		
 class Complete_FullView_StateGenerator(FullView_StateGenerator):
+	def _set_shape(self):
+		(screen_x,screen_y,_) = self.screen_shape()
+		self._shape = (screen_x-2, screen_y, 7) # [heigth, width, channel]
+		
 	def compute_state(self, info):
 		self.player_position = info.get_player_pos()
 		if info.has_statusbar() and self.player_position != None:
@@ -349,17 +321,16 @@ class Complete_FullView_StateGenerator(FullView_StateGenerator):
 		
 	def build_state(self, info):
 		map = self.empty_state()
-		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("%"), ord("%")) # stairs
-		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("|"), ord("|")) # walls
-		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("-"), ord("-")) # walls
-		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("+"), ord("+")) # doors
-		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("#"), ord("#")) # tunnel
+		map = self.set_channel(3, map, info.get_list_of_positions_by_tile("%"), 1) # stairs
+		map = self.set_channel(2, map, info.get_list_of_positions_by_tile("|"), 1) # walls
+		map = self.set_channel(2, map, info.get_list_of_positions_by_tile("-"), 1) # walls
+		map = self.set_channel(1, map, info.get_list_of_positions_by_tile("+"), 1) # doors
+		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("#"), 1) # tunnel
 		for item in info.pixel["items"]: # items
-			map = self.set_channel(0, map, info.pixel["items"][item], ord(item))
+			map = self.set_channel(5, map, info.pixel["items"][item], ord(item))
 		for monster in info.pixel["monsters"]: # monsters
-			map = self.set_channel(0, map, info.pixel["monsters"][monster], ord(monster))
-		# set it for last otherwise it may be overwritten by other positions!
-		map = self.set_channel(0, map, [self.player_position], ord("@")) # rogue (player)
+			map = self.set_channel(4, map, info.pixel["monsters"][monster], ord(monster))
+		map = self.set_channel(6, map, [self.player_position], 1) # rogue (player)
 		
 		status = self.empty_status()
 		status[0] = info.statusbar["gold"]

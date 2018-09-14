@@ -13,6 +13,7 @@ import logging
 import time
 import sys
 import _pickle as pickle # CPickle
+from multiprocessing import Queue
 
 from environment.environment import Environment
 from agent.client import Worker
@@ -44,7 +45,7 @@ class Application(object):
 		config = tf.ConfigProto(log_device_placement=False, allow_soft_placement=True) # prepare session
 		if flags.use_gpu:
 			config.gpu_options.allow_growth = True
-		self.sess = tf.Session(config=config)
+		self.session = tf.Session(config=config)
 		self.global_step = 0
 		self.stop_requested = False
 		self.terminate_reqested = False
@@ -52,44 +53,62 @@ class Application(object):
 			
 	def build_network(self):
 		# global network
-		self.global_network = Worker(thread_index=0, session=self.sess, global_network=None, device=self.device).local_network
+		self.global_network = Worker(thread_index=0, session=self.session, global_network=None, device=self.device).local_network
 		# local networks
 		self.trainers = []
 		for i in range(flags.parallel_size):
-			self.trainers.append( Worker(thread_index=i+1, session=self.sess, global_network=self.global_network, device=self.device) )
+			self.trainers.append( Worker(thread_index=i+1, session=self.session, global_network=self.global_network, device=self.device) )
 		# initialize variables
-		self.sess.run(tf.global_variables_initializer()) # do it before loading checkpoint
+		self.session.run(tf.global_variables_initializer()) # do it before loading checkpoint
 		# load checkpoint
 		self.load_checkpoint()
 		# print graph summary
-		tf.summary.FileWriter('summary', self.sess.graph).close()
+		tf.summary.FileWriter('summary', self.session.graph).close()
 		
 	def test_function(self, tester, count):
+		results = []
+		tester.set_start_time(self.start_time)
 		for _ in range(count):
 			tester.prepare()
 			while not tester.terminal:
 				tester.process()
+			results.append( tester.environment.get_test_result() )
+		return results
 
 	def test(self):
+		result_file = '{}/test_results_{}.log'.format(flags.log_dir,self.global_step)
+		if os.path.exists(result_file):
+			print('Test results already produced and evaluated for {}'.format(result_file))
+			return
+			
 		print('Start testing')
 		testers = []
 		threads = []
+		result_queue = Queue()
 		for i in range(flags.parallel_size): # parallel testing
-			tester = Worker(thread_index=-i, session=self.sess, global_network=self.global_network, device=self.device, training=False)
-			thread = threading.Thread(target=self.test_function, args=(tester,flags.match_count_for_evaluation//flags.parallel_size))
+			tester = Worker(thread_index=-i-1, session=self.session, global_network=self.global_network, device=self.device, training=False)
+			thread = threading.Thread(target=lambda q, args: q.put(self.test_function(*args)), args=(result_queue,(tester,tester.environment.get_test_size())))
 			thread.start()
 			threads.append(thread)
 			testers.append(tester)
 		time.sleep(5)
 		for thread in threads: # wait for all threads to end
 			thread.join()
+		print('End testing')
 		# get overall statistics
 		info = self.get_global_statistics(clients=testers)
 		# write results to file
-		with open(flags.log_dir + '/test_results.log', "w", encoding="utf-8") as file:
+		stats_file = '{}/test_statistics.log'.format(flags.log_dir)
+		with open(stats_file, "a", encoding="utf-8") as file: # write stats to file
 			file.write(str(["{}={}".format(key,value) for key,value in sorted(info.items(), key=lambda t: t[0])]))
-		print('End testing')
-		print('Test result saved in ' + flags.log_dir + '/test_results.log')
+		print('Test statistics saved in {}'.format(stats_file))
+		with open(result_file, "w", encoding="utf-8") as file: # write results to file
+			while not result_queue.empty():
+				result = result_queue.get()
+				for line in result:
+					file.write(line)
+		print('Test results saved in {}'.format(result_file))
+		return testers[0].environment.evaluate_test_results(result_file)
 
 	def train_function(self, parallel_index):
 		""" Train each environment. """
@@ -148,7 +167,7 @@ class Application(object):
 		self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES))
 		checkpoint = tf.train.get_checkpoint_state(flags.checkpoint_dir)
 		if checkpoint and checkpoint.model_checkpoint_path:
-			self.saver.restore(self.sess, checkpoint.model_checkpoint_path)
+			self.saver.restore(self.session, checkpoint.model_checkpoint_path)
 			tokens = checkpoint.model_checkpoint_path.split("-")
 			# set global step
 			self.global_step = int(tokens[1])
@@ -165,7 +184,7 @@ class Application(object):
 			self.elapsed_time = 0.0
 			self.next_save_steps = flags.save_interval_step
 			print("Could not find old checkpoint")
-		# self.sess.graph.finalize()
+		# self.session.graph.finalize()
 			
 	def save(self):
 		""" Save checkpoint. 
@@ -192,10 +211,14 @@ class Application(object):
 		
 		# Save Checkpoint
 		print('Start saving..')
-		self.saver.save(self.sess, flags.checkpoint_dir + '/checkpoint', global_step=self.global_step)
+		self.saver.save(self.session, flags.checkpoint_dir + '/checkpoint', global_step=self.global_step)
 		self.save_important_information(flags.checkpoint_dir + '/{}.pkl'.format(self.global_step))
 		print('Checkpoint saved in ' + flags.checkpoint_dir)
 		# gc.collect()
+		
+		# Test
+		if flags.test_after_saving:
+			self.test()
 		
 		# Restart workers
 		if not self.terminate_reqested:

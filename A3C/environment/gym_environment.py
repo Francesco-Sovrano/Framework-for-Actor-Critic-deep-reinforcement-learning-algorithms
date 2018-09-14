@@ -79,7 +79,7 @@ class GymEnvironment(environment.Environment):
 		return frame_info
 		
 	def process(self, action_vector):
-		action = np.argwhere(action_vector==1)[0][0]
+		action = self.choose_action(action_vector)
 		# self.game.render(mode='rgb_array')
 		state, reward, terminal, info = self.game.step(action)
 		state = self.normalize(state)

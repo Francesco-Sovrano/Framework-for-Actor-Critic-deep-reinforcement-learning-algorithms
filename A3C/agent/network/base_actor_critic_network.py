@@ -74,7 +74,7 @@ class BaseAC_Network(object):
 			self.value_batch = self._value_layer(input=self.lstm, scope=scope_name)
 			# [Reward Prediction]
 			if self.predict_reward:
-				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state", 3)
+				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state")
 				# reusing with a different placeholder seems to cause memory leaks
 				reward_prediction_cnn = self._cnn_layer(input=self.reward_prediction_state_batch, scope=scope_name)
 				self.reward_prediction_logits = self._reward_prediction_layer(input=reward_prediction_cnn, scope=scope_name)
@@ -94,7 +94,8 @@ class BaseAC_Network(object):
 			print( "    [{}]Reward prediction logits shape: {}".format(self.id, self.reward_prediction_logits.get_shape()) )
 		print( "    [{}]Action shape: {}".format(self.id, self.action_batch.get_shape()) )
 		# Prepare loss
-		self.prepare_loss()
+		if self.training:
+			self.prepare_loss()
 		
 	def get_feature_entropy(self, input, scope, name=""): # feature entropy measures how much the input is uncommon
 		with tf.device(self.device):
@@ -160,7 +161,7 @@ class BaseAC_Network(object):
 			input = tf.reshape(input, [-1, batch_size, input.get_shape().as_list()[-1]])
 			# Build LSTM cell
 			# lstm_cell = tf.contrib.model_pruning.MaskedBasicLSTMCell(num_units=units, forget_bias=1.0, state_is_tuple=True, activation=None)
-			lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=units, forget_bias=1.0, state_is_tuple=True) # using BasicLSTMCell instead of LSTMCell
+			lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=units, state_is_tuple=True) # using BasicLSTMCell instead of LSTMCell
 			# Unroll the LSTM
 			lstm_state_tuple = tf.nn.rnn_cell.LSTMStateTuple(initial_state[0],initial_state[1])
 			lstm_outputs, final_state = tf.nn.dynamic_rnn(cell=lstm_cell, inputs=input, initial_state=lstm_state_tuple, sequence_length=sequence_length, time_major=True)
@@ -217,7 +218,8 @@ class BaseAC_Network(object):
 		with tf.variable_scope(scope), tf.variable_scope("RewardPrediction", reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			# input = tf.contrib.layers.maxout(inputs=input, num_units=1, axis=0)
-			input = tf.reshape(input,[1,-1])
+			# input = tf.reshape(input,[1,-1])
+			input = tf.layers.flatten(input)
 			input = tf.layers.dense(inputs=input, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			# update keys
 			if share_trainables:

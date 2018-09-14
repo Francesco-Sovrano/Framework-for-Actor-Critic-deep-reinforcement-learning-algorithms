@@ -243,7 +243,6 @@ class RogueBox:
 		"""send a command to rogue"""
 		old_screen=self.screen
 		self.pipe.write(command.encode())
-		# self.pipe.write('\x12'.encode()) # workaround to fully refresh the screen output
 		new_screen=old_screen
 		max_iter=self.iterations_guard*self.seconds_before_possible_deadlock
 		while old_screen[-1] == new_screen[-1]: # after a command execution, the new screen is always different from the old one

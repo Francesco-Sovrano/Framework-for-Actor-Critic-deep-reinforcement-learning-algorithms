@@ -8,11 +8,12 @@ import tensorflow as tf
 options_built = False
 def build():
 	tf.app.flags.DEFINE_boolean("use_gpu", False, "whether to use the GPU")
-	tf.app.flags.DEFINE_integer("max_time_step", (10**8)//2, "max time steps")
+	tf.app.flags.DEFINE_integer("max_time_step", 10**8, "max time steps")
 # Environment
-	# tf.app.flags.DEFINE_string("env_type", "car_controller", "environment types: rogue, car_controller, or environments from https://gym.openai.com/envs")
-	# tf.app.flags.DEFINE_string("env_type", "MontezumaRevenge-ram-v0", "environment types: rogue, or environments from https://gym.openai.com/envs")
-	tf.app.flags.DEFINE_string("env_type", "rogue", "environment types: rogue, or environments from https://gym.openai.com/envs")
+	# tf.app.flags.DEFINE_string("env_type", "car_controller", "environment types: rogue, car_controller, sentipolc, or environments from https://gym.openai.com/envs")
+	# tf.app.flags.DEFINE_string("env_type", "MontezumaRevenge-ram-v0", "environment types: rogue, car_controller, sentipolc, or environments from https://gym.openai.com/envs")
+	# tf.app.flags.DEFINE_string("env_type", "sentipolc", "environment types: rogue, car_controller, sentipolc, or environments from https://gym.openai.com/envs")
+	tf.app.flags.DEFINE_string("env_type", "rogue", "environment types: rogue, car_controller, sentipolc, or environments from https://gym.openai.com/envs")
 # Gradient optimization parameters
 	tf.app.flags.DEFINE_string("network", "BaseAC", "neural network: BaseAC") # default is Adam, for vanilla A3C is RMSProp
 	tf.app.flags.DEFINE_string("optimizer", "Adam", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is Adam, for vanilla A3C is RMSProp
@@ -57,7 +58,8 @@ def build():
 	tf.app.flags.DEFINE_integer("reward_prediction_buffer_size", 2**7, "Maximum number of batches stored in the reward prediction buffer")
 # Count-Based Exploration: Tang, Haoran, et al. "# Exploration: A study of count-based exploration for deep reinforcement learning." Advances in Neural Information Processing Systems. 2017.
 	tf.app.flags.DEFINE_boolean("use_count_based_exploration_reward", True, "States are mapped to hash codes (using Locality-sensitive hashing), which allows to count their occurrences with a hash table. These counts are then used to compute a reward bonus according to the classic count-based exploration theory.")
-	tf.app.flags.DEFINE_float("exploration_bonus", 0.1, "Bonus coefficient for the count-based exploration reward")
+	tf.app.flags.DEFINE_float("positive_exploration_coefficient", 0.1, "Bonus coefficient for the possitive part of the count-based exploration reward. exploration_bonus = 2/np.sqrt(self.hash_state_table[state_hash]) - 1. if exploration_bonus > 0 exploration_bonus*=positive_exploration_coefficient.")
+	tf.app.flags.DEFINE_float("negative_exploration_coefficient", 0.01, "Bonus coefficient for the negative part of the count-based exploration reward. exploration_bonus = 2/np.sqrt(self.hash_state_table[state_hash]) - 1. if exploration_bonus < 0 exploration_bonus*=negative_exploration_coefficient.")
 	tf.app.flags.DEFINE_integer("exploration_hash_size", 10, "Locality-Sensitive Hash size: higher values lead to fewer collisions and are thus more likely to distinguish states. Set 0 for automatic sizing")
 	tf.app.flags.DEFINE_integer("projection_train_set_size", 10**4, "Size of the training set for the Locality-Sensitive Hash projection function")
 	tf.app.flags.DEFINE_integer("steps_before_exploration_reward_bonus", 10, "Number of steps to wait before giving exploration reward bonus")
@@ -71,7 +73,7 @@ def build():
 	tf.app.flags.DEFINE_boolean("replay_using_default_internal_state", False, "Whether to use old internal state when replaying, or to use the default one")
 	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
 # Prioritized Experience Replay: Schaul, Tom, et al. "Prioritized experience replay." arXiv preprint arXiv:1511.05952 (2015).
-	tf.app.flags.DEFINE_boolean("prioritized_replay", True, "Whether to use prioritized sampling (if replay_ratio > 0)") # default is True
+	tf.app.flags.DEFINE_boolean("prioritized_replay", False, "Whether to use prioritized sampling (if replay_ratio > 0)") # default is True
 # Reward clip
 	tf.app.flags.DEFINE_boolean("clip_reward", False, "Whether to clip the reward between min_reward and max_reward") # default is False
 	tf.app.flags.DEFINE_float("min_reward", 0, "Minimum reward for clipping") # default is -1
@@ -92,6 +94,7 @@ def build():
 	tf.app.flags.DEFINE_float("lambd", 0.95, "generalized advantage estimator decay parameter") # default is 0.95
 # Log
 	tf.app.flags.DEFINE_integer("save_interval_step", 10**6, "saving interval steps")
+	tf.app.flags.DEFINE_boolean("test_after_saving", False, "whether to test after saving")
 	tf.app.flags.DEFINE_integer("match_count_for_evaluation", 200, "number of matches used for evaluation scores")
 	tf.app.flags.DEFINE_string("checkpoint_dir", "./checkpoint", "checkpoint directory")
 	tf.app.flags.DEFINE_string("event_dir", "./events", "events directory")
@@ -110,12 +113,14 @@ def build():
 	tf.app.flags.DEFINE_boolean("compute_plot_when_saving", True, "Whether to compute the plot when saving checkpoints")
 	tf.app.flags.DEFINE_integer("max_plot_size", 1000, "Maximum number of points in the plot. The smaller it is, the less RAM is required. If the log file has more than max_plot_size points, then max_plot_size means of slices are used instead.")
 # Rogue stuff
-	tf.app.flags.DEFINE_string("state_generator", "Channel6_Complete_CroppedView_StateGenerator", "the state generator must be a classname from rogueinabox/states.py")
+	tf.app.flags.DEFINE_string("state_generator", "Complete_CroppedView_StateGenerator", "the state generator must be a classname from rogueinabox/states.py")
 	# tf.app.flags.DEFINE_string("reward_generator", "Improved_ENSS_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
 	tf.app.flags.DEFINE_string("reward_generator", "Stair_RewardGenerator", "the reward generator must be a classname from rogueinabox/rewards.py")
 	tf.app.flags.DEFINE_integer("steps_per_episode", 500, "number of maximum actions execution per episode")
 	tf.app.flags.DEFINE_string("env_path", "./Rogue/rogue5.4.4-ant-r1.1.4_monsters/rogue", "the path where to find the game")
 	tf.app.flags.DEFINE_string("rogueinabox_path", "./Rogue", "where to find the package") # to remove!
+# Sentipolc stuff
+	tf.app.flags.DEFINE_string("sentipolc_path", "./Sentipolc", "where to find the package") # to remove!
 	
 	global options_built
 	options_built = True

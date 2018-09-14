@@ -22,36 +22,40 @@ class BasicManager(object):
 		self.session = session
 		self.id = id
 		self.device = device
-		self.global_network = global_network
 		self.set_model_size()
-	# Gradient optimizer and clip range
-		if not self.is_global_network():
-			self.clip = self.global_network.clip
-		else:
-			self.initialize_gradient_optimizer()
-	# Build agents
-		self.model_list = []
-		self.build_agents(state_shape=state_shape, action_shape=action_shape, concat_size=concat_size)
-	# Build experience buffer
-		if flags.replay_ratio > 0:
-			if flags.prioritized_replay:
-				self.experience_buffer = PrioritizedBuffer(size=flags.replay_buffer_size)
-				# self.beta_schedule = LinearSchedule(flags.max_time_step, initial_p=0.4, final_p=1.0)
+		if self.training:
+			self.global_network = global_network
+			# Gradient optimizer and clip range
+			if not self.is_global_network():
+				self.clip = self.global_network.clip
 			else:
-				self.experience_buffer = Buffer(size=flags.replay_buffer_size)
-		if flags.predict_reward:
-			self.reward_prediction_buffer = Buffer(size=flags.reward_prediction_buffer_size)
-	# Bind optimizer to global
-		if not self.is_global_network():
-			self.bind_to_global(self.global_network)
-	# Statistics
+				self.initialize_gradient_optimizer()
+			# Build agents
+			self.model_list = []
+			self.build_agents(state_shape=state_shape, action_shape=action_shape, concat_size=concat_size)
+			# Build experience buffer
+			if flags.replay_ratio > 0:
+				if flags.prioritized_replay:
+					self.experience_buffer = PrioritizedBuffer(size=flags.replay_buffer_size)
+					# self.beta_schedule = LinearSchedule(flags.max_time_step, initial_p=0.4, final_p=1.0)
+				else:
+					self.experience_buffer = Buffer(size=flags.replay_buffer_size)
+			if flags.predict_reward:
+				self.reward_prediction_buffer = Buffer(size=flags.reward_prediction_buffer_size)
+			# Bind optimizer to global
+			if not self.is_global_network():
+				self.bind_to_global(self.global_network)
+			# Count based exploration	
+			if flags.use_count_based_exploration_reward:
+				self.projection = None
+				self.projection_train_set = []
+			if flags.print_loss:
+				self._loss_list = [{} for _ in range(self.model_size)]
+		else:
+			self.global_network = None
+			self.model_list = global_network.model_list
+		# Statistics
 		self._model_usage_list = deque()
-		if flags.print_loss:
-			self._loss_list = [{} for _ in range(self.model_size)]
-	# Count based exploration	
-		if flags.use_count_based_exploration_reward:
-			self.projection = None
-			self.projection_train_set = []
 			
 	def is_global_network(self):
 		return self.global_network is None
@@ -109,11 +113,12 @@ class BasicManager(object):
 		
 	def get_statistics(self):
 		stats = {}
-		# build loss statistics
-		if flags.print_loss:
-			for i in range(self.model_size):
-				for key, value in self._loss_list[i].items():
-					stats['loss_{}{}_avg'.format(key,i)] = np.average(value)
+		if self.training:
+			# build loss statistics
+			if flags.print_loss:
+				for i in range(self.model_size):
+					for key, value in self._loss_list[i].items():
+						stats['loss_{}{}_avg'.format(key,i)] = np.average(value)
 		# build models usage statistics
 		if self.model_size > 1:
 			total_usage = 0
@@ -145,9 +150,10 @@ class BasicManager(object):
 		self.agent_id = 0
 		# Internal states
 		self.internal_states = None if flags.share_internal_state else [None]*self.model_size
-		# Count based exploration
-		if flags.use_count_based_exploration_reward:
-			self.hash_state_table = {}
+		if self.training:
+			# Count based exploration
+			if flags.use_count_based_exploration_reward:
+				self.hash_state_table = {}
 			
 	def initialize_new_batch(self):
 		self.batch = ExperienceBatch(self.model_size)
@@ -168,15 +174,18 @@ class BasicManager(object):
 		
 		action, value, policy = action_batch[0], value_batch[0], policy_batch[0]
 		new_state, extrinsic_reward, terminal = act_function(action)
-		if flags.clip_reward:
-			extrinsic_reward = np.clip(extrinsic_reward, flags.min_reward, flags.max_reward)
+		if self.training:
+			if flags.clip_reward:
+				extrinsic_reward = np.clip(extrinsic_reward, flags.min_reward, flags.max_reward)
 			
 		intrinsic_reward = 0
-		if flags.use_count_based_exploration_reward: # intrinsic reward
-			intrinsic_reward += self.get_count_based_exploration_reward(new_state)
+		if self.training:
+			if flags.use_count_based_exploration_reward: # intrinsic reward
+				intrinsic_reward += self.get_count_based_exploration_reward(new_state)
 
 		total_reward = np.array([extrinsic_reward, intrinsic_reward])
-		self.batch.add_action(agent_id=agent_id, state=state, concat=concat, action=action, policy=policy, reward=total_reward, value=value, internal_state=internal_state)
+		if self.training:
+			self.batch.add_action(agent_id=agent_id, state=state, concat=concat, action=action, policy=policy, reward=total_reward, value=value, internal_state=internal_state)
 		# update step at the end of the action
 		self.step += 1
 		# return result
@@ -195,8 +204,10 @@ class BasicManager(object):
 			state_hash = ''.join('1' if x > 0 else '0' for x in state_projection) # build binary locality-sensitive hash
 			if state_hash not in self.hash_state_table:
 				self.hash_state_table[state_hash] = 1
-				if self.step > flags.steps_before_exploration_reward_bonus:
-					return flags.exploration_bonus
+			else:
+				self.hash_state_table[state_hash] += 1
+			exploration_bonus = 2/np.sqrt(self.hash_state_table[state_hash]) - 1 # in [-1,1]
+			return flags.positive_exploration_coefficient*exploration_bonus if exploration_bonus > 0 else flags.negative_exploration_coefficient*exploration_bonus
 		return 0
 			
 	def compute_discounted_cumulative_reward(self, batch):
@@ -206,8 +217,8 @@ class BasicManager(object):
 		
 	def train(self, batch):
 		# assert self.global_network is not None, 'Cannot train the global network.'
-		internal_states = batch.internal_states
 		states = batch.states
+		internal_states = batch.internal_states
 		concats = batch.concats
 		actions = batch.actions
 		policies = batch.policies
@@ -263,7 +274,7 @@ class BasicManager(object):
 		
 	def replay_value(self, batch): # replay values
 		# replay values
-		for (agent_id,pos) in batch.step_generator(self.agents_set):
+		for (agent_id,pos) in batch.step_generator():
 			concat, state, internal_state = batch.get_action(['concats','states','internal_states'], agent_id, pos)
 			value_batch, _ = self.estimate_value(agent_id=agent_id, states=[state], concats=[concat], internal_state=internal_state)
 			batch.set_action({'values':value_batch[0]}, agent_id, pos)
@@ -276,23 +287,21 @@ class BasicManager(object):
 		
 	def add_to_reward_prediction_buffer(self, batch):
 		batch_size = batch.get_size(self.agents_set)
-		if batch_size <= 3:
+		if batch_size <= 1:
 			return
 		tot_reward = np.sum(batch.get_cumulative_reward(self.agents_set))
 		self.reward_prediction_buffer.put(batch=batch, type_id=1 if tot_reward != 0 else 0) # process batch only after sampling, for better perfomance
 			
 	def get_reward_prediction_tuple(self, batch):
-		flat_states = []
-		flat_rewards = []
-		for agent in self.agents_set:
-			flat_states.extend(batch.states[agent])
-			flat_rewards.extend(batch.rewards[agent])
+		flat_states = [batch.get_action('states', agent_id, pos) for (agent_id,pos) in batch.step_generator(self.agents_set)]
+		flat_rewards = [batch.get_action('rewards', agent_id, pos) for (agent_id,pos) in batch.step_generator(self.agents_set)]
 		states_count = len(flat_states)
-		start_idx = np.random.randint(states_count-3)
-		reward_prediction_states = [flat_states[start_idx+i] for i in range(3)]
+		length = min(3, states_count-1)
+		start_idx = np.random.randint(states_count-length)
+		reward_prediction_states = [flat_states[start_idx+i] for i in range(length)]
 		reward_prediction_target = np.zeros((1,3))
 		
-		target_reward = np.sum(flat_rewards[start_idx+3])
+		target_reward = np.sum(flat_rewards[start_idx+length])
 		if target_reward == 0:
 			reward_prediction_target[0][0] = 1.0 # zero
 		elif target_reward > 0:

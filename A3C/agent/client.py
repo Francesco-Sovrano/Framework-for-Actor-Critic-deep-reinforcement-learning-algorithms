@@ -33,6 +33,7 @@ class Worker(object):
 		self.training = training
 		self.thread_index = thread_index
 		self.global_network = global_network
+		self.device = device
 		#logs
 		if not os.path.isdir(flags.log_dir + "/performance"):
 			os.mkdir(flags.log_dir + "/performance")
@@ -47,24 +48,20 @@ class Worker(object):
 		self.reward_logger.setLevel(logging.DEBUG)
 		self.max_reward = float("-inf")
 		# build network
-		self.environment = Environment.create_environment(flags.env_type, self.thread_index)
-		self.device = device
-		if self.training:
-			state_shape = self.environment.get_state_shape()
-			action_shape = self.environment.get_action_shape()
-			concat_size = self.environment.get_concatenation_size() if flags.use_concatenation else 0
-			self.local_network = eval(self.get_model_manager())(
-				session=session, 
-				device=self.device, 
-				id=self.thread_index, 
-				action_shape=action_shape, 
-				concat_size=concat_size,
-				state_shape=state_shape, 
-				global_network=self.global_network,
-				training=self.training
-			)
-		else:
-			self.local_network = self.global_network
+		self.environment = Environment.create_environment(flags.env_type, self.thread_index, self.training)
+		state_shape = self.environment.get_state_shape()
+		action_shape = self.environment.get_action_shape()
+		concat_size = self.environment.get_concatenation_size() if flags.use_concatenation else 0
+		self.local_network = eval(self.get_model_manager())(
+			session=session, 
+			device=self.device, 
+			id=self.thread_index, 
+			action_shape=action_shape, 
+			concat_size=concat_size,
+			state_shape=state_shape, 
+			global_network=self.global_network,
+			training=self.training
+		)
 		self.terminal = True
 		self.local_t = 0
 		self.prev_local_t = 0
@@ -193,9 +190,8 @@ class Worker(object):
 	def run_batch(self, global_step):
 		if self.training: # Copy weights from shared to local
 			self.local_network.sync()
-			
+			self.local_network.initialize_new_batch()
 		step = 0
-		self.local_network.initialize_new_batch()
 		max_batch_size = self.get_batch_size(global_step)
 		while step < max_batch_size and not self.terminal:
 			step += 1

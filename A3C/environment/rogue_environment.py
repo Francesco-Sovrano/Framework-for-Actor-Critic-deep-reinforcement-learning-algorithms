@@ -78,7 +78,7 @@ class RogueEnvironment(environment.Environment):
 		return frame_dict
 		
 	def process(self, action_vector):
-		action = np.argwhere(action_vector==1)[0][0]
+		action = self.choose_action(action_vector)
 		real_action = self.real_actions[action]
 		reward, state, win, lose = self.game.send_command(real_action)
 		state = state["value"]

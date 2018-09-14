@@ -33,9 +33,15 @@ class Categorical(object):
 		return tf.reduce_sum(avg_exp_scaled_logits * (tf.log(sum_exp_scaled_logits) - scaled_logits), axis=-1)
 			
 	def sample(self):
+		logits_shape = self.logits.get_shape().as_list()
+		depth = logits_shape[-1] # depth of the one hot vector
 		scaled_logits = self.logits - tf.reduce_max(self.logits, axis=-1, keepdims=True)
-		samples = tf.squeeze(tf.multinomial(scaled_logits, 1), axis=-1) # one sample per batch
-		depth = self.logits.get_shape().as_list()[-1] # depth of the one hot vector
+		if len(logits_shape) > 2: # multi-categorical sampling
+			scaled_logits = tf.reshape(scaled_logits, [-1,depth])
+			samples = tf.squeeze(tf.multinomial(scaled_logits, 1), axis=-1) # one sample per batch
+			samples = tf.reshape(samples, [-1,logits_shape[-2]])
+		else:
+			samples = tf.squeeze(tf.multinomial(scaled_logits, 1), axis=-1) # one sample per batch
 		return tf.one_hot(indices=samples, depth=depth) # one_hot_actions
 		
 class Normal(object):

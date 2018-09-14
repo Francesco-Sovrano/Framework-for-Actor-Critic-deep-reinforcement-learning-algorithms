@@ -26,19 +26,19 @@ class ReinforcementLearningPartitioner(BasicManager):
 	def build_agents(self, state_shape, action_shape, concat_size):
 		agents_count = self.get_agents_count()
 		# the manager
-		self.manager = eval('{}_Network'.format(flags.network))(
+		manager = eval('{}_Network'.format(flags.network))(
 			id='{0}_{1}'.format(self.id, 0), 
 			device=self.device, 
 			session=self.session, 
 			state_shape=state_shape, 
 			action_shape=(1,agents_count), 
-			# concat_size=agents_count+1 if flags.use_concatenation else 0, 
+			concat_size=agents_count+2 if flags.use_concatenation else 0, 
 			beta=flags.partitioner_beta, 
 			clip=self.clip[0], 
 			predict_reward=flags.predict_reward, 
 			training = self.training
 		)
-		self.model_list.append(self.manager)
+		self.model_list.append(manager)
 		# the agents
 		for i in range(agents_count):
 			agent = eval('{}_Network'.format(flags.network))(
@@ -52,7 +52,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 				clip=self.clip[i+1], 
 				predict_reward=flags.predict_reward, 
 				training = self.training, 
-				parent = self.manager, 
+				parent = manager, 
 				sibling = self.model_list[1] if i > 0 else None # the first agent (non manager)
 			)
 			self.model_list.append(agent)
@@ -65,7 +65,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		self.gradient_optimizer[0] = eval('tf.train.'+flags.partitioner_optimizer+'Optimizer')(learning_rate=self.learning_rate[0], use_locking=True)
 		
 	def get_state_partition(self, state, concat=None, internal_state=None):
-		action_batch, value_batch, policy_batch, new_internal_state = self.manager.predict_action(states=[state], concats=[concat], internal_state=internal_state)
+		action_batch, value_batch, policy_batch, new_internal_state = self.get_model(0).predict_action(states=[state], concats=[concat], internal_state=internal_state)
 		id = np.argwhere(action_batch[0]==1)[0][0]+1
 		self.add_to_statistics(id)
 		return id, action_batch[0], value_batch[0], policy_batch[0], new_internal_state
@@ -74,12 +74,12 @@ class ReinforcementLearningPartitioner(BasicManager):
 		return step%flags.partitioner_granularity==0
 		
 	def get_manager_concatenation(self):
-		return np.concatenate((self.last_manager_action,[self.last_manager_value]), -1)
+		return np.concatenate((self.last_manager_action,self.last_manager_reward), -1)
 		
 	def reset(self):
 		super().reset()
 		self.last_manager_action = [0]*self.get_agents_count()
-		self.last_manager_value = 0
+		# self.last_manager_value = 0
 		self.last_manager_reward = np.zeros(2)
 		self.manager_internal_state = None
 		
@@ -90,7 +90,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		super().initialize_new_batch()
 		if not query_partitioner:
 			state, concat, action, policy, reward, value, internal_state = last_action
-			self.batch.add_action(agent_id=0, state=states, concat=concat, action=action, policy=policy, reward=reward, value=value, internal_state=internal_state)
+			self.batch.add_action(agent_id=0, state=state, concat=concat, action=action, policy=policy, reward=reward, value=value, internal_state=internal_state)
 		
 	def act(self, act_function, state, concat=None):
 		if self.query_partitioner(self.step):
@@ -98,14 +98,16 @@ class ReinforcementLearningPartitioner(BasicManager):
 			manager_concat = self.get_manager_concatenation()
 			self.agent_id, manager_action, manager_value, manager_policy, self.manager_internal_state = self.get_state_partition(state=state, concat=manager_concat, internal_state=internal_state)
 			self.last_manager_action = manager_action
-			self.last_manager_value = manager_value
+			# self.last_manager_value = manager_value
 			self.last_manager_reward = np.zeros(2) # [extrinsic, intrinsic] # N.B.: the query reward is unknown since bootstrap or a new query starts
-			self.batch.add_action(agent_id=0, state=state, concat=manager_concat, action=manager_action, policy=manager_policy, reward=self.last_manager_reward, value=manager_value, internal_state=internal_state)
+			if self.training:
+				self.batch.add_action(agent_id=0, state=state, concat=manager_concat, action=manager_action, policy=manager_policy, reward=self.last_manager_reward, value=manager_value, internal_state=internal_state)
 			
 		new_state, value, action, total_reward, terminal, policy = super().act(act_function, state, concat)
 		# keep query reward updated
 		self.last_manager_reward += total_reward
-		self.batch.set_action({'rewards':self.last_manager_reward}, 0, -1)
+		if self.training:
+			self.batch.set_action({'rewards':self.last_manager_reward}, 0, -1)
 		return new_state, value, action, total_reward, terminal, policy
 		
 	def bootstrap(self, state, concat=None):
@@ -119,11 +121,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 		super().bootstrap(state, concat)
 		
 	def replay_value(self, batch): # replay values
-		for (_,i) in batch.step_generator(agents=[0]):
-			state, concat, internal_state = batch.get_action(['states','concats','internal_states'], 0, i)
-			value_batch, _ = self.estimate_value(agent_id=0, states=[state], concats=[concat], internal_state=internal_state)
-			batch.set_action({'values':value_batch[0]}, 0, i)
-		if 'manager_value' in batch.bootstrap:
+		if 'manager_value' in batch.bootstrap: # do it before calling super().replay_value(batch)
 			bootstrap = batch.bootstrap
 			value_batch, _ = self.estimate_value(agent_id=0, states=[bootstrap['state']], concats=[bootstrap['manager_concat']], internal_state=bootstrap['manager_internal_state'])
 			bootstrap['manager_value'] = value_batch[0]
