@@ -115,7 +115,7 @@ class PrioritizedBuffer(Buffer):
 		return self.batches[type][keys[idx]], idx, type_id
 		
 	def sample(self): # O(n) after a new put, O(log) otherwise
-		self.keyed_sample()[0]
+		return self.keyed_sample()[0]
 
 	def update_priority(self, idx, priority, type_id=0): # O(log)
 		type = self.get_type(type_id)
