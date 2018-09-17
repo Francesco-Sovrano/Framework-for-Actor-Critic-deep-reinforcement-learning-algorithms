@@ -22,8 +22,6 @@ class HybridTowersAC_Network(BaseAC_Network):
 			input = tf.layers.flatten(input)
 			concat = tf.concat([tower1, input], axis=-1)
 			# update keys
-			if share_trainables:
-				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
+			self._update_keys(variable_scope.name, share_trainables)
 			# return result
 			return concat

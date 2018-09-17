@@ -5,7 +5,6 @@ from __future__ import print_function
 
 import tensorflow as tf
 import numpy as np
-from copy import deepcopy
 
 import options
 flags = options.get()
@@ -15,6 +14,8 @@ from agent.loss.value_loss import ValueLoss
 from utils.distributions import Categorical, Normal
 
 class BaseAC_Network(object):
+	lstm_units = 64 # the number of units of the LSTM
+		
 	def __init__(self, session, id, state_shape, action_shape, clip, device, predict_reward, concat_size=0, beta=None, training=True, parent=None, sibling=None):
 		self.train_count = 0
 		self.beta = beta if beta is not None else flags.beta
@@ -31,8 +32,6 @@ class BaseAC_Network(object):
 		self.policy_depth = action_shape[1] if len(action_shape) > 1 else 0 # number of discrete action types: set 0 for continuous control
 		self.concat_size = concat_size # the size of the vector concatenated with the CNN output before entering the LSTM
 		self.state_shape = state_shape # the shape of the input
-		# lstm units
-		self.lstm_units = 64 # the number of units of the LSTM
 		# create the whole A3C network
 		self._create_network()
 	
@@ -105,6 +104,11 @@ class BaseAC_Network(object):
 			if len(fentropy.get_shape()) > 1:
 				fentropy = tf.reduce_mean(fentropy, axis=-1)
 			return fentropy
+			
+	def _update_keys(self, scope_name, share_trainables):
+		if share_trainables:
+			self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope_name)
+		self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope_name)
 		
 	def _batch_norm_layer(self, input, scope, name="", share_trainables=True):
 		with tf.variable_scope(scope), tf.variable_scope("BatchNorm{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
@@ -112,9 +116,7 @@ class BaseAC_Network(object):
 			batch_norm = tf.layers.BatchNormalization(renorm=True) # renorm because minibaches are too small
 			norm_input = batch_norm.apply(input,training=self.training)
 			# update keys
-			if share_trainables:
-				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
+			self._update_keys(variable_scope.name, share_trainables)
 			# return result
 			return batch_norm, norm_input
 		
@@ -127,9 +129,7 @@ class BaseAC_Network(object):
 			input = tf.layers.conv2d( inputs=input, filters=16, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
 			input = tf.layers.conv2d( inputs=input, filters=8, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
 			# update keys
-			if share_trainables:
-				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
+			self._update_keys(variable_scope.name, share_trainables)
 			# return result
 			return input
 	
@@ -142,9 +142,7 @@ class BaseAC_Network(object):
 				concat = tf.layers.flatten(concat)
 				input = tf.concat([input, concat], -1) # shape: (batch, concat_size+units)
 			# Update keys
-			if share_trainables:
-				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
+			self._update_keys(variable_scope.name, share_trainables)
 			# Return result
 			return input
 	
@@ -169,9 +167,7 @@ class BaseAC_Network(object):
 			lstm_outputs = tf.layers.dropout(inputs=lstm_outputs, rate=0.5)
 			lstm_outputs = tf.reshape(lstm_outputs, [-1,units]) # shape: (batch, units)
 			# Update keys
-			if share_trainables:
-				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
+			self._update_keys(variable_scope.name, share_trainables)
 			# Return result
 			return lstm_outputs, final_state
 			
@@ -181,9 +177,7 @@ class BaseAC_Network(object):
 			input = tf.layers.dense(inputs=input, units=1, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			input = tf.reshape(input,[-1]) # flatten
 			# update keys
-			if share_trainables:
-				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
+			self._update_keys(variable_scope.name, share_trainables)
 			# return result
 			return input
 			
@@ -208,9 +202,7 @@ class BaseAC_Network(object):
 				shape = [-1,self.policy_size,self.policy_depth] if self.policy_size > 1 else [-1,self.policy_depth]
 				policy_batch = tf.reshape(policy_batch, shape)
 			# update keys
-			if share_trainables:
-				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
+			self._update_keys(variable_scope.name, share_trainables)
 			# return result
 			return policy_batch
 			
@@ -222,9 +214,7 @@ class BaseAC_Network(object):
 			input = tf.layers.flatten(input)
 			input = tf.layers.dense(inputs=input, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			# update keys
-			if share_trainables:
-				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
+			self._update_keys(variable_scope.name, share_trainables)
 			# return result
 			return input
 			

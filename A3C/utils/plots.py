@@ -79,6 +79,8 @@ def plot(logs, figure_file):
 			for _ in range(data_per_plotpoint):
 				try:
 					(step, obj) = next(data)
+					for key in stat: # foreach statistic
+						obj[key]
 				except Exception as e:
 					bad_obj_count += 1
 					continue # try with next obj

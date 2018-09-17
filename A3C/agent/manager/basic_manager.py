@@ -63,7 +63,7 @@ class BasicManager(object):
 			
 	def set_model_size(self):
 		self.model_size = 1
-		self.agents_set = set([1])
+		self.agents_set = set([0])
 			
 	def build_agents(self, state_shape, action_shape, concat_size):
 		agent=eval('{}_Network'.format(flags.network))(

@@ -33,8 +33,6 @@ class TowersAC_Network(BaseAC_Network):
 				tower3 = tf.layers.flatten(tower3)
 			concat = tf.concat([tower1, tower2, tower3], axis=-1)
 			# update keys
-			if share_trainables:
-				self.shared_keys += tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=variable_scope.name)
-			self.update_keys += tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=variable_scope.name)
+			self._update_keys(variable_scope.name, share_trainables)
 			# return result
 			return concat

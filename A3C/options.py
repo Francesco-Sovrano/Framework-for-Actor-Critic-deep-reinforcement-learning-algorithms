@@ -15,7 +15,7 @@ def build():
 	# tf.app.flags.DEFINE_string("env_type", "sentipolc", "environment types: rogue, car_controller, sentipolc, or environments from https://gym.openai.com/envs")
 	tf.app.flags.DEFINE_string("env_type", "rogue", "environment types: rogue, car_controller, sentipolc, or environments from https://gym.openai.com/envs")
 # Gradient optimization parameters
-	tf.app.flags.DEFINE_string("network", "BaseAC", "neural network: BaseAC, TowersAC, HybridTowersAC") # default is Adam, for vanilla A3C is RMSProp
+	tf.app.flags.DEFINE_string("network", "BaseAC", "neural network: BaseAC, TowersAC, HybridTowersAC, SAAC, NoLSTMAC")
 	tf.app.flags.DEFINE_string("optimizer", "Adam", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is Adam, for vanilla A3C is RMSProp
 	tf.app.flags.DEFINE_float("grad_norm_clip", 0, "gradient norm clipping (0 for none)") # default is 40.0, for openAI is 0.5
 	# In information theory, the cross entropy between two probability distributions p and q over the same underlying set of events measures the average number of bits needed to identify an event drawn from the set.
