@@ -39,10 +39,13 @@ class PolicyLoss(object):
 		return 0.5 * self.reduce_function(tf.squared_difference(self.old_cross_entropy,self.cross_entropy))
 		
 	def get_clipping_frequency(self):
-		return tf.reduce_mean(tf.to_float(tf.greater(tf.abs(tf.exp(self.old_cross_entropy - self.cross_entropy) - 1.0), self.cliprange)))
+		return tf.reduce_mean(tf.to_float(tf.greater(tf.abs(self.get_ratio() - 1.0), self.cliprange)))
 		
 	def get_entropy_contribution(self):
 		return self.reduce_function(self.entropy)*self.beta
+		
+	def get_ratio(self):
+		return tf.exp(self.old_cross_entropy - self.cross_entropy)
 			
 	def vanilla(self):
 		policy = self.reduce_function(self.advantage*self.cross_entropy)
@@ -50,8 +53,7 @@ class PolicyLoss(object):
 		
 	def ppo(self):
 		# Schulman, John, et al. "Proximal policy optimization algorithms." arXiv preprint arXiv:1707.06347 (2017).
-		ratio = tf.exp(self.old_cross_entropy - self.cross_entropy)
+		ratio = self.get_ratio()
 		clipped_ratio = tf.clip_by_value(ratio, 1.0 - self.cliprange, 1.0 + self.cliprange)
-		min_ratio = tf.minimum(ratio, clipped_ratio)
-		policy = -self.reduce_function(self.advantage*min_ratio)
+		policy = -self.reduce_function(tf.minimum(self.advantage*ratio, self.advantage*clipped_ratio))
 		return policy - self.get_entropy_contribution()

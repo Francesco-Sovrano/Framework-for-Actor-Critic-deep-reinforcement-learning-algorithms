@@ -69,9 +69,9 @@ class Buffer(object):
 
 class PrioritizedBuffer(Buffer):
 	
-	def __init__(self, size):
+	def __init__(self, size, alpha):
 		self._eps = 1e-6
-		self._alpha = 0.6
+		self._alpha = alpha
 		super().__init__(size)
 	
 	def clean(self):
@@ -104,7 +104,7 @@ class PrioritizedBuffer(Buffer):
 		self.batches[type].update({batch_priority: batch}) # O(log)
 		self.prefixsum[type] = None # compute prefixsum only if needed, when sampling
 		
-	def sample(self): # O(n) after a new put, O(log) otherwise
+	def keyed_sample(self): # O(n) after a new put, O(log) otherwise
 		type_id = np.random.choice( [key for key,value in self.types.items() if not self.is_empty(value)] )
 		type = self.get_type(type_id)
 		if self.prefixsum[type] is None: # compute prefixsum
@@ -113,6 +113,9 @@ class PrioritizedBuffer(Buffer):
 		idx = np.searchsorted(self.prefixsum[type], mass) # O(log) # Find arg of leftmost item greater than or equal to x
 		keys = self.batches[type].keys()
 		return self.batches[type][keys[idx]], idx, type_id
+		
+	def sample(self): # O(n) after a new put, O(log) otherwise
+		self.keyed_sample()[0]
 
 	def update_priority(self, idx, priority, type_id=0): # O(log)
 		type = self.get_type(type_id)

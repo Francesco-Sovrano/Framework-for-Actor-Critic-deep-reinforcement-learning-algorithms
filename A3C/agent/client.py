@@ -34,19 +34,20 @@ class Worker(object):
 		self.thread_index = thread_index
 		self.global_network = global_network
 		self.device = device
-		#logs
-		if not os.path.isdir(flags.log_dir + "/performance"):
-			os.mkdir(flags.log_dir + "/performance")
-		if not os.path.isdir(flags.log_dir + "/episodes"):
-			os.mkdir(flags.log_dir + "/episodes")
-		formatter = logging.Formatter('%(asctime)s %(message)s')
-		# reward logger
-		self.reward_logger = logging.getLogger('reward_' + str(thread_index))
-		hdlr = logging.FileHandler(flags.log_dir + '/performance/reward_' + str(thread_index) + '.log')
-		hdlr.setFormatter(formatter)
-		self.reward_logger.addHandler(hdlr) 
-		self.reward_logger.setLevel(logging.DEBUG)
-		self.max_reward = float("-inf")
+		if self.training:
+			#logs
+			if not os.path.isdir(flags.log_dir + "/performance"):
+				os.mkdir(flags.log_dir + "/performance")
+			if not os.path.isdir(flags.log_dir + "/episodes"):
+				os.mkdir(flags.log_dir + "/episodes")
+			formatter = logging.Formatter('%(asctime)s %(message)s')
+			# reward logger
+			self.reward_logger = logging.getLogger('reward_' + str(thread_index))
+			hdlr = logging.FileHandler(flags.log_dir + '/performance/reward_' + str(thread_index) + '.log')
+			hdlr.setFormatter(formatter)
+			self.reward_logger.addHandler(hdlr) 
+			self.reward_logger.setLevel(logging.DEBUG)
+			self.max_reward = float("-inf")
 		# build network
 		self.environment = Environment.create_environment(flags.env_type, self.thread_index, self.training)
 		state_shape = self.environment.get_state_shape()
@@ -220,7 +221,8 @@ class Worker(object):
 			if self.terminal:
 				self.prepare()
 			step = self.run_batch(global_step)
-			self.log(global_step, step)
+			if self.training:
+				self.log(global_step, step)
 			return step
 		except:
 			traceback.print_exc()

@@ -32,7 +32,7 @@ class ReinforcementLearningPartitioner(BasicManager):
 			session=self.session, 
 			state_shape=state_shape, 
 			action_shape=(1,agents_count), 
-			concat_size=agents_count+2 if flags.use_concatenation else 0, 
+			# concat_size=agents_count+2 if flags.use_concatenation else 0, 
 			beta=flags.partitioner_beta, 
 			clip=self.clip[0], 
 			predict_reward=flags.predict_reward, 

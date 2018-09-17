@@ -10,7 +10,7 @@ from agent.network import *
 from utils.buffer import Buffer, PrioritizedBuffer
 # from utils.schedules import LinearSchedule
 from agent.batch import ExperienceBatch
-from sklearn import random_projection
+from sklearn.random_projection import SparseRandomProjection
 
 import options
 flags = options.get()
@@ -22,6 +22,7 @@ class BasicManager(object):
 		self.session = session
 		self.id = id
 		self.device = device
+		self.state_shape = state_shape
 		self.set_model_size()
 		if self.training:
 			self.global_network = global_network
@@ -36,7 +37,7 @@ class BasicManager(object):
 			# Build experience buffer
 			if flags.replay_ratio > 0:
 				if flags.prioritized_replay:
-					self.experience_buffer = PrioritizedBuffer(size=flags.replay_buffer_size)
+					self.experience_buffer = PrioritizedBuffer(size=flags.replay_buffer_size, alpha=flags.prioritized_buffer_alpha)
 					# self.beta_schedule = LinearSchedule(flags.max_time_step, initial_p=0.4, final_p=1.0)
 				else:
 					self.experience_buffer = Buffer(size=flags.replay_buffer_size)
@@ -48,7 +49,7 @@ class BasicManager(object):
 			# Count based exploration	
 			if flags.use_count_based_exploration_reward:
 				self.projection = None
-				self.projection_train_set = []
+				self.projection_dataset = []
 			if flags.print_loss:
 				self._loss_list = [{} for _ in range(self.model_size)]
 		else:
@@ -192,13 +193,13 @@ class BasicManager(object):
 		return new_state, value, action, total_reward, terminal, policy
 
 	def get_count_based_exploration_reward(self, new_state):
-		if len(self.projection_train_set) < flags.projection_train_set_size:
-			self.projection_train_set.append(new_state.flatten())
-		if len(self.projection_train_set) == flags.projection_train_set_size:
+		if len(self.projection_dataset) < flags.projection_dataset_size:
+			self.projection_dataset.append(new_state.flatten())
+		if len(self.projection_dataset) == flags.projection_dataset_size:
 			if self.projection is None:
-				self.projection = random_projection.SparseRandomProjection(n_components=flags.exploration_hash_size if flags.exploration_hash_size > 0 else 'auto') # http://scikit-learn.org/stable/modules/random_projection.html
-			self.projection.fit(self.projection_train_set)
-			self.projection_train_set = [] # reset
+				self.projection = SparseRandomProjection(n_components=flags.exploration_hash_size if flags.exploration_hash_size > 0 else 'auto') # http://scikit-learn.org/stable/modules/random_projection.html
+			self.projection.fit(self.projection_dataset)
+			self.projection_dataset = [] # reset
 		if self.projection is not None:
 			state_projection = self.projection.transform([new_state.flatten()])[0] # project to smaller dimension
 			state_hash = ''.join('1' if x > 0 else '0' for x in state_projection) # build binary locality-sensitive hash
@@ -314,14 +315,14 @@ class BasicManager(object):
 		batch_size = batch.get_size(self.agents_set)
 		if batch_size < 1:
 			return
-		batch_reward = batch.get_cumulative_reward(self.agents_set)[0]
-		if batch_reward == 0 and flags.save_only_batches_with_reward:
+		batch_extrinsic_reward = batch.get_cumulative_reward(self.agents_set)[0]
+		if batch_extrinsic_reward == 0 and flags.save_only_batches_with_reward:
 			return
 		if flags.replay_using_default_internal_state:
 			batch.reset_internal_states()
-		type_id = 1 if batch_reward > 0 else 0
+		type_id = 1 if batch_extrinsic_reward > 0 else 0
 		if flags.prioritized_replay:
-			self.experience_buffer.put(batch=batch, priority=sum(batch_error)/len(batch_error), type_id=type_id)
+			self.experience_buffer.put(batch=batch, priority=batch_extrinsic_reward/np.sqrt(batch_size), type_id=type_id)
 		else:
 			self.experience_buffer.put(batch=batch, type_id=type_id)
 		
@@ -330,14 +331,8 @@ class BasicManager(object):
 			return
 		n = np.random.poisson(flags.replay_ratio)
 		for _ in range(n):
-			if flags.prioritized_replay:
-				old_batch, batch_index, type_id = self.experience_buffer.sample()
-			else:
-				old_batch = self.experience_buffer.sample()
-			old_batch_error = self.train(self.replay_value(old_batch) if flags.replay_value else old_batch)
-			if flags.prioritized_replay:
-				avg_error = sum(old_batch_error)/len(old_batch_error)
-				self.experience_buffer.update_priority(batch_index, avg_error, type_id)
+			old_batch = self.experience_buffer.sample()
+			self.train(self.replay_value(old_batch) if flags.replay_value else old_batch)
 		
 	def process_batch(self, global_step):
 		batch = self.compute_discounted_cumulative_reward(self.batch)

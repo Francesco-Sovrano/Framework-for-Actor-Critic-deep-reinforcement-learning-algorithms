@@ -18,7 +18,7 @@ from multiprocessing import Queue
 from environment.environment import Environment
 from agent.client import Worker
 import utils.plots as plt
-# import gc
+from agent.manager import *
 
 import options
 flags = options.get()
@@ -184,7 +184,7 @@ class Application(object):
 			self.elapsed_time = 0.0
 			self.next_save_steps = flags.save_interval_step
 			print("Could not find old checkpoint")
-		# self.session.graph.finalize()
+		self.session.graph.finalize()
 			
 	def save(self):
 		""" Save checkpoint. 
@@ -214,7 +214,6 @@ class Application(object):
 		self.saver.save(self.session, flags.checkpoint_dir + '/checkpoint', global_step=self.global_step)
 		self.save_important_information(flags.checkpoint_dir + '/{}.pkl'.format(self.global_step))
 		print('Checkpoint saved in ' + flags.checkpoint_dir)
-		# gc.collect()
 		
 		# Test
 		if flags.test_after_saving:
@@ -235,8 +234,10 @@ class Application(object):
 		trainers_count = len(self.trainers)
 		persistent_memory = {}
 		persistent_memory["train_count_matrix"] = [[] for _ in range(trainers_count)]
+		# Experience replay
 		if flags.replay_ratio > 0:
 			persistent_memory["experience_buffers"] = [None for _ in range(trainers_count)]
+		# Reward prediction
 		if flags.predict_reward:
 			persistent_memory["reward_prediction_buffers"] = [None for _ in range(trainers_count)]
 		for i in range(trainers_count):

@@ -15,7 +15,7 @@ def build():
 	# tf.app.flags.DEFINE_string("env_type", "sentipolc", "environment types: rogue, car_controller, sentipolc, or environments from https://gym.openai.com/envs")
 	tf.app.flags.DEFINE_string("env_type", "rogue", "environment types: rogue, car_controller, sentipolc, or environments from https://gym.openai.com/envs")
 # Gradient optimization parameters
-	tf.app.flags.DEFINE_string("network", "BaseAC", "neural network: BaseAC") # default is Adam, for vanilla A3C is RMSProp
+	tf.app.flags.DEFINE_string("network", "BaseAC", "neural network: BaseAC, TowersAC, HybridTowersAC") # default is Adam, for vanilla A3C is RMSProp
 	tf.app.flags.DEFINE_string("optimizer", "Adam", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is Adam, for vanilla A3C is RMSProp
 	tf.app.flags.DEFINE_float("grad_norm_clip", 0, "gradient norm clipping (0 for none)") # default is 40.0, for openAI is 0.5
 	# In information theory, the cross entropy between two probability distributions p and q over the same underlying set of events measures the average number of bits needed to identify an event drawn from the set.
@@ -61,8 +61,7 @@ def build():
 	tf.app.flags.DEFINE_float("positive_exploration_coefficient", 0.1, "Bonus coefficient for the possitive part of the count-based exploration reward. exploration_bonus = 2/np.sqrt(self.hash_state_table[state_hash]) - 1. if exploration_bonus > 0 exploration_bonus*=positive_exploration_coefficient.")
 	tf.app.flags.DEFINE_float("negative_exploration_coefficient", 0.01, "Bonus coefficient for the negative part of the count-based exploration reward. exploration_bonus = 2/np.sqrt(self.hash_state_table[state_hash]) - 1. if exploration_bonus < 0 exploration_bonus*=negative_exploration_coefficient.")
 	tf.app.flags.DEFINE_integer("exploration_hash_size", 10, "Locality-Sensitive Hash size: higher values lead to fewer collisions and are thus more likely to distinguish states. Set 0 for automatic sizing")
-	tf.app.flags.DEFINE_integer("projection_train_set_size", 10**4, "Size of the training set for the Locality-Sensitive Hash projection function")
-	tf.app.flags.DEFINE_integer("steps_before_exploration_reward_bonus", 10, "Number of steps to wait before giving exploration reward bonus")
+	tf.app.flags.DEFINE_integer("projection_dataset_size", 10**4, "Size of the training set for the Locality-Sensitive Hash projection function")
 # Experience Replay
 	# Replay ratio > 0 increases off-policyness
 	tf.app.flags.DEFINE_float("replay_ratio", 1, "Mean number of experience replays per batch. Lambda parameter of a Poisson distribution. When replay_ratio is 0, then experience replay is not active.") # for A3C is 0, for ACER default is 4
@@ -74,6 +73,7 @@ def build():
 	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
 # Prioritized Experience Replay: Schaul, Tom, et al. "Prioritized experience replay." arXiv preprint arXiv:1511.05952 (2015).
 	tf.app.flags.DEFINE_boolean("prioritized_replay", False, "Whether to use prioritized sampling (if replay_ratio > 0)") # default is True
+	tf.app.flags.DEFINE_float("prioritized_buffer_alpha", 0.6, "Prioritized buffer alpha")
 # Reward clip
 	tf.app.flags.DEFINE_boolean("clip_reward", False, "Whether to clip the reward between min_reward and max_reward") # default is False
 	tf.app.flags.DEFINE_float("min_reward", 0, "Minimum reward for clipping") # default is -1

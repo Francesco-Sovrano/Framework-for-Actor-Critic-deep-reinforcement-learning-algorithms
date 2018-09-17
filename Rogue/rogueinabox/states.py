@@ -48,7 +48,7 @@ class StateGenerator(ABC):
 		return 9
 		
 	def empty_status(self):
-		return np.zeros(self.get_status_size(), dtype=np.uint8)
+		return np.zeros(self.get_status_size(), dtype=np.float32)
 
 	def compute_state(self, info):
 		self.player_position = info.get_player_pos( )
@@ -80,7 +80,7 @@ class StateGenerator(ABC):
 		return state
 	
 	def empty_state(self):
-		return np.zeros(self._shape, dtype=np.uint8)
+		return np.zeros(self._shape, dtype=np.float32)
 		
 	@staticmethod
 	def environment_tiles_are_in_position_range(info, tiles, position, r):
@@ -290,10 +290,10 @@ class Complete_CroppedView_StateGenerator(CroppedView_StateGenerator):
 		map = self.set_channel(2, self.player_position, map, info.get_list_of_positions_by_tile("-"), 1) # walls
 		map = self.set_channel(1, self.player_position, map, info.get_list_of_positions_by_tile("+"), 1) # doors
 		map = self.set_channel(0, self.player_position, map, info.get_list_of_positions_by_tile("#"), 1) # tunnel
-		for item in info.pixel["items"]: # items
-			map = self.set_channel(5, self.player_position, map, info.pixel["items"][item], ord(item))
-		for monster in info.pixel["monsters"]: # monsters
-			map = self.set_channel(4, self.player_position, map, info.pixel["monsters"][monster], ord(monster))
+		for i,item in enumerate(info.pixel["items"]): # items
+			map = self.set_channel(5, self.player_position, map, info.pixel["items"][item], i+1)
+		for i,monster in enumerate(info.pixel["monsters"]): # monsters
+			map = self.set_channel(4, self.player_position, map, info.pixel["monsters"][monster], i+1)
 		
 		status = self.empty_status()
 		status[0] = info.statusbar["gold"]
@@ -326,10 +326,10 @@ class Complete_FullView_StateGenerator(FullView_StateGenerator):
 		map = self.set_channel(2, map, info.get_list_of_positions_by_tile("-"), 1) # walls
 		map = self.set_channel(1, map, info.get_list_of_positions_by_tile("+"), 1) # doors
 		map = self.set_channel(0, map, info.get_list_of_positions_by_tile("#"), 1) # tunnel
-		for item in info.pixel["items"]: # items
-			map = self.set_channel(5, map, info.pixel["items"][item], ord(item))
-		for monster in info.pixel["monsters"]: # monsters
-			map = self.set_channel(4, map, info.pixel["monsters"][monster], ord(monster))
+		for i,item in enumerate(info.pixel["items"]): # items
+			map = self.set_channel(5, map, info.pixel["items"][item], i+1)
+		for i,monster in enumerate(info.pixel["monsters"]): # monsters
+			map = self.set_channel(4, map, info.pixel["monsters"][monster], i+1)
 		map = self.set_channel(6, map, [self.player_position], 1) # rogue (player)
 		
 		status = self.empty_status()

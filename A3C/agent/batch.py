@@ -1,4 +1,3 @@
-from collections import deque
 import numpy as np
 
 def is_tuple(val):
@@ -9,13 +8,13 @@ class ExperienceBatch(object):
 	def __init__(self, model_size):
 		self.model_size = model_size
 		# action info
-		self.states = [deque() for _ in range(model_size)] # do NOT use [deque]*model_size
-		self.concats = [deque() for _ in range(model_size)]
-		self.actions = [deque() for _ in range(model_size)]
-		self.policies = [deque() for _ in range(model_size)]
-		self.rewards = [deque() for _ in range(model_size)]
-		self.values = [deque() for _ in range(model_size)]
-		self.internal_states = [deque() for _ in range(model_size)]
+		self.states = [[] for _ in range(model_size)] # do NOT use [[]]*model_size
+		self.concats = [[] for _ in range(model_size)]
+		self.actions = [[] for _ in range(model_size)]
+		self.policies = [[] for _ in range(model_size)]
+		self.rewards = [[] for _ in range(model_size)]
+		self.values = [[] for _ in range(model_size)]
+		self.internal_states = [[] for _ in range(model_size)]
 		# cumulative info
 		self.discounted_cumulative_rewards = [None]*model_size
 		self.generalized_advantage_estimators = [None]*model_size
@@ -78,8 +77,8 @@ class ExperienceBatch(object):
 	def compute_discounted_cumulative_reward(self, agents, last_value, gamma, lambd):
 		# prepare batch
 		for i in agents:
-			self.discounted_cumulative_rewards[i]=deque()
-			self.generalized_advantage_estimators[i]=deque()
+			self.discounted_cumulative_rewards[i]=[]
+			self.generalized_advantage_estimators[i]=[]
 		# bootstrap
 		discounted_cumulative_reward = last_value
 		generalized_advantage_estimator = 0.0
@@ -93,3 +92,16 @@ class ExperienceBatch(object):
 			self.set_action(feed_dict, agent, pos)
 			# update last value
 			last_value = value
+			
+	def append(self, batch):
+		pos_base = [len(self.states[agent]) for agent in range(self.model_size)]
+		self.agent_position_list.extend((agent, pos+pos_base[agent]) for (agent,pos) in batch.agent_position_list)
+		for i in range(self.model_size):
+			self.states[i].extend(batch.states[i])
+			self.concats[i].extend(batch.concats[i])
+			self.actions[i].extend(batch.actions[i])
+			self.policies[i].extend(batch.policies[i])
+			self.rewards[i].extend(batch.rewards[i])
+			self.values[i].extend(batch.values[i])
+			self.internal_states[i].extend(batch.internal_states[i])
+		self.bootstrap = batch.bootstrap
