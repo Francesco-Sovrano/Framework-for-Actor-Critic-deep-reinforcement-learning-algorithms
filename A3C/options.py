@@ -31,7 +31,7 @@ def build():
 	tf.app.flags.DEFINE_integer("partitioner_granularity", 8, "Number of steps after which to run the partitioner.")
 	tf.app.flags.DEFINE_string("partitioner_type", "ReinforcementLearning", "Partitioner types: ReinforcementLearning, KMeans")
 	# Flags for partitioner_type == KMeans
-	tf.app.flags.DEFINE_integer("partitioner_training_set_size", 10**5, "Should be a number greater than 0")
+	tf.app.flags.DEFINE_integer("partitioner_dataset_size", 10**5, "Should be a number greater than 0")
 	# Flags for partitioner_type == ReinforcementLearning
 	tf.app.flags.DEFINE_string("partitioner_optimizer", "ProximalAdagrad", "gradient optimizer: Adadelta, AdagradDA, Adagrad, Adam, Ftrl, GradientDescent, Momentum, ProximalAdagrad, ProximalGradientDescent, RMSProp") # default is ProximalAdagrad
 	tf.app.flags.DEFINE_float("partitioner_alpha", 7e-4, "Partitioner learning rate") # Usually the partitioner has an higher learning rate than the others
@@ -59,7 +59,7 @@ def build():
 # Count-Based Exploration: Tang, Haoran, et al. "# Exploration: A study of count-based exploration for deep reinforcement learning." Advances in Neural Information Processing Systems. 2017.
 	tf.app.flags.DEFINE_boolean("use_count_based_exploration_reward", True, "States are mapped to hash codes (using Locality-sensitive hashing), which allows to count their occurrences with a hash table. These counts are then used to compute a reward bonus according to the classic count-based exploration theory.")
 	tf.app.flags.DEFINE_float("positive_exploration_coefficient", 0.1, "Bonus coefficient for the possitive part of the count-based exploration reward. exploration_bonus = 2/np.sqrt(self.hash_state_table[state_hash]) - 1. if exploration_bonus > 0 exploration_bonus*=positive_exploration_coefficient.")
-	tf.app.flags.DEFINE_float("negative_exploration_coefficient", 0.01, "Bonus coefficient for the negative part of the count-based exploration reward. exploration_bonus = 2/np.sqrt(self.hash_state_table[state_hash]) - 1. if exploration_bonus < 0 exploration_bonus*=negative_exploration_coefficient.")
+	tf.app.flags.DEFINE_float("negative_exploration_coefficient", 0.001, "Bonus coefficient for the negative part of the count-based exploration reward. exploration_bonus = 2/np.sqrt(self.hash_state_table[state_hash]) - 1. if exploration_bonus < 0 exploration_bonus*=negative_exploration_coefficient.")
 	tf.app.flags.DEFINE_integer("exploration_hash_size", 10, "Locality-Sensitive Hash size: higher values lead to fewer collisions and are thus more likely to distinguish states. Set 0 for automatic sizing")
 	tf.app.flags.DEFINE_integer("projection_dataset_size", 10**4, "Size of the training set for the Locality-Sensitive Hash projection function")
 # Experience Replay
@@ -83,9 +83,7 @@ def build():
 	tf.app.flags.DEFINE_float("value_coefficient", 0.5, "value coefficient for tuning Critic learning rate") # default is 0.5, for openAI is 0.25
 	tf.app.flags.DEFINE_float("beta", 0.001, "entropy regularization constant") # default is 0.001, for openAI is 0.01
 	tf.app.flags.DEFINE_integer("parallel_size", 4, "parallel thread size")
-	tf.app.flags.DEFINE_integer("min_batch_size", 8, "Minimum max batch size") # default is 8
-	tf.app.flags.DEFINE_integer("max_batch_size", 8, "Maximum max batch size") # default is 60, for openAI is 128
-	tf.app.flags.DEFINE_integer("steps_before_increasing_batch_size", 10**6, "Number of steps to run before starting to increase the batch size")
+	tf.app.flags.DEFINE_integer("batch_size", 8, "Max. batch size") # default is 8
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
 	tf.app.flags.DEFINE_float("gamma", 0.99, "discount factor for rewards") # default is 0.95, for openAI is 0.99
 # Generalized Advantage Estimation: Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).

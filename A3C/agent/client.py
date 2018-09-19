@@ -14,7 +14,7 @@ import utils.plots as plt
 
 from environment.environment import Environment
 from agent.manager import *
-from utils.schedules import LinearSchedule
+# from utils.schedules import LinearSchedule
 
 # get command line args
 import options
@@ -68,7 +68,7 @@ class Worker(object):
 		self.prev_local_t = 0
 		self.terminated_episodes = 0
 		self.stats = {}
-		self.batch_schedule = LinearSchedule(flags.max_time_step-flags.steps_before_increasing_batch_size, initial_p=flags.min_batch_size, final_p=flags.min_batch_size)
+		# self.batch_schedule = LinearSchedule(flags.max_time_step-flags.steps_before_increasing_batch_size, initial_p=flags.min_batch_size, final_p=flags.min_batch_size)
 
 	def update_statistics(self):
 		self.stats = self.environment.get_statistics()
@@ -182,10 +182,10 @@ class Worker(object):
 			elif self.save_frame_info:
 				self.print_frames(global_step)
 				
-	def get_batch_size(self, global_step):
-		if flags.max_batch_size <= flags.min_batch_size or global_step <= flags.steps_before_increasing_batch_size:
-			return flags.min_batch_size
-		return self.batch_schedule.value(global_step-flags.steps_before_increasing_batch_size)
+	# def get_batch_size(self, global_step):
+		# if flags.max_batch_size <= flags.min_batch_size or global_step <= flags.steps_before_increasing_batch_size:
+			# return flags.min_batch_size
+		# return self.batch_schedule.value(global_step-flags.steps_before_increasing_batch_size)
 				
 	# run simulations
 	def run_batch(self, global_step):
@@ -193,8 +193,9 @@ class Worker(object):
 			self.local_network.sync()
 			self.local_network.initialize_new_batch()
 		step = 0
-		max_batch_size = self.get_batch_size(global_step)
-		while step < max_batch_size and not self.terminal:
+		# max_batch_size = self.get_batch_size(global_step)
+		# while step < max_batch_size and not self.terminal:
+		while step < flags.batch_size and not self.terminal:
 			step += 1
 			state=self.environment.last_state
 			new_state, value, action, reward, self.terminal, policy = self.local_network.act( 

@@ -21,11 +21,12 @@ class KMeansPartitioner(BasicManager):
 		self.model_size = flags.partition_count # manager output size
 		if self.model_size < 2:
 			self.model_size = 2
+		self.agents_set = set(range(self.model_size))
 			
 	def build_agents(self, state_shape, action_shape, concat_size):
 		# partitioner
 		if self.is_global_network():
-			self.buffer = Buffer(size=flags.partitioner_training_set_size)
+			self.buffer = Buffer(size=flags.partitioner_dataset_size)
 			self.partitioner = KMeans(n_clusters=self.model_size)
 		self.partitioner_trained = False
 		# agents
@@ -94,13 +95,9 @@ class KMeansPartitioner(BasicManager):
 		if self.query_partitioner(self.step):
 			self.agent_id = self.get_state_partition(state)
 		super().bootstrap(state, concat)
-			
-	def compute_cumulative_reward(self, batch):
-		batch = super().compute_cumulative_reward(batch)
 		# populate partitioner training set
 		if not self.partitioner_trained and not self.is_global_network():
-			self.global_network.populate_partitioner(states=batch.states[self.agent_id]) # if the partitioner is not trained, al the states are associated to the current agent
+			self.global_network.populate_partitioner(states=self.batch.states[self.agent_id]) # if the partitioner is not trained, al the states are associated to the current agent
 			self.partitioner_trained = self.global_network.partitioner_trained
 			if self.partitioner_trained:
 				self.partitioner = copy.deepcopy(self.global_network.partitioner)
-		return batch

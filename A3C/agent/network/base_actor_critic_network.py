@@ -95,6 +95,9 @@ class BaseAC_Network(object):
 		# Prepare loss
 		if self.training:
 			self.prepare_loss()
+		# Give self esplicative names to outputs for easily retrieving them in frozen graph
+		tf.identity(self.action_batch, name="action")
+		tf.identity(self.value_batch, name="value")
 		
 	def get_feature_entropy(self, input, scope, name=""): # feature entropy measures how much the input is uncommon
 		with tf.device(self.device):

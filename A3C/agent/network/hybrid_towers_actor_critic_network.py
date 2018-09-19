@@ -13,8 +13,8 @@ class HybridTowersAC_Network(BaseAC_Network):
 		input_shape = input.get_shape().as_list()
 		with tf.variable_scope(scope), tf.variable_scope("CNN{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
-			tower1 = tf.layers.conv2d(inputs=input, filters=64, kernel_size=(3, 3), strides=(1, 1), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
-			tower1 = tf.layers.conv2d(inputs=tower1, filters=32, kernel_size=(3, 3), strides=(1, 1), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling)
+			tower1 = tf.layers.conv2d(inputs=input, filters=64, kernel_size=(3, 3), strides=(1, 1), padding='SAME', kernel_initializer=tf.initializers.variance_scaling)
+			tower1 = tf.layers.conv2d(inputs=tower1, filters=32, kernel_size=(3, 3), strides=(1, 1), padding='SAME', kernel_initializer=tf.initializers.variance_scaling)
 			tower1 = tf.layers.max_pooling2d(tower1, pool_size=(input_shape[1], input_shape[2]), strides=(input_shape[1], input_shape[2]))
 			tower1 = tf.layers.flatten(tower1)
 			input = tf.layers.conv2d(inputs=input, filters=16, kernel_size=(3,3), padding='SAME', activation=tf.nn.relu, kernel_initializer=tf.initializers.variance_scaling )
