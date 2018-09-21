@@ -12,7 +12,7 @@ from agent.network import BaseAC_Network
 
 class NoLSTMAC_Network(BaseAC_Network):
 	
-	def _create_network(self):
+	def create_network(self):
 		print( "Building network {}".format(self.id) )
 		# Initialize keys collections
 		self.shared_keys = []
@@ -61,9 +61,6 @@ class NoLSTMAC_Network(BaseAC_Network):
 		if self.predict_reward:
 			print( "    [{}]Reward prediction logits shape: {}".format(self.id, self.reward_prediction_logits.get_shape()) )
 		print( "    [{}]Action shape: {}".format(self.id, self.action_batch.get_shape()) )
-		# Prepare loss
-		if self.training:
-			self.prepare_loss()
 			
 	def predict_action(self, states, concats=None, internal_state=None):
 		feed_dict = { self.state_batch : states }

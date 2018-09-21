@@ -32,13 +32,16 @@ class BaseAC_Network(object):
 		self.policy_depth = action_shape[1] if len(action_shape) > 1 else 0 # number of discrete action types: set 0 for continuous control
 		self.concat_size = concat_size # the size of the vector concatenated with the CNN output before entering the LSTM
 		self.state_shape = state_shape # the shape of the input
-		# create the whole A3C network
-		self._create_network()
+		# Create the network
+		self.create_network()
+		# Prepare loss
+		if self.training:
+			self.prepare_loss()
 	
 	def is_continuous_control(self):
 		return self.policy_depth <= 1
 	
-	def _create_network(self):
+	def create_network(self):
 		print( "Building network {}".format(self.id) )
 		# Initialize keys collections
 		self.shared_keys = []
@@ -62,11 +65,11 @@ class BaseAC_Network(object):
 			# [Batch Normalization]
 			# _, self.state_batch_norm = self._batch_norm_layer(input=self.state_batch, scope="Global", name="State", share_trainables=False) # global
 			# [CNN]
-			self.cnn = self._cnn_layer(input=self.state_batch, scope=scope_name)
+			self.cnn = self._cnn_layer(input=self.state_batch, scope=parent_scope_name)
 			# [Concat]
-			self.concat = self._concat_layer(input=self.cnn, concat=self.concat_batch, units=self.lstm_units, scope=scope_name)
+			self.concat = self._concat_layer(input=self.cnn, concat=self.concat_batch, units=self.lstm_units, scope=parent_scope_name)
 			# [LSTM]
-			self.lstm, self.lstm_final_state = self._lstm_layer(input=self.concat, initial_state=self.lstm_initial_state, scope=scope_name)
+			self.lstm, self.lstm_final_state = self._lstm_layer(input=self.concat, initial_state=self.lstm_initial_state, scope=sibling_scope_name)
 			# [Policy]
 			self.policy_batch = self._policy_layer(input=self.lstm, scope=scope_name)
 			# [Value]
@@ -92,12 +95,6 @@ class BaseAC_Network(object):
 		if self.predict_reward:
 			print( "    [{}]Reward prediction logits shape: {}".format(self.id, self.reward_prediction_logits.get_shape()) )
 		print( "    [{}]Action shape: {}".format(self.id, self.action_batch.get_shape()) )
-		# Prepare loss
-		if self.training:
-			self.prepare_loss()
-		# Give self esplicative names to outputs for easily retrieving them in frozen graph
-		tf.identity(self.action_batch, name="action")
-		tf.identity(self.value_batch, name="value")
 		
 	def get_feature_entropy(self, input, scope, name=""): # feature entropy measures how much the input is uncommon
 		with tf.device(self.device):
@@ -199,11 +196,9 @@ class BaseAC_Network(object):
 				policy_batch = tf.stack([clipped_mu, clipped_sigma])
 				policy_batch = tf.transpose(policy_batch, [1, 0, 2])
 			else: # discrete control
-				policy_batch = []
-				for _ in range(self.policy_size):
-					policy_batch.append(tf.layers.dense(inputs=input, units=self.policy_depth, activation=None, kernel_initializer=tf.initializers.variance_scaling))
-				shape = [-1,self.policy_size,self.policy_depth] if self.policy_size > 1 else [-1,self.policy_depth]
-				policy_batch = tf.reshape(policy_batch, shape)
+				policy_batch = tf.layers.dense(inputs=input, units=self.policy_size*self.policy_depth, activation=None, kernel_initializer=tf.initializers.variance_scaling)
+				if self.policy_size > 1:
+					policy_batch = tf.reshape(policy_batch, [-1,self.policy_size,self.policy_depth])
 			# update keys
 			self._update_keys(variable_scope.name, share_trainables)
 			# return result
@@ -233,6 +228,8 @@ class BaseAC_Network(object):
 				action_batch = tf.clip_by_value(sample_batch, -1,1) # Sample action batch in forward direction, use old action in backward direction
 			else: # discrete control
 				action_batch = Categorical(self.policy_batch).sample() # Sample action batch in forward direction, use old action in backward direction
+			# Give self esplicative name to output for easily retrieving it in frozen graph
+			tf.identity(action_batch, name="action")
 			return action_batch
 		
 	def prepare_loss(self):

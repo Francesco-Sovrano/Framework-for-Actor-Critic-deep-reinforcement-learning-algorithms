@@ -23,7 +23,7 @@ def build():
 	# Use mean losses if max_batch_size is too big, in order to avoid NaN
 	tf.app.flags.DEFINE_string("loss_type", "sum", "type of loss reduction: sum, mean")
 	tf.app.flags.DEFINE_string("policy_loss", "PPO", "policy loss function: Vanilla, PPO")
-	tf.app.flags.DEFINE_string("value_loss", "Vanilla", "value loss function: Vanilla, PVO")
+	tf.app.flags.DEFINE_string("value_loss", "PVO", "value loss function: Vanilla, PVO")
 # Partitioner parameters
 	# Partition count > 0 reduces algorithm speed, because also a partitioner is trained
 	tf.app.flags.DEFINE_integer("partition_count", 5, "Number of partitions of the input space. Set to 1 for no partitions.")
@@ -38,7 +38,7 @@ def build():
 	tf.app.flags.DEFINE_float("partitioner_beta", 0.001, "Partitioner entropy regularization constant")
 	tf.app.flags.DEFINE_float("partitioner_gamma", 0.99, "Partitioner cumulative reward discount factor")
 	tf.app.flags.DEFINE_float("beta_translation_per_agent", 0.001, "Translation formula: translated_beta = beta + (agent_id-1)*beta_translation_per_agent. With agent_id in [1,partition_count].") # default beta
-	tf.app.flags.DEFINE_boolean("share_internal_state", False, "Whether to share the internal network state (eg: LSTM state) between partitioning agents")
+	tf.app.flags.DEFINE_boolean("share_internal_state", True, "Whether to share the internal network state (eg: LSTM state) between partitioning agents")
 # Loss clip range
 	tf.app.flags.DEFINE_float("clip", 0.2, "PPO/PVO initial clip range") # default is 0.2, for openAI is 0.1
 	tf.app.flags.DEFINE_boolean("clip_decay", True, "Whether to decay the clip range")
