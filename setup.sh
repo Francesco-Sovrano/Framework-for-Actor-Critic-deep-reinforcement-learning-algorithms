@@ -12,7 +12,7 @@ fi
 # upgrade pip
 pip install --upgrade pip
 # install common libraries
-pip install tensorflow scipy # tensorflow includes numpy
+pip install tensorflow==1.10.1 scipy sklearn # tensorflow includes numpy
 pip install matplotlib seaborn imageio
 pip install sortedcontainers
 # install gym

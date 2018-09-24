@@ -288,7 +288,7 @@ class BasicManager(object):
 		
 	def add_to_reward_prediction_buffer(self, batch):
 		batch_size = batch.get_size(self.agents_set)
-		if batch_size <= 1:
+		if batch_size < 3:
 			return
 		batch_extrinsic_reward = batch.get_cumulative_reward(self.agents_set)[0]
 		self.reward_prediction_buffer.put(batch=batch, type_id=1 if batch_extrinsic_reward != 0 else 0) # process batch only after sampling, for better perfomance
@@ -297,12 +297,11 @@ class BasicManager(object):
 		flat_states = [batch.get_action('states', agent_id, pos) for (agent_id,pos) in batch.step_generator(self.agents_set)]
 		flat_rewards = [batch.get_action('rewards', agent_id, pos) for (agent_id,pos) in batch.step_generator(self.agents_set)]
 		states_count = len(flat_states)
-		length = min(3, states_count-1)
-		start_idx = np.random.randint(states_count-length)
-		reward_prediction_states = [flat_states[start_idx+i] for i in range(length)]
+		start_idx = np.random.randint(states_count-3) if states_count > 3 else 0
+		reward_prediction_states = [flat_states[start_idx+i] for i in range(3)]
 		reward_prediction_target = np.zeros((1,3))
 		
-		target_reward = flat_rewards[start_idx+length][0] # use only extrinsic rewards
+		target_reward = sum(flat_rewards[start_idx+i][0] for i in range(3)) # use only extrinsic rewards
 		if target_reward == 0:
 			reward_prediction_target[0][0] = 1.0 # zero
 		elif target_reward > 0:

@@ -76,10 +76,10 @@ class BaseAC_Network(object):
 			self.value_batch = self._value_layer(input=self.lstm, scope=scope_name)
 			# [Reward Prediction]
 			if self.predict_reward:
-				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state")
+				self.reward_prediction_state_batch = self._state_placeholder("reward_prediction_state",3)
 				# reusing with a different placeholder seems to cause memory leaks
-				reward_prediction_cnn = self._cnn_layer(input=self.reward_prediction_state_batch, scope=scope_name)
-				self.reward_prediction_logits = self._reward_prediction_layer(input=reward_prediction_cnn, scope=scope_name)
+				reward_prediction_cnn = self._cnn_layer(input=self.reward_prediction_state_batch, scope=parent_scope_name)
+				self.reward_prediction_logits = self._reward_prediction_layer(input=reward_prediction_cnn, scope=parent_scope_name)
 		# Sample action, after getting keys
 		self.action_batch = self.sample_actions()
 		# Get cnn feature mean entropy
@@ -147,7 +147,7 @@ class BaseAC_Network(object):
 			return input
 	
 	def _lstm_layer(self, input, initial_state, scope, name="", share_trainables=True):
-		with tf.variable_scope(scope), tf.variable_scope("LSTM_Network{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
+		with tf.variable_scope(scope), tf.variable_scope("LSTM{}".format(name), reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			if len(input.get_shape()) > 2:
 				input = tf.layers.flatten(input)
@@ -208,8 +208,8 @@ class BaseAC_Network(object):
 		with tf.variable_scope(scope), tf.variable_scope("RewardPrediction", reuse=tf.AUTO_REUSE) as variable_scope:
 			print( "    [{}]Building scope: {}".format(self.id, variable_scope.name) )
 			# input = tf.contrib.layers.maxout(inputs=input, num_units=1, axis=0)
-			# input = tf.reshape(input,[1,-1])
-			input = tf.layers.flatten(input)
+			input = tf.reshape(input,[1,-1])
+			# input = tf.layers.flatten(input)
 			input = tf.layers.dense(inputs=input, units=3, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 			# update keys
 			self._update_keys(variable_scope.name, share_trainables)

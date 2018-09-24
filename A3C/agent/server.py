@@ -117,6 +117,10 @@ class Application(object):
 		trainer.set_start_time(self.start_time)
 	
 		while True:
+			if flags.synchronize_threads:
+				while self.sync_event.is_set(): # wait for other threads to start
+					time.sleep(flags.synchronization_sleep)
+					# print(parallel_index, "waiting")
 			if self.stop_requested:
 				return
 			if self.terminate_reqested:
@@ -141,6 +145,21 @@ class Application(object):
 					self.training_logger.info(info_str) # Print statistics
 				if parallel_index == 0:
 					sys.stdout.flush() # force print immediately what is in output buffer
+			if flags.synchronize_threads:
+				# print(parallel_index, 'end')
+				with self.sync_lock:
+					self.sync_count += 1 # thread p ended
+					# print('sum before', self.sync_count)
+					if self.sync_count == flags.parallel_size: # all threads are ended
+						self.sync_event.set() # start synching
+				event_is_set = self.sync_event.wait()
+				# print('event set: ', event_is_set, parallel_index)
+				with self.sync_lock:
+					self.sync_count -= 1 # thread p can start
+					# print('sum after', self.sync_count)
+					if self.sync_count == 0: # all threads can start
+						self.sync_event.clear() # synching completed
+					
 
 	def get_global_statistics(self, clients):
 		dictionaries = [client.stats for client in clients if client.terminated_episodes >= flags.match_count_for_evaluation]
@@ -151,12 +170,14 @@ class Application(object):
 		
 	def train(self):
 		# run training threads
-		self.train_threads = []
-		for i in range(flags.parallel_size):
-			self.train_threads.append(threading.Thread(target=self.train_function, args=(i,)))
+		self.train_threads = [threading.Thread(target=self.train_function, args=(i,)) for i in range(flags.parallel_size)]
 		signal.signal(signal.SIGINT, self.signal_handler)
 		# set start time
 		self.start_time = time.time() - self.elapsed_time
+		if flags.synchronize_threads: # build synchronization vector
+			self.sync_event = threading.Event()
+			self.sync_lock = threading.Lock()
+			self.sync_count = 0
 		for t in self.train_threads:
 			t.start()
 		print('Press Ctrl+C to stop')

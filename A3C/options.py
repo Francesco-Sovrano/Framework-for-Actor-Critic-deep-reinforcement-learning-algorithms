@@ -84,6 +84,9 @@ def build():
 	tf.app.flags.DEFINE_float("beta", 0.001, "entropy regularization constant") # default is 0.001, for openAI is 0.01
 	tf.app.flags.DEFINE_integer("parallel_size", 4, "parallel thread size")
 	tf.app.flags.DEFINE_integer("batch_size", 8, "Max. batch size") # default is 8
+	# Synchronizing threads slows down the algorithm but it can improve learning statistics
+	tf.app.flags.DEFINE_boolean("synchronize_threads", True, "Whether to wait other threads before starting new batch. More useful when batch size is big.") # Set to false for A2C or true for A3C
+	tf.app.flags.DEFINE_float("synchronization_sleep", 0.01, "A waiting thread checks synchronization constraints every n seconds")
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
 	tf.app.flags.DEFINE_float("gamma", 0.99, "discount factor for rewards") # default is 0.95, for openAI is 0.99
 # Generalized Advantage Estimation: Schulman, John, et al. "High-dimensional continuous control using generalized advantage estimation." arXiv preprint arXiv:1506.02438 (2015).
