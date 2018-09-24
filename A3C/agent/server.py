@@ -121,19 +121,6 @@ class Application(object):
 				while self.sync_event.is_set(): # wait for other threads to start
 					time.sleep(flags.synchronization_sleep)
 					# print(parallel_index, "waiting")
-			if self.stop_requested:
-				return
-			if self.terminate_reqested:
-				trainer.stop()
-				if parallel_index == 0:
-					self.save()
-				return
-			if self.global_step > flags.max_time_step:
-				trainer.stop()
-				return
-			if parallel_index == 0 and self.global_step > self.next_save_steps:
-				# Save checkpoint
-				self.save()
 	
 			diff_global_step = trainer.process(self.global_step)
 			self.global_step += diff_global_step
@@ -159,7 +146,22 @@ class Application(object):
 					# print('sum after', self.sync_count)
 					if self.sync_count == 0: # all threads can start
 						self.sync_event.clear() # synching completed
-					
+			# do it after synching threads
+			if self.stop_requested:
+				return
+			if self.terminate_reqested:
+				trainer.stop()
+				if parallel_index == 0:
+					self.save()
+				return
+			if self.global_step > flags.max_time_step:
+				trainer.stop()
+				return
+			if self.global_step > self.next_save_steps:
+				if parallel_index == 0: # Save checkpoint
+					self.save()
+				else:
+					return		
 
 	def get_global_statistics(self, clients):
 		dictionaries = [client.stats for client in clients if client.terminated_episodes >= flags.match_count_for_evaluation]
