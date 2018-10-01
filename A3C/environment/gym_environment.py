@@ -20,6 +20,7 @@ class GymEnvironment(environment.Environment):
 		self.thread_index = thread_index
 		# setup environment
 		self.game = gym.make(environment_name)
+		# collect minimal action set
 		self.real_actions = self.game.action_space
 		# evaluator stuff
 		self.episodes = collections.deque()

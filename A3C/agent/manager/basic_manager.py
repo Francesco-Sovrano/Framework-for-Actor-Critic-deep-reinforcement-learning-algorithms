@@ -37,7 +37,7 @@ class BasicManager(object):
 			# Build experience buffer
 			if flags.replay_ratio > 0:
 				if flags.prioritized_replay:
-					self.experience_buffer = PrioritizedBuffer(size=flags.replay_buffer_size, alpha=flags.prioritized_buffer_alpha)
+					self.experience_buffer = PrioritizedBuffer(size=flags.replay_buffer_size)
 					# self.beta_schedule = LinearSchedule(flags.max_time_step, initial_p=0.4, final_p=1.0)
 				else:
 					self.experience_buffer = Buffer(size=flags.replay_buffer_size)
@@ -184,7 +184,7 @@ class BasicManager(object):
 			if flags.use_count_based_exploration_reward: # intrinsic reward
 				intrinsic_reward += self.get_count_based_exploration_reward(new_state)
 
-		total_reward = np.array([extrinsic_reward, intrinsic_reward])
+		total_reward = np.array([extrinsic_reward, intrinsic_reward], dtype=np.float32)
 		if self.training:
 			self.batch.add_action(agent_id=agent_id, state=state, concat=concat, action=action, policy=policy, reward=total_reward, value=value, internal_state=internal_state)
 		# update step at the end of the action
@@ -288,7 +288,7 @@ class BasicManager(object):
 		
 	def add_to_reward_prediction_buffer(self, batch):
 		batch_size = batch.get_size(self.agents_set)
-		if batch_size < 3:
+		if batch_size < 2:
 			return
 		batch_extrinsic_reward = batch.get_cumulative_reward(self.agents_set)[0]
 		self.reward_prediction_buffer.put(batch=batch, type_id=1 if batch_extrinsic_reward != 0 else 0) # process batch only after sampling, for better perfomance
@@ -297,11 +297,12 @@ class BasicManager(object):
 		flat_states = [batch.get_action('states', agent_id, pos) for (agent_id,pos) in batch.step_generator(self.agents_set)]
 		flat_rewards = [batch.get_action('rewards', agent_id, pos) for (agent_id,pos) in batch.step_generator(self.agents_set)]
 		states_count = len(flat_states)
-		start_idx = np.random.randint(states_count-3) if states_count > 3 else 0
-		reward_prediction_states = [flat_states[start_idx+i] for i in range(3)]
+		length = min(3, states_count-1)
+		start_idx = np.random.randint(states_count-length) if states_count > length else 0
+		reward_prediction_states = [flat_states[start_idx+i] for i in range(length)]
 		reward_prediction_target = np.zeros((1,3))
 		
-		target_reward = sum(flat_rewards[start_idx+i][0] for i in range(3)) # use only extrinsic rewards
+		target_reward = flat_rewards[start_idx+length][0] # use only extrinsic rewards
 		if target_reward == 0:
 			reward_prediction_target[0][0] = 1.0 # zero
 		elif target_reward > 0:
@@ -314,14 +315,17 @@ class BasicManager(object):
 		batch_size = batch.get_size(self.agents_set)
 		if batch_size < 1:
 			return
-		batch_extrinsic_reward = batch.get_cumulative_reward(self.agents_set)[0]
-		if batch_extrinsic_reward == 0 and flags.save_only_batches_with_reward:
+		batch_reward = batch.get_cumulative_reward(self.agents_set)
+		batch_extrinsic_reward = batch_reward[0]
+		batch_intrinsic_reward = batch_reward[1]
+		batch_tot_reward = batch_extrinsic_reward + batch_intrinsic_reward
+		if batch_tot_reward == 0 and flags.save_only_batches_with_reward:
 			return
 		if flags.replay_using_default_internal_state:
 			batch.reset_internal_states()
-		type_id = 1 if batch_extrinsic_reward > 0 else 0
+		type_id = (1 if batch_intrinsic_reward > 0 else (2 if batch_extrinsic_reward > 0 else 0))
 		if flags.prioritized_replay:
-			self.experience_buffer.put(batch=batch, priority=batch_extrinsic_reward/np.sqrt(batch_size), type_id=type_id)
+			self.experience_buffer.put(batch=batch, priority=batch_tot_reward, type_id=type_id)
 		else:
 			self.experience_buffer.put(batch=batch, type_id=type_id)
 		

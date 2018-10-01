@@ -70,10 +70,9 @@ def build():
 	tf.app.flags.DEFINE_integer("replay_buffer_size", 2**6, "Maximum number of batches stored in the experience replay buffer")
 	tf.app.flags.DEFINE_integer("replay_start", 1, "Buffer minimum size before starting replay. Should be greater than 0 and lower than replay_buffer_size.")
 	tf.app.flags.DEFINE_boolean("replay_using_default_internal_state", False, "Whether to use old internal state when replaying, or to use the default one")
-	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with total reward different from 0") # default is True
+	tf.app.flags.DEFINE_boolean("save_only_batches_with_reward", True, "Save in the replay buffer only those batches with extrinsic reward different from 0") # default is True
 # Prioritized Experience Replay: Schaul, Tom, et al. "Prioritized experience replay." arXiv preprint arXiv:1511.05952 (2015).
-	tf.app.flags.DEFINE_boolean("prioritized_replay", False, "Whether to use prioritized sampling (if replay_ratio > 0)") # default is True
-	tf.app.flags.DEFINE_float("prioritized_buffer_alpha", 0.6, "Prioritized buffer alpha")
+	tf.app.flags.DEFINE_boolean("prioritized_replay", False, "Whether to use prioritized sampling (if replay_ratio > 0)")
 # Reward clip
 	tf.app.flags.DEFINE_boolean("clip_reward", False, "Whether to clip the reward between min_reward and max_reward") # default is False
 	tf.app.flags.DEFINE_float("min_reward", 0, "Minimum reward for clipping") # default is -1
@@ -85,7 +84,7 @@ def build():
 	tf.app.flags.DEFINE_integer("parallel_size", 4, "parallel thread size")
 	tf.app.flags.DEFINE_integer("batch_size", 8, "Max. batch size") # default is 8
 	# Synchronizing threads slows down the algorithm but it can improve learning statistics
-	tf.app.flags.DEFINE_boolean("synchronize_threads", True, "Whether to wait other threads before starting new batch. More useful when batch size is big.") # Set to false for A2C or true for A3C
+	tf.app.flags.DEFINE_boolean("synchronize_threads", False, "Whether to wait other threads before starting new batch. More useful when batch size is big.") # Set to false for A2C or true for A3C
 	tf.app.flags.DEFINE_float("synchronization_sleep", 0.01, "A waiting thread checks synchronization constraints every n seconds")
 	# Taking gamma < 1 introduces bias into the policy gradient estimate, regardless of the value function’s accuracy.
 	tf.app.flags.DEFINE_float("gamma", 0.99, "discount factor for rewards") # default is 0.95, for openAI is 0.99
