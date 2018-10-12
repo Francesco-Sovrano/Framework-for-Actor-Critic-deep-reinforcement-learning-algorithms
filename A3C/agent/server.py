@@ -87,7 +87,7 @@ class Application(object):
 		result_queue = Queue()
 		for i in range(flags.parallel_size): # parallel testing
 			tester = Worker(thread_index=-i-1, session=self.session, global_network=self.global_network, device=self.device, training=False)
-			thread = threading.Thread(target=lambda q, args: q.put(self.test_function(*args)), args=(result_queue,(tester,tester.environment.get_test_size())))
+			thread = threading.Thread(target=lambda q, args: q.put(test_function(*args)), args=(result_queue,(tester,tester.environment.get_test_size())))
 			thread.start()
 			threads.append(thread)
 			testers.append(tester)
