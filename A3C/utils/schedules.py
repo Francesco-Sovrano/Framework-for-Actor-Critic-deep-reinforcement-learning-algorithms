@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """This file is used for specifying various schedules that evolve over
 time throughout the execution of the algorithm, such as:
  - learning rate for the optimizer

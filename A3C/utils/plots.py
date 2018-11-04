@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import matplotlib
 matplotlib.use('Agg',force=True) # no display
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas

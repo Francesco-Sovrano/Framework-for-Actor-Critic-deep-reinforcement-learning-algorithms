@@ -68,14 +68,14 @@ class SentiPolC(object):
 		test_set = self.load_obj(flags.test_annotations)
 		if not test_set:
 			test_set = self.get_annotations(flags.test_set_path)
-		self.save_obj(test_set, flags.test_annotations)
+			self.save_obj(test_set, flags.test_annotations)
 		print ("Test annotations built")
 		# Build training annotations
 		print ("Building training annotations..")
 		training_set = self.load_obj(flags.training_annotations)
 		if not training_set:
 			training_set = self.get_annotations(flags.training_set_path)
-		self.save_obj(training_set, flags.training_annotations)
+			self.save_obj(training_set, flags.training_annotations)
 		print ("Training annotations built")
 		print ("Saving support dictionaries")
 		self.save_obj(self.translated_lemma_tokens, flags.translated_lemma_tokens)
@@ -268,8 +268,8 @@ class SentiPolC(object):
 					en_lemma = self.translator.translate(lemma, dest='en', src='it').text
 				except:
 					self.translator = Translator() # reset translator
-					time.sleep(random.uniform(0.01, 0.1))
-					# time.sleep(random.uniform(0.5, 1.5))
+					# time.sleep(random.uniform(0.01, 0.1))
+					time.sleep(random.uniform(0.5, 1.5))
 			en_lemma_tokens = self.tweet_tokenizer.tokenize(en_lemma)
 			self.translated_lemma_tokens[lemma] = en_lemma_tokens
 		else:
