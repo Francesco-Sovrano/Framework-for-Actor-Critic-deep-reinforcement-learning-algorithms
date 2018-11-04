@@ -62,7 +62,7 @@ class ExperienceBatch(object):
 		if agents is None:
 			return self.agent_position_list
 		if len(agents)==1:
-			agent = agents[0]
+			agent = list(agents)[0]
 			return ((agent,pos) for pos in range(self.get_size(agents)))
 		return ((agent,pos) for (agent,pos) in self.agent_position_list if agent in agents)
 		
