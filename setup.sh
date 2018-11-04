@@ -10,7 +10,7 @@ fi
 . .env/bin/activate
 
 # upgrade pip
-pip install --upgrade pip
+pip install pip==9.0.3 # pip 10.0.1 has issues with pybind11 -> required by fastText
 # install common libraries
 pip install tensorflow==1.10.1 scipy sklearn # tensorflow includes numpy
 pip install matplotlib seaborn imageio
