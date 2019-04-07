@@ -1,4 +1,4 @@
-Deep Reinforcement Learning and sub-problem decomposition using Hierarchical Architectures in partially observable environments: Framework for Actor-Critic Deep Reinforcement Learning algorithms [https://amslaurea.unibo.it/16718](https://amslaurea.unibo.it/16718/)
+Deep Reinforcement Learning and sub-problem decomposition using Hierarchical Architectures in partially observable environments: a framework for Actor-Critic Deep Reinforcement Learning algorithms.
 ==========
 
 This software supports several deep RL and HRL algorithms (A3C, A2C, PPO, GAE, etc..) in different environments (OpenAI's Gym, Rogue, Sentiment Analysis, Car Controller, etc..) with continuous and discrete action spaces. More details can be found in my Computer Science master thesis: [Deep Reinforcement Learning and sub-problem decomposition using Hierarchical Architectures in partially observable environments](https://amslaurea.unibo.it/16718/). 
