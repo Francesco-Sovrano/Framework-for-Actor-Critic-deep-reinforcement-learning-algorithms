@@ -1,14 +1,15 @@
-Framework for Actor-Critic deep reinforcement learning algorithms
+Deep Reinforcement Learning and sub-problem decomposition using Hierarchical Architectures in partially observable environments: Framework for Actor-Critic Deep Reinforcement Learning algorithms [https://amslaurea.unibo.it/16718](https://amslaurea.unibo.it/16718/)
 ==========
-  
-This software supports several deep RL and HRL algorithms (A3C, A2C, PPO, GAE, etc..) in different environments (OpenAI's Gym, Rogue, Sentiment Analysis, Car Controller, etc..) with continuous and discrete action spaces. 
-Actor-Critic is a big family of RL algorithms. In this work we want to focus primarily on:
+
+This software supports several deep RL and HRL algorithms (A3C, A2C, PPO, GAE, etc..) in different environments (OpenAI's Gym, Rogue, Sentiment Analysis, Car Controller, etc..) with continuous and discrete action spaces. More details can be found in my Computer Science master thesis: [Deep Reinforcement Learning and sub-problem decomposition using Hierarchical Architectures in partially observable environments](https://amslaurea.unibo.it/16718/). 
+
+Actor-Critic is a big family of RL algorithms. In this work we focus primarily on:
 * Actor-Critic paradigm
 * Hierarchical networks
 * Experience Replay
 * Exploration intrinsic rewards
 
-In order to do so, we need a framework for experimenting RL algorithms, with ease, on different types of problem.
+Our goal is to perform Deep Reinforcement Learning and sub-problem decomposition using Hierarchical Architectures in partially observable environments. In order to do so, we need a framework for experimenting RL algorithms, with ease, on different types of problem.
 In May 2017, [OpenAI](https://github.com/openai/baselines) has published an interesting repository of RL baselines, and it is still maintaining it with continuous improvements and updates.
 The aforementioned repository is probably the best choice for testing the performances of already existing RL algorithms requiring very minimal changes, but it is hard to read and modify (at least for the author).
 Thus we decided to use as code-base for our experiments the open-source A3C algorithm, built on Tensorflow 1.10.1, that comes with our last conference paper [Crawling in Rogue's dungeons with (partitioned) A3C](https://arxiv.org/abs/1804.08685v1), mainly because we already had experience with it and we know the details of its inner mechanisms. But even the chosen code-base is not generic and abstract enough for our goals, for example that code-base is made for Rogue only, thus we had to make some changes to it:
