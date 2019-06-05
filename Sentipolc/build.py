@@ -41,6 +41,9 @@ from gensim.models.doc2vec import TaggedDocument, Doc2Vec
 
 class SentiPolC(object):
 	def build_set(self):
+		if os.path.isfile(flags.preprocessed_dict):
+			print ("Training and test sets already built: {}".format(flags.preprocessed_dict))
+			return
 		wn.ensure_loaded()  # `LazyCorpusLoader` conversion into `WordNetCorpusReader` starts
 		print ("WordNet loaded")
 		swn.ensure_loaded()  # `LazyCorpusLoader` conversion into `SentiWordNetCorpusReader` starts

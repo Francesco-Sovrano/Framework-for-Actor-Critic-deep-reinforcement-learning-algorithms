@@ -64,7 +64,7 @@ GROUPOWNER =
 CPPFLAGS =-DHAVE_CONFIG_H  $(EXTRA)
 
 #DISTFILE = $(PROGRAM)
-DISTFILE = $(DISTNAME)-x86_64-unknown-linux-gnu
+DISTFILE = $(DISTNAME)-i386-apple-darwin18.6.0
 
 INSTALL=./install-sh
 

@@ -1,3 +1,7 @@
+.DS_Store
+.env/
+*.py[cod]
+*$py.class
 __pycache__/
 *.o
 *.pyc
