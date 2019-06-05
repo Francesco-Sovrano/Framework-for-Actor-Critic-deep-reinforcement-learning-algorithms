@@ -194,7 +194,8 @@ class BaseAC_Network(object):
 				clipped_sigma = tf.clip_by_value(tf.abs(sigma), 1e-4,1) # in [1e-4,1] # sigma must be greater than 0
 				# build policy batch
 				policy_batch = tf.stack([clipped_mu, clipped_sigma])
-				policy_batch = tf.transpose(policy_batch, [1, 0, 2])
+				policy_batch = tf.reshape(policy_batch, [-1, 2, self.policy_size])
+				# policy_batch = tf.transpose(policy_batch, [1, 0, 2])
 			else: # discrete control
 				policy_batch = tf.layers.dense(inputs=input, units=self.policy_size*self.policy_depth, activation=None, kernel_initializer=tf.initializers.variance_scaling)
 				if self.policy_size > 1:
