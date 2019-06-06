@@ -78,7 +78,7 @@ Sentiment Analysis environment dependencies:
 * [Googletrans](https://pypi.org/project/googletrans/2.2.0/), a free and unlimited python library that implemented Google Translate API.
 * [gensim](https://radimrehurek.com/gensim/)
 
-Before running setup.sh you must have installed virtualenv, python3-dev, python3-pip and make. 
+Before running the [setup.sh](setup.sh) script, you have to install: virtualenv, python3-dev, python3-pip and make. 
 For more details, please read the related paper.
 
 Citation
