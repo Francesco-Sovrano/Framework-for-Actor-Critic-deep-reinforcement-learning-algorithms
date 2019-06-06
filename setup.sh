@@ -27,7 +27,7 @@ chmod 777 build_with_monsters.sh
 ./build_with_monsters.sh
 cd ..
 # install sentipolc
-pip install gensim==3.4.0 validate_email==1.3
+pip install gensim==3.7.3 validate_email==1.3
 pip install nltk==3.2.5 treetaggerwrapper==2.2.4 git+https://github.com/facebookresearch/fastText.git@3e64bf0f5b916532b34be6706c161d7d0a4957a4 # the Moses tokenizer has been removed from nltk 3.3.0!
 pip install emojipy==3.0.5 # https://github.com/emojione/emojione/tree/master/lib/python
 # pip install lxml git+https://github.com/opener-project/VU-sentiment-lexicon.git # this version of VU-sentiment-lexicon is for python2 only
